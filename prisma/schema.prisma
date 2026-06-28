@@ -1,0 +1,365 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ModelVersionStatus {
+  draft
+  active
+  archived
+}
+
+enum AssessmentStatus {
+  started
+  in_progress
+  completed
+  abandoned
+}
+
+enum HealthLevel {
+  critical
+  weak
+  medium
+  healthy
+}
+
+enum ReportStatus {
+  generated
+  ai_enhanced
+  failed
+}
+
+enum DiagnosisSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum SalesModel {
+  online
+  offline
+  phone
+  direct_message
+  hybrid
+}
+
+enum ActionPlanTimeframe {
+  seven_days
+  thirty_days
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organizations      Organization[]
+  assessmentSessions AssessmentSession[]
+
+  @@map("users")
+}
+
+model Organization {
+  id           String      @id @default(cuid())
+  userId       String      @map("user_id")
+  businessName String      @map("business_name")
+  industry     String?
+  teamSize     String?     @map("team_size")
+  salesModel   SalesModel? @map("sales_model")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessmentSessions AssessmentSession[]
+
+  @@map("organizations")
+}
+
+model ModelVersion {
+  id                     String             @id @default(cuid())
+  name                   String
+  versionNumber          String             @map("version_number")
+  status                 ModelVersionStatus @default(draft)
+  diagnosisEngineVersion String             @default("v1") @map("diagnosis_engine_version")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  activatedAt            DateTime?          @map("activated_at")
+
+  domains            Domain[]
+  layers             Layer[]
+  questions          Question[]
+  diagnosticRules    DiagnosticRule[]
+  assessmentSessions AssessmentSession[]
+
+  @@map("model_versions")
+}
+
+model Layer {
+  id             String  @id @default(cuid())
+  modelVersionId String  @map("model_version_id")
+  name           String
+  slug           String
+  description    String?
+  displayOrder   Int     @map("display_order")
+
+  modelVersion ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  domains      Domain[]
+  layerScores  LayerScore[]
+
+  @@unique([modelVersionId, slug])
+  @@map("layers")
+}
+
+model Domain {
+  id             String  @id @default(cuid())
+  modelVersionId String  @map("model_version_id")
+  layerId        String  @map("layer_id")
+  name           String
+  slug           String
+  description    String?
+  weight         Float
+  displayOrder   Int     @map("display_order")
+  isActive       Boolean @default(true) @map("is_active")
+
+  modelVersion ModelVersion  @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  layer        Layer         @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  questions    Question[]
+  domainScores DomainScore[]
+  bottlenecks  Bottleneck[]
+
+  @@unique([modelVersionId, slug])
+  @@map("domains")
+}
+
+model Question {
+  id             String  @id @default(cuid())
+  modelVersionId String  @map("model_version_id")
+  domainId       String  @map("domain_id")
+  text           String
+  helpText       String? @map("help_text")
+  displayOrder   Int     @map("display_order")
+  isActive       Boolean @default(true) @map("is_active")
+
+  modelVersion ModelVersion     @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+  domain       Domain           @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  options      QuestionOption[]
+  answers      Answer[]
+
+  @@map("questions")
+}
+
+model QuestionOption {
+  id           String @id @default(cuid())
+  questionId   String @map("question_id")
+  text         String
+  score        Int
+  displayOrder Int    @map("display_order")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@map("question_options")
+}
+
+model DiagnosticRule {
+  id              String  @id @default(cuid())
+  modelVersionId  String  @map("model_version_id")
+  name            String
+  description     String?
+  conditionType   String  @map("condition_type")
+  conditionConfig Json    @map("condition_config")
+  diagnosisKey    String  @map("diagnosis_key")
+  priority        Int     @default(0)
+  isActive        Boolean @default(true) @map("is_active")
+
+  modelVersion ModelVersion @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
+
+  @@map("diagnostic_rules")
+}
+
+model AssessmentSession {
+  id             String           @id @default(cuid())
+  userId         String           @map("user_id")
+  organizationId String           @map("organization_id")
+  modelVersionId String           @map("model_version_id")
+  status         AssessmentStatus @default(started)
+  resultToken         String           @unique @map("result_token")
+  structuredDiagnosis Json?            @map("structured_diagnosis")
+  monthlyRevenue      Float?           @map("monthly_revenue")
+  averageOrderValue   Float?           @map("average_order_value")
+  monthlyLeads        Float?           @map("monthly_leads")
+  repeatPurchaseRate  Float?           @map("repeat_purchase_rate")
+  startedAt           DateTime         @default(now()) @map("started_at")
+  completedAt    DateTime?        @map("completed_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  modelVersion ModelVersion  @relation(fields: [modelVersionId], references: [id])
+  answers      Answer[]
+  domainScores DomainScore[]
+  layerScores  LayerScore[]
+  overallScore OverallScore?
+  bottlenecks  Bottleneck[]
+  diagnoses    Diagnosis[]
+  report               Report?
+  actionPlans          ActionPlan[]
+  consultationRequests ConsultationRequest[]
+
+  @@index([status])
+  @@map("assessment_sessions")
+}
+
+model Answer {
+  id                  String   @id @default(cuid())
+  assessmentSessionId String   @map("assessment_session_id")
+  questionId          String   @map("question_id")
+  selectedOptionId    String   @map("selected_option_id")
+  scoreSnapshot       Int      @map("score_snapshot")
+  answeredAt          DateTime @default(now()) @map("answered_at")
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  question          Question          @relation(fields: [questionId], references: [id])
+  selectedOption    QuestionOption    @relation(fields: [selectedOptionId], references: [id])
+
+  @@unique([assessmentSessionId, questionId])
+  @@map("answers")
+}
+
+model DomainScore {
+  id                  String      @id @default(cuid())
+  assessmentSessionId String      @map("assessment_session_id")
+  domainId            String      @map("domain_id")
+  rawScore            Int         @map("raw_score")
+  maxScore            Int         @map("max_score")
+  percentage          Float
+  healthLevel         HealthLevel @map("health_level")
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  domain            Domain            @relation(fields: [domainId], references: [id])
+
+  @@unique([assessmentSessionId, domainId])
+  @@map("domain_scores")
+}
+
+model LayerScore {
+  id                  String      @id @default(cuid())
+  assessmentSessionId String      @map("assessment_session_id")
+  layerId             String      @map("layer_id")
+  rawScore            Int         @map("raw_score")
+  maxScore            Int         @map("max_score")
+  percentage          Float
+  healthLevel         HealthLevel @map("health_level")
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  layer             Layer             @relation(fields: [layerId], references: [id])
+
+  @@unique([assessmentSessionId, layerId])
+  @@map("layer_scores")
+}
+
+model OverallScore {
+  id                  String      @id @default(cuid())
+  assessmentSessionId String      @unique @map("assessment_session_id")
+  rawScore            Int         @map("raw_score")
+  maxScore            Int         @map("max_score")
+  percentage          Float
+  healthLevel         HealthLevel @map("health_level")
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+
+  @@map("overall_scores")
+}
+
+model Bottleneck {
+  id                  String @id @default(cuid())
+  assessmentSessionId String @map("assessment_session_id")
+  domainId            String @map("domain_id")
+  weaknessScore       Float  @map("weakness_score")
+  domainWeight        Float  @map("domain_weight")
+  priorityScore       Float  @map("priority_score")
+  rank                Int
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  domain            Domain            @relation(fields: [domainId], references: [id])
+  actionPlans       ActionPlan[]
+
+  @@unique([assessmentSessionId, rank])
+  @@map("bottlenecks")
+}
+
+model Diagnosis {
+  id                  String            @id @default(cuid())
+  assessmentSessionId String            @map("assessment_session_id")
+  diagnosisKey        String            @map("diagnosis_key")
+  title               String
+  description         String
+  severity            DiagnosisSeverity
+  priority            Int               @default(0)
+  relatedDomainIds    Json              @default("[]") @map("related_domain_ids")
+  relatedLayerIds     Json              @default("[]") @map("related_layer_ids")
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  actionPlans       ActionPlan[]
+
+  @@map("diagnoses")
+}
+
+model Report {
+  id                  String       @id @default(cuid())
+  assessmentSessionId String       @unique @map("assessment_session_id")
+  reportStatus        ReportStatus @default(generated) @map("report_status")
+  structuredReport    Json         @map("structured_report")
+  reportSpec          Json?        @map("report_spec")
+  aiGeneratedText     String?      @map("ai_generated_text")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  assessmentSession    AssessmentSession     @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  consultationRequests ConsultationRequest[]
+
+  @@map("reports")
+}
+
+model ConsultationRequest {
+  id                  String   @id @default(cuid())
+  assessmentSessionId String?  @map("assessment_session_id")
+  reportId            String?  @map("report_id")
+  name                String
+  email               String?
+  phone               String?
+  message             String?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
+  report            Report?            @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([assessmentSessionId])
+  @@index([createdAt])
+  @@map("consultation_requests")
+}
+
+model ActionPlan {
+  id                  String              @id @default(cuid())
+  assessmentSessionId String              @map("assessment_session_id")
+  diagnosisId         String?             @map("diagnosis_id")
+  bottleneckId        String?             @map("bottleneck_id")
+  timeframe           ActionPlanTimeframe
+  title               String
+  description         String
+  priority            Int                 @default(0)
+
+  assessmentSession AssessmentSession @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  diagnosis         Diagnosis?        @relation(fields: [diagnosisId], references: [id], onDelete: SetNull)
+  bottleneck        Bottleneck?       @relation(fields: [bottleneckId], references: [id], onDelete: SetNull)
+
+  @@map("action_plans")
+}

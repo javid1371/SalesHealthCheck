@@ -1,0 +1,163 @@
+import type { DomainConfig, LayerConfig } from "./types";
+
+export const layersV1: LayerConfig[] = [
+  {
+    slug: "market-message-offer",
+    name: "بازار، پیام و پیشنهاد",
+    description:
+      "آیا کسب‌وکار برای آدم درست، با پیام درست و پیشنهاد درست وارد بازار شده است؟",
+    displayOrder: 1,
+  },
+  {
+    slug: "lead-management",
+    name: "لید و مدیریت سرنخ",
+    description:
+      "آیا آدم‌های درست وارد مسیر فروش می‌شوند و درست مدیریت می‌شوند؟",
+    displayOrder: 2,
+  },
+  {
+    slug: "sales-conversation",
+    name: "مکالمه فروش و تبدیل",
+    description:
+      "آیا مسیر مکالمه فروش مشتری را به تصمیم خرید نزدیک می‌کند؟",
+    displayOrder: 3,
+  },
+  {
+    slug: "relationship-optimization",
+    name: "رابطه، تجربه و بهینه‌سازی",
+    description:
+      "آیا فروش بعد از خرید، تجربه مشتری و عددها به شکل سیستمی مدیریت می‌شوند؟",
+    displayOrder: 4,
+  },
+];
+
+export const domainsV1: DomainConfig[] = [
+  {
+    slug: "persona",
+    name: "شناخت مشتری مناسب",
+    description: "تعریف و مستندسازی مشتری ایده‌آل و نیازهای واقعی او",
+    layerSlug: "market-message-offer",
+    weight: 1.4,
+    displayOrder: 1,
+  },
+  {
+    slug: "uvp",
+    name: "ارزش پیشنهادی",
+    description: "پیام واضح درباره تمایز و دلیل انتخاب شما",
+    layerSlug: "market-message-offer",
+    weight: 1.4,
+    displayOrder: 2,
+  },
+  {
+    slug: "offer-design",
+    name: "طراحی پیشنهاد، قیمت‌گذاری و بسته‌بندی",
+    description: "ساختار محصول/خدمت، قیمت و بسته‌های خرید",
+    layerSlug: "market-message-offer",
+    weight: 1.3,
+    displayOrder: 3,
+  },
+  {
+    slug: "lead-generation",
+    name: "تولید سرنخ",
+    description: "ورود مشتریان بالقوه به مسیر فروش",
+    layerSlug: "lead-management",
+    weight: 1.2,
+    displayOrder: 4,
+  },
+  {
+    slug: "lead-nurturing",
+    name: "پرورش سرنخ‌ها",
+    description: "حفظ ارتباط و آماده‌سازی لیدها تا زمان خرید",
+    layerSlug: "lead-management",
+    weight: 1.1,
+    displayOrder: 5,
+  },
+  {
+    slug: "speed-to-lead",
+    name: "سرعت ارتباط اولیه و ثبت سرنخ",
+    description: "سرعت پاسخ و ثبت منظم اطلاعات لید جدید",
+    layerSlug: "lead-management",
+    weight: 1.2,
+    displayOrder: 6,
+  },
+  {
+    slug: "lead-qualification",
+    name: "صلاحیت‌سنجی و اولویت‌بندی سرنخ‌ها",
+    description: "تشخیص لیدهای واقعاً آماده خرید",
+    layerSlug: "lead-management",
+    weight: 1.2,
+    displayOrder: 7,
+  },
+  {
+    slug: "initial-trust",
+    name: "کیفیت ارتباط اولیه و اعتمادسازی",
+    description: "ایجاد اعتماد در تماس‌های اول با مشتری",
+    layerSlug: "sales-conversation",
+    weight: 1.1,
+    displayOrder: 8,
+  },
+  {
+    slug: "needs-discovery",
+    name: "کشف نیاز",
+    description: "شناخت دقیق نیاز، اولویت و شرایط تصمیم مشتری",
+    layerSlug: "sales-conversation",
+    weight: 1.3,
+    displayOrder: 9,
+  },
+  {
+    slug: "presentation",
+    name: "ارائه حرفه‌ای",
+    description: "ارائه پیشنهاد متناسب با نیاز مشتری",
+    layerSlug: "sales-conversation",
+    weight: 1.1,
+    displayOrder: 10,
+  },
+  {
+    slug: "objection-handling",
+    name: "برخورد با اعتراضات",
+    description: "پاسخ ساختاریافته به نگرانی‌ها و موانع خرید",
+    layerSlug: "sales-conversation",
+    weight: 1.2,
+    displayOrder: 11,
+  },
+  {
+    slug: "closing",
+    name: "نهایی‌سازی فروش",
+    description: "بستن معامله و گرفتن تعهد بعدی مشتری",
+    layerSlug: "sales-conversation",
+    weight: 1.2,
+    displayOrder: 12,
+  },
+  {
+    slug: "loyalty",
+    name: "وفاداری مشتری",
+    description: "حفظ مشتری، تکرار خرید و معرفی به دیگران",
+    layerSlug: "relationship-optimization",
+    weight: 1.0,
+    displayOrder: 13,
+  },
+  {
+    slug: "touchpoint-consistency",
+    name: "یکپارچگی Touchpoint",
+    description: "هماهنگی تجربه مشتری در کانال‌ها و نقاط تماس",
+    layerSlug: "relationship-optimization",
+    weight: 1.0,
+    displayOrder: 14,
+  },
+  {
+    slug: "sales-journey-clarity",
+    name: "شفافیت مسیر فروش",
+    description: "وضوح مراحل مسیر مشتری از آشنایی تا خرید",
+    layerSlug: "relationship-optimization",
+    weight: 1.3,
+    displayOrder: 15,
+  },
+  {
+    slug: "measurement-optimization",
+    name: "اندازه‌گیری، تحلیل و بهینه‌سازی فروش",
+    description: "ردیابی KPIها و بهبود مستمر بر اساس داده",
+    layerSlug: "relationship-optimization",
+    weight: 1.3,
+    displayOrder: 16,
+  },
+];

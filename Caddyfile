@@ -1,0 +1,4 @@
+# Set APP_DOMAIN in .env (e.g. sales.example.com). Caddy obtains TLS via Let's Encrypt.
+{$APP_DOMAIN} {
+	reverse_proxy app:3000
+}

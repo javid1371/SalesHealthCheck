@@ -1,0 +1,44 @@
+/* Print layout — imported only on /report/[id]/print */
+
+.print-layout {
+  min-height: 100vh;
+  background: var(--color-surface-raised, #ffffff);
+  color: var(--color-foreground, #18181b);
+}
+
+.print-page-break {
+  break-before: page;
+  page-break-before: always;
+}
+
+.print-avoid-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-hide {
+  display: none !important;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-layout {
+    max-width: none;
+    padding: 0;
+  }
+
+  a[href]::after {
+    content: none !important;
+  }
+}
