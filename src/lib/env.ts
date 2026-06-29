@@ -13,6 +13,16 @@ function parseCapacityMode(value: string | undefined): CapacityMode {
   return "free";
 }
 
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   get databaseUrl() {
@@ -43,5 +53,33 @@ export const env = {
   /** PDF export via Playwright; opt-in with PDF_GENERATION_ENABLED=true. */
   get pdfGenerationEnabled(): boolean {
     return process.env.PDF_GENERATION_ENABLED === "true";
+  },
+  /** HMAC secret for signed user/admin session cookies (ADR 0014). */
+  get authSessionSecret(): string {
+    return requireEnv("AUTH_SESSION_SECRET");
+  },
+  /** Kavenegar API key; unset in dev logs OTP instead of sending SMS. */
+  get kavenegarApiKey(): string | undefined {
+    return process.env.KAVENEGAR_API_KEY;
+  },
+  /** Kavenegar lookup/verify template name for OTP SMS. */
+  get kavenegarOtpTemplate(): string | undefined {
+    return process.env.KAVENEGAR_OTP_TEMPLATE;
+  },
+  /** Plain admin password; prefer ADMIN_PASSWORD_HASH in production. */
+  get adminPassword(): string | undefined {
+    return process.env.ADMIN_PASSWORD;
+  },
+  /** Bcrypt/scrypt hash of admin password; used when ADMIN_PASSWORD is unset. */
+  get adminPasswordHash(): string | undefined {
+    return process.env.ADMIN_PASSWORD_HASH;
+  },
+  /** OTP validity window in seconds; default 300. */
+  get otpTtlSeconds(): number {
+    return parsePositiveInt(process.env.OTP_TTL_SECONDS, 300);
+  },
+  /** Max failed OTP verify attempts per code; default 3. */
+  get otpMaxAttempts(): number {
+    return parsePositiveInt(process.env.OTP_MAX_ATTEMPTS, 3);
   },
 } as const;

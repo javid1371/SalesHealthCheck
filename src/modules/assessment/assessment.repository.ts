@@ -11,6 +11,23 @@ import type {
 } from "@/types/scoring";
 import type { DiagnosisResult } from "@/types/diagnosis";
 
+export async function findUserById(userId: string) {
+  return db.user.findUnique({ where: { id: userId } });
+}
+
+export async function updateUserProfile(
+  userId: string,
+  data: { name: string; email?: string },
+) {
+  return db.user.update({
+    where: { id: userId },
+    data: {
+      name: data.name,
+      email: data.email,
+    },
+  });
+}
+
 export async function findUserByEmailOrPhone(email?: string, phone?: string) {
   if (!email && !phone) return null;
 

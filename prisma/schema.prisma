@@ -54,12 +54,13 @@ enum ActionPlanTimeframe {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String?
-  email     String?
-  phone     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  name            String?
+  email           String?
+  phone           String?
+  phoneVerifiedAt DateTime? @map("phone_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   organizations      Organization[]
   assessmentSessions AssessmentSession[]
@@ -362,4 +363,17 @@ model ActionPlan {
   bottleneck        Bottleneck?       @relation(fields: [bottleneckId], references: [id], onDelete: SetNull)
 
   @@map("action_plans")
+}
+
+model OtpCode {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([phone])
+  @@map("otp_codes")
 }

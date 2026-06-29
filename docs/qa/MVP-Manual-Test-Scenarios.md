@@ -7,20 +7,23 @@ Run locally after `npm run dev` with database seeded, or on staging after Docker
 - PostgreSQL running (`docker compose up -d`)
 - Migrations applied (`npm run db:migrate`)
 - Seed applied (`npm run db:seed`)
+- `.env` includes `AUTH_SESSION_SECRET` and `ADMIN_PASSWORD` for OTP/session/admin scenarios
 
 ## Scenario 1 — Full completion
 
-1. Open `/` and start assessment
-2. Fill business info and complete all 16 domains (80 questions)
+1. Open `/` and click start assessment
+2. Enter mobile number on `/assessment/start`; request OTP (check server logs in dev if SMS is not configured)
+3. Enter 6-digit code on `/assessment/start/verify`
+4. Fill business info: phone read-only from OTP session, name, business fields, **team size** from dropdown (no email field); complete all 16 domains (80 questions)
 3. On Review, confirm 16/16 domains complete
 4. Finish and wait for Result Dashboard
 5. **Expected:** Overall score, spider chart, 3 bottlenecks, link to detailed report
 6. Open detailed report — domain breakdown, diagnoses, 7-day and 30-day plans
-7. **Pass criteria:** 3 bottlenecks with summaries; report loads with token
+7. **Pass criteria:** 3 bottlenecks with summaries; report loads with token or active user session
 
 ## Scenario 2 — Incomplete assessment
 
-1. Start assessment, answer only 2–3 domains
+1. Complete OTP sign-in and start assessment; answer only 2–3 domains
 2. Go to Review
 3. **Expected:** Incomplete domains listed; Finish button disabled
 4. Try `POST /api/assessments/:id/finish` via processing shortcut or API
@@ -47,22 +50,61 @@ Run locally after `npm run dev` with database seeded, or on staging after Docker
 
 ## Scenario 6 — CTA lead form
 
-1. From detailed report or `/assessment/:id/cta`, submit form with name + phone or email
+1. From detailed report or `/assessment/:id/cta`, submit form with name + **required phone** (no email field in UI)
 2. Open Prisma Studio: `npm run db:studio`
 3. **Expected:** Row in `consultation_requests` with correct `assessment_session_id`
 
-## Scenario 7 — Email recovery
+## Scenario 7 — Access recovery (phone + account)
 
-1. Complete an assessment with a valid email address
+1. Complete an assessment (phone-only flow is fine)
 2. Open `/recover` (or footer link «بازیابی لینک نتیجه»)
-3. Submit the same email used at assessment start
-4. **Expected:** Generic success message (no indication whether account exists)
-5. Check inbox (or Resend dashboard in dev) for email with result URL + token
+3. Submit the same mobile number used at assessment start
+4. **Expected:** Generic success message (no indication whether account exists); hint to try **حساب من** sign-in with the same number
+5. If the assessment was started with an email on file, check inbox (or Resend dashboard in dev) for email with result URL + token
 6. Open the link in incognito — same result dashboard as Scenario 4
-7. Submit recovery 4 times quickly from same IP
-8. **Expected:** 4th request returns 429 with `retry_after`
+7. Alternatively, sign in at `/account/login` with the same phone + OTP — **Expected:** completed assessments visible without token
+8. Submit recovery 4 times quickly from same IP
+9. **Expected:** 4th request returns 429 with `retry_after`
 
-**Pass criteria:** No user enumeration; email contains working magic link; rate limit enforced.
+**Pass criteria:** No user enumeration; rate limit enforced; phone-only users can regain access via account login; email magic link still works when email was provided at start.
+
+## Scenario 10 — OTP sign-in and returning user panel
+
+1. Start a new assessment from `/assessment/start` with a fresh mobile number
+2. **Expected:** Generic success after send (no hint whether number exists); OTP arrives via SMS or appears in server logs (dev)
+3. Enter wrong code twice — **Expected:** generic invalid message; third wrong attempt also rejected
+4. Request a new code after 60s — complete verification
+5. **Expected:** HTTP-only session cookie set; redirect to business info with phone read-only and team size dropdown (no email field)
+6. Finish at least one assessment, then open `/account/assessments`
+7. **Expected:** List shows business name, status, score; completed row opens result **without** `?token=`
+8. Log out from account panel; open `/account/login`, sign in with same phone + OTP
+9. **Expected:** Assessments list still accessible
+
+**Pass criteria:** Session required to start assessment; owner can revisit results via account panel; OTP responses never reveal whether a phone is registered.
+
+## Scenario 11 — Admin panel
+
+1. Open `/admin/login` without a session
+2. Submit wrong password — **Expected:** 401, no admin cookie
+3. Submit `ADMIN_PASSWORD` from env — **Expected:** redirect to `/admin/assessments`
+4. **Expected:** Table lists assessments with filters (date, phone, business name, status) and pagination
+5. Open a completed assessment detail — **Expected:** summary metadata, links to result/report/expert view
+6. Open result URL from admin context — **Expected:** report loads without user `resultToken`
+7. Log out — **Expected:** admin routes return to login
+
+**Pass criteria:** Admin cookie required for list/detail; admin can view any completed report; admin logout clears access.
+
+## Scenario 12 — Result access paths (token / owner / admin)
+
+After completing an assessment (Scenario 1):
+
+1. **Token path:** Open `/assessment/{id}/result?token={resultToken}` in incognito — **Expected:** loads
+2. **Owner path:** Same browser with user session, open `/assessment/{id}/result` without token — **Expected:** loads
+3. **Admin path:** With admin session, open same URL without token — **Expected:** loads
+4. **Denied:** Incognito without token — **Expected:** access error (403)
+5. **Denied:** Different user session — **Expected:** access error (403)
+
+**Pass criteria:** All three authorized paths work; unauthorized sessions rejected.
 
 ## Scenario 8 — PDF download and print layout
 
@@ -113,10 +155,11 @@ Use a mobile viewport (375×812) or narrow browser window. Complete at least one
 2. Scroll past several questions toward the bottom of the page
 3. **Expected:** Sticky progress header stays visible below the app header (overall + domain bars); content does not slide under the header or show through the progress bar
 4. **Expected:** Bottom action bar (بخش قبلی / بخش بعدی) stays fixed to the viewport bottom on mobile and desktop
-5. Open Review (`/assessment/{id}/review`) and scroll the domain list
-6. **Expected:** Overall progress bar remains sticky at the top; bottom actions remain fixed
+5. On mobile (375×812), scroll horizontally — **Expected:** no horizontal page overflow; long question/option text wraps instead of widening the viewport
+6. Open Review (`/assessment/{id}/review`) and scroll the domain list
+7. **Expected:** Overall progress bar remains sticky at the top; bottom actions remain fixed
 
-**Pass criteria:** Progress bars use brand color (`bg-brand-600`); safe-area padding on iOS notch devices (no clipping at top); opaque sticky zones (no content bleed-through).
+**Pass criteria:** Progress bars use brand color (`bg-brand-600`); safe-area padding on iOS notch devices (no clipping at top); opaque sticky zones (no content bleed-through); no horizontal scroll on questions pages.
 
 ### 9b — Save status indicator
 
@@ -151,17 +194,22 @@ Use a mobile viewport (375×812) or narrow browser window. Complete at least one
 
 1. Open a domain questions page on mobile (375×812) and desktop
 2. Select an answer for question 1
-3. **Expected:** Viewport smoothly scrolls to question 2 (respects `prefers-reduced-motion: reduce` → instant scroll)
+3. **Expected:** Viewport smoothly scrolls so **question 2 text** sits just below the sticky progress header (not hidden under it); respects `prefers-reduced-motion: reduce` → instant scroll
 4. Select an answer for the last question in the domain
 5. **Expected:** Viewport scrolls to the bottom action area (بخش بعدی / مرور پاسخ‌ها)
 6. While scrolling manually, verify sticky top progress and fixed bottom actions remain flush with no content visible through the bars
+
+**Manual mobile check:** Repeat steps 2–3 on Safari iOS and Chrome Android if available; confirm question text remains visible below both progress bars after each answer.
 
 ## Automated tests
 
 ```bash
 npm test
+npm run test:integration   # PostgreSQL + AUTH_SESSION_SECRET required
 npm run lint
 npm run build
 ```
+
+Unit tests cover OTP validation, session cookies, `assertResultAccess`, and admin login. Integration tests cover finish flow, MVP QA scenarios, and auth/result access (session owner, admin bypass, legacy token).
 
 All unit tests, lint, and production build should pass before deploy.

@@ -21,6 +21,13 @@ npm install
 cp .env.example .env
 ```
 
+Set at minimum for local auth (OTP + sessions):
+
+- `AUTH_SESSION_SECRET` — long random string for signed session cookies
+- `ADMIN_PASSWORD` — admin panel login (or `ADMIN_PASSWORD_HASH` in production)
+
+Without `KAVENEGAR_API_KEY`, OTP codes are logged to the server console in dev.
+
 3. Start PostgreSQL:
 
 ```bash
@@ -58,7 +65,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## User flow
 
-Landing → Business Info → Questions (16 domains) → Review → Processing → **Result Dashboard** → **Detailed Report** → **CTA (lead form)**
+Landing → **Phone OTP** → Business Info → Questions (16 domains) → Review → Processing → **Result Dashboard** → **Detailed Report** → **CTA (lead form)**
+
+Returning users can sign in at `/account/login` and view past assessments at `/account/assessments`. Admins use `/admin/login` → `/admin/assessments`.
+
+Legacy result links with `?token=` (email recovery) still work alongside session-based access.
 
 ## Scripts
 
@@ -67,6 +78,8 @@ Landing → Business Info → Questions (16 domains) → Review → Processing �
 | `npm run dev` | Start dev server |
 | `npm run build` | Production build |
 | `npm test` | Run unit tests |
+| `npm run test:integration` | Integration tests (requires PostgreSQL + migrations + seed) |
+| `npm run test:all` | Unit + integration tests |
 | `npm run db:migrate` | Run Prisma migrations (dev) |
 | `npm run db:seed` | Seed ModelVersion v1 (idempotent) |
 | `npm run db:studio` | Open Prisma Studio |
@@ -87,6 +100,9 @@ Edit `.env` — at minimum set:
 - `APP_DOMAIN` — public hostname (DNS A record → VPS)
 - `APP_BASE_URL` — `https://<APP_DOMAIN>`
 - `EXPERT_VIEW_TOKEN` — secret for internal expert view (`openssl rand -hex 32`)
+- `AUTH_SESSION_SECRET` — signed user/admin session cookies (`openssl rand -hex 32`)
+- `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` — admin panel login
+- `KAVENEGAR_API_KEY` + `KAVENEGAR_OTP_TEMPLATE` — OTP SMS (optional in dev; codes logged when unset)
 
 2. Build and start:
 
@@ -98,12 +114,24 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 The entrypoint runs `prisma migrate deploy` and seeds only if no active model exists.
 
-### Update deployment
+### Deploy on VPS with host nginx (recommended)
+
+Fast path: CI builds the image → GHCR → VPS pulls. See [production-deploy.md](docs/ops/production-deploy.md#deploy-with-host-nginx-multi-project-vps).
+
+**First time:**
 
 ```bash
-git pull
-docker compose -f docker-compose.prod.yml up -d --build
+chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
+./scripts/bootstrap-vps.sh root@your-vps-ip
 ```
+
+**Updates** (after push to `main` and CI completes):
+
+```bash
+./scripts/deploy-to-vps.sh root@your-vps-ip
+```
+
+Set GitHub Actions secrets `VPS_SSH_HOST` + `VPS_SSH_KEY` for automatic deploy on every merge to `main`.
 
 ### Database backup
 

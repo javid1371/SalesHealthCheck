@@ -45,11 +45,11 @@ import {
   countAnswersForAssessment,
   createAssessmentSession,
   createOrganization,
-  createUser,
   findAssessmentById,
   findAssessmentForResult,
   findReportById,
-  findUserByEmailOrPhone,
+  findUserById,
+  updateUserProfile,
   getAnswersWithDetails,
   persistAssessmentResults,
   updateAssessmentBusinessMetrics,
@@ -63,11 +63,14 @@ import type {
   AssessmentProgressResponse,
   AssessmentResultResponse,
   AssessmentStatusResponse,
+  ExpertViewAccessInput,
   ExpertViewResponse,
   FinishAssessmentInput,
   FinishAssessmentResponse,
   ReportResponse,
+  ResultAccessInput,
   SaveAnswersInput,
+  StartAssessmentContext,
   StartAssessmentInput,
   StartAssessmentResponse,
   UpdateBusinessInfoInput,
@@ -170,17 +173,28 @@ function assertAssessmentCompleted(status: string) {
   }
 }
 
-function verifyResultToken(
-  providedToken: string | null | undefined,
-  expectedToken: string,
-) {
-  if (!providedToken || providedToken !== expectedToken) {
-    throw new AppError(
-      "assessment_access_denied",
-      "Invalid or missing access token",
-      403,
-    );
+export function assertResultAccess(params: {
+  assessment: { userId: string; resultToken: string };
+} & ResultAccessInput): void {
+  const { assessment, token, userSession, adminSession } = params;
+
+  if (adminSession) {
+    return;
   }
+
+  if (token && token === assessment.resultToken) {
+    return;
+  }
+
+  if (userSession && userSession.userId === assessment.userId) {
+    return;
+  }
+
+  throw new AppError(
+    "assessment_access_denied",
+    "Invalid or missing access token",
+    403,
+  );
 }
 
 async function buildProgress(
@@ -221,20 +235,23 @@ async function getAssessmentOrThrow(assessmentId: string) {
 
 export async function startAssessment(
   input: StartAssessmentInput,
+  context: StartAssessmentContext,
 ): Promise<StartAssessmentResponse> {
   const validated = validateStartRequest(input);
 
   try {
     const modelVersion = await loadActiveModelVersion();
 
-    let user = await findUserByEmailOrPhone(
-      validated.user.email,
-      validated.user.phone,
-    );
-
+    const user = await findUserById(context.userId);
     if (!user) {
-      user = await createUser(validated.user);
+      throw new AppError(
+        "UNAUTHORIZED",
+        "برای شروع ارزیابی ابتدا وارد شوید.",
+        401,
+      );
     }
+
+    await updateUserProfile(user.id, validated.user);
 
     const organization = await createOrganization({
       userId: user.id,
@@ -622,7 +639,7 @@ export async function updateBusinessMetrics(
 
 export async function getAssessmentResult(
   assessmentId: string,
-  token?: string | null,
+  access: ResultAccessInput = {},
 ): Promise<AssessmentResultResponse> {
   const assessment = await findAssessmentForResult(assessmentId);
 
@@ -635,7 +652,13 @@ export async function getAssessmentResult(
     );
   }
 
-  verifyResultToken(token, assessment.resultToken);
+  assertResultAccess({
+    assessment: {
+      userId: assessment.userId,
+      resultToken: assessment.resultToken,
+    },
+    ...access,
+  });
   assertAssessmentCompleted(assessment.status);
 
   if (!assessment.report || !assessment.overallScore) {
@@ -723,7 +746,7 @@ export async function getAssessmentResult(
 
 export async function getReport(
   reportId: string,
-  token?: string | null,
+  access: ResultAccessInput = {},
 ): Promise<ReportResponse> {
   const report = await findReportById(reportId);
 
@@ -736,7 +759,13 @@ export async function getReport(
     );
   }
 
-  verifyResultToken(token, report.assessmentSession.resultToken);
+  assertResultAccess({
+    assessment: {
+      userId: report.assessmentSession.userId,
+      resultToken: report.assessmentSession.resultToken,
+    },
+    ...access,
+  });
 
   const session = report.assessmentSession;
 
@@ -779,23 +808,25 @@ export async function getReport(
 
 export async function getExpertView(
   assessmentId: string,
-  adminToken: string | null | undefined,
+  access: ExpertViewAccessInput = {},
 ): Promise<ExpertViewResponse> {
-  const expected = env.expertViewToken;
-  if (expected) {
-    if (adminToken !== expected) {
+  if (!access.adminSession) {
+    const expected = env.expertViewToken;
+    if (expected) {
+      if (access.adminToken !== expected) {
+        throw new AppError(
+          "UNAUTHORIZED",
+          "Invalid admin token",
+          401,
+        );
+      }
+    } else if (env.nodeEnv === "production") {
       throw new AppError(
         "UNAUTHORIZED",
-        "Invalid admin token",
+        "Expert view not configured",
         401,
       );
     }
-  } else if (env.nodeEnv === "production") {
-    throw new AppError(
-      "UNAUTHORIZED",
-      "Expert view not configured",
-      401,
-    );
   }
 
   const assessment = await findAssessmentForResult(assessmentId);

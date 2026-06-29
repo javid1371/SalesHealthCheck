@@ -17,21 +17,39 @@ import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question
 
 const QA_RUN_ID = Date.now();
 
-function qaStartPayload(index: number) {
+async function createQaUser(index: number) {
+  const suffix = String(index).padStart(2, "0");
+  return db.user.create({
+    data: {
+      name: `QA Tester ${suffix}`,
+      email: `qa-${QA_RUN_ID}-${suffix}@example.com`,
+      phone: `0912${String(QA_RUN_ID + index).slice(-7)}`,
+      phoneVerifiedAt: new Date(),
+    },
+  });
+}
+
+function qaStartPayload(index: number, userId: string) {
   const suffix = String(index).padStart(2, "0");
   return {
     user: {
       name: `QA Tester ${suffix}`,
       email: `qa-${QA_RUN_ID}-${suffix}@example.com`,
-      phone: `0912${String(QA_RUN_ID + index).slice(-7)}`,
     },
     organization: {
       businessName: `QA Biz ${suffix}`,
       industry: "technology",
       teamSize: "1-5",
-      salesModel: "online",
+      salesModel: "online" as const,
     },
+    context: { userId },
   };
+}
+
+async function startQaAssessment(index: number) {
+  const user = await createQaUser(index);
+  const { context, ...payload } = qaStartPayload(index, user.id);
+  return startAssessment(payload, context);
 }
 
 function buildAnswers(questions: QuestionsForAssessmentDto, domainLimit = 16) {
@@ -46,7 +64,7 @@ function buildAnswers(questions: QuestionsForAssessmentDto, domainLimit = 16) {
 }
 
 async function completeAssessment(index: number) {
-  const start = await startAssessment(qaStartPayload(index));
+  const start = await startQaAssessment(index);
   const questions = await getAssessmentQuestions(start.assessmentId);
   await saveAnswers(start.assessmentId, { answers: buildAnswers(questions) });
   const finish = await finishAssessment(start.assessmentId);
@@ -64,18 +82,22 @@ describe("MVP QA scenarios (integration)", () => {
     expect(finish.status).toBe("completed");
     expect(finish.reportId).toBeTruthy();
 
-    const result = await getAssessmentResult(start.assessmentId, start.resultToken);
+    const result = await getAssessmentResult(start.assessmentId, {
+      token: start.resultToken,
+    });
     expect(result.overallScore.percentage).toBeGreaterThanOrEqual(0);
     expect(result.bottlenecks.length).toBeGreaterThanOrEqual(3);
     expect(result.report.id).toBe(finish.reportId);
 
-    const report = await getReport(finish.reportId!, start.resultToken);
+    const report = await getReport(finish.reportId!, {
+      token: start.resultToken,
+    });
     expect(report.reportSpec).toBeTruthy();
     expect(report.structuredReport.domainResults.length).toBeGreaterThan(0);
   }, 120_000);
 
   it("Scenario 2 — incomplete assessment rejects finish with 400", async () => {
-    const start = await startAssessment(qaStartPayload(2));
+    const start = await startQaAssessment(2);
     const questions = await getAssessmentQuestions(start.assessmentId);
     await saveAnswers(start.assessmentId, {
       answers: buildAnswers(questions, 3),
@@ -88,7 +110,7 @@ describe("MVP QA scenarios (integration)", () => {
   }, 60_000);
 
   it("Scenario 3 — changed answer before finish updates domain score", async () => {
-    const start = await startAssessment(qaStartPayload(3));
+    const start = await startQaAssessment(3);
     const questions = await getAssessmentQuestions(start.assessmentId);
     const answers = buildAnswers(questions);
     await saveAnswers(start.assessmentId, { answers });
@@ -107,7 +129,9 @@ describe("MVP QA scenarios (integration)", () => {
     const finish = await finishAssessment(start.assessmentId);
     expect(finish.reportId).toBeTruthy();
 
-    const result = await getAssessmentResult(start.assessmentId, start.resultToken);
+    const result = await getAssessmentResult(start.assessmentId, {
+      token: start.resultToken,
+    });
     const domainScore = result.domainScores.find(
       (d) => d.name === firstDomain.name,
     );
@@ -116,8 +140,12 @@ describe("MVP QA scenarios (integration)", () => {
 
   it("Scenario 4 — revisit with token returns same report and scores", async () => {
     const { start } = await completeAssessment(4);
-    const first = await getAssessmentResult(start.assessmentId, start.resultToken);
-    const second = await getAssessmentResult(start.assessmentId, start.resultToken);
+    const first = await getAssessmentResult(start.assessmentId, {
+      token: start.resultToken,
+    });
+    const second = await getAssessmentResult(start.assessmentId, {
+      token: start.resultToken,
+    });
 
     expect(second.report.id).toBe(first.report.id);
     expect(second.overallScore.percentage).toBe(first.overallScore.percentage);
@@ -156,10 +184,25 @@ describe("MVP QA scenarios (integration)", () => {
     const { start } = await completeAssessment(7);
 
     await expect(
-      getAssessmentResult(start.assessmentId, "wrong-token"),
+      getAssessmentResult(start.assessmentId, { token: "wrong-token" }),
     ).rejects.toMatchObject({
       code: "assessment_access_denied",
       status: 403,
     });
+  }, 120_000);
+
+  it("Scenario 10 — session owner accesses result without token", async () => {
+    const user = await createQaUser(10);
+    const { context, ...payload } = qaStartPayload(10, user.id);
+    const start = await startAssessment(payload, context);
+    const questions = await getAssessmentQuestions(start.assessmentId);
+    await saveAnswers(start.assessmentId, { answers: buildAnswers(questions) });
+    await finishAssessment(start.assessmentId);
+
+    const result = await getAssessmentResult(start.assessmentId, {
+      userSession: { userId: user.id },
+    });
+    expect(result.overallScore.percentage).toBeGreaterThanOrEqual(0);
+    expect(result.bottlenecks.length).toBeGreaterThanOrEqual(3);
   }, 120_000);
 });

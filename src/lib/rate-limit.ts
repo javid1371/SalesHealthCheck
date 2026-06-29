@@ -70,6 +70,38 @@ export const startAssessmentLimiter = createRateLimiter({
   namespace: "assessment-start",
 });
 
+/** 1 OTP send per 60 seconds per normalized phone. */
+export const otpSendLimiterByPhone = createRateLimiter({
+  limit: 1,
+  windowMs: 60 * 1000,
+  namespace: "otp-send-phone",
+});
+
+/** 20 OTP sends per hour per IP. */
+export const otpSendLimiterByIp = createRateLimiter({
+  limit: 20,
+  windowMs: 60 * 60 * 1000,
+  namespace: "otp-send-ip",
+});
+
+export interface OtpSendRateLimitResult extends RateLimitResult {}
+
+export function checkOtpSendRateLimit(
+  phone: string,
+  ip?: string,
+): OtpSendRateLimitResult {
+  const phoneResult = otpSendLimiterByPhone(phone);
+  if (!phoneResult.allowed) {
+    return phoneResult;
+  }
+
+  if (ip) {
+    return otpSendLimiterByIp(ip);
+  }
+
+  return { allowed: true };
+}
+
 export function rateLimitResponse(retryAfterSec?: number): Response {
   return Response.json(
     {

@@ -37,8 +37,9 @@ export default function PrivacyPage() {
           <ul className="list-disc space-y-2 pr-5 text-sm leading-7 text-zinc-600">
             <li>
               <strong className="font-medium text-zinc-800">اطلاعات تماس:</strong>{" "}
-              نام، ایمیل و/یا شماره تلفن همراه — برای شخصی‌سازی گزارش،
-              بازیابی لینک نتیجه و پیگیری درخواست مشاوره.
+              نام و شماره تلفن همراه (اصلی) — برای شخصی‌سازی گزارش،
+              بازیابی لینک نتیجه و پیگیری درخواست مشاوره. در برخی
+              فرآیندهای قدیمی‌تر ممکن است ایمیل نیز ثبت شده باشد.
             </li>
             <li>
               <strong className="font-medium text-zinc-800">
@@ -58,7 +59,7 @@ export default function PrivacyPage() {
               <strong className="font-medium text-zinc-800">
                 درخواست مشاوره (اختیاری):
               </strong>{" "}
-              نام، ایمیل/تلفن و پیام — در صورت ثبت درخواست تحلیل تخصصی.
+              نام، شماره تماس و پیام — در صورت ثبت درخواست تحلیل تخصصی.
             </li>
           </ul>
         </section>
@@ -69,7 +70,7 @@ export default function PrivacyPage() {
           </h2>
           <ul className="list-disc space-y-2 pr-5 text-sm leading-7 text-zinc-600">
             <li>اجرای ارزیابی و تولید گزارش شخصی‌سازی‌شده</li>
-            <li>ارسال لینک بازیابی نتیجه به ایمیل (در صورت درخواست شما)</li>
+            <li>ارسال لینک بازیابی نتیجه (ایمیل در صورت ثبت، یا ورود با شماره در حساب کاربری)</li>
             <li>تماس برای پیگیری درخواست مشاوره (فقط با رضایت شما)</li>
             <li>بهبود کیفیت سرویس و رفع خطاهای فنی</li>
           </ul>
@@ -105,7 +106,7 @@ export default function PrivacyPage() {
           <p className="text-sm leading-7 text-zinc-600">
             می‌توانید درخواست دسترسی، اصلاح یا حذف اطلاعات شخصی خود را
             بدهید. برای این کار با ما تماس بگیرید. استفاده از سرویس بدون
-            ارائه حداقل یک راه تماس (ایمیل یا تلفن) ممکن نیست.
+            ارائه شماره تلفن همراه ممکن نیست.
           </p>
         </section>
 

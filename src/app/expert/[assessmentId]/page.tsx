@@ -3,6 +3,7 @@ import { ReportShell } from "@/components/layout/ReportShell";
 import { ExpertViewPanel } from "@/components/report/blocks/ExpertViewPanel";
 import { Card } from "@/components/ui/Card";
 import { isAppError } from "@/lib/errors";
+import { readAdminSession } from "@/lib/session";
 import { getExpertView } from "@/modules/assessment/assessment.service";
 
 interface ExpertPageProps {
@@ -16,10 +17,14 @@ export default async function ExpertViewPage({
 }: ExpertPageProps) {
   const { assessmentId } = await params;
   const { adminToken } = await searchParams;
+  const adminSession = await readAdminSession();
 
   let data;
   try {
-    data = await getExpertView(assessmentId, adminToken ?? null);
+    data = await getExpertView(assessmentId, {
+      adminToken: adminToken ?? null,
+      adminSession,
+    });
   } catch (error) {
     if (isAppError(error) && error.status === 401) {
       return (

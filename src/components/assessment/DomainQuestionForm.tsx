@@ -24,7 +24,7 @@ export function DomainQuestionForm({
   answers,
   onAnswerChange,
 }: DomainQuestionFormProps) {
-  const questionRefs = useRef(new Map<string, HTMLFieldSetElement>());
+  const legendRefs = useRef(new Map<string, HTMLLegendElement>());
 
   const handleSelect = useCallback(
     (questionId: string, optionId: string) => {
@@ -33,8 +33,8 @@ export function DomainQuestionForm({
       const index = questions.findIndex((q) => q.id === questionId);
       requestAnimationFrame(() => {
         if (index + 1 < questions.length) {
-          const nextEl = questionRefs.current.get(questions[index + 1].id);
-          if (nextEl) scrollToElement(nextEl);
+          const nextLegend = legendRefs.current.get(questions[index + 1].id);
+          if (nextLegend) scrollToElement(nextLegend);
           return;
         }
 
@@ -48,18 +48,17 @@ export function DomainQuestionForm({
   return (
     <div className="space-y-8">
       {questions.map((question, index) => (
-        <fieldset
-          key={question.id}
-          ref={(el) => {
-            if (el) {
-              questionRefs.current.set(question.id, el);
-            } else {
-              questionRefs.current.delete(question.id);
-            }
-          }}
-          className="scroll-mt-[var(--assessment-scroll-offset)] space-y-4"
-        >
-          <legend className="text-base font-medium leading-7 text-zinc-900">
+        <fieldset key={question.id} className="space-y-4">
+          <legend
+            ref={(el) => {
+              if (el) {
+                legendRefs.current.set(question.id, el);
+              } else {
+                legendRefs.current.delete(question.id);
+              }
+            }}
+            className="scroll-mt-[var(--assessment-scroll-offset)] break-words text-base font-medium leading-7 text-zinc-900"
+          >
             <span className="ml-2 text-sm text-zinc-400">
               {index + 1}.
             </span>
@@ -71,7 +70,7 @@ export function DomainQuestionForm({
               return (
                 <label
                   key={option.id}
-                  className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 motion-safe:transition motion-safe:active:scale-[0.99] sm:min-h-[3.25rem] sm:items-start sm:p-4 ${
+                  className={`flex min-h-11 min-w-0 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 motion-safe:transition motion-safe:active:scale-[0.99] sm:min-h-[3.25rem] sm:items-start sm:p-4 ${
                     isSelected
                       ? "border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500"
                       : "border-zinc-200 bg-white hover:border-zinc-300"
@@ -85,7 +84,7 @@ export function DomainQuestionForm({
                     onChange={() => handleSelect(question.id, option.id)}
                     className="h-5 w-5 shrink-0 accent-emerald-600 sm:mt-0.5"
                   />
-                  <span className="text-sm leading-6 text-zinc-800">
+                  <span className="min-w-0 break-words text-sm leading-6 text-zinc-800">
                     {option.text}
                   </span>
                 </label>

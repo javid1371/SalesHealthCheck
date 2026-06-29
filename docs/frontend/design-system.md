@@ -121,7 +121,9 @@ flowchart TB
 
 **Header offset:** `PageLayout` sets `--header-height: calc(env(safe-area-inset-top) + 3.25rem)` and keeps the site header `sticky top-0 z-30`. Top zones use `top-[var(--header-height)]` so progress never slides under the header.
 
-**Scroll offset:** `PageLayout` also sets `--assessment-progress-height` and `--assessment-scroll-offset` for auto-scroll after answer selection (`DomainQuestionForm` fieldsets and `#assessment-actions` sentinel).
+**Scroll offset:** `PageLayout` sets a fallback `--assessment-progress-height: 9rem` and `--assessment-scroll-offset: calc(var(--header-height) + var(--assessment-progress-height))`. After mount, `AssessmentProgressHeader` measures its sticky zone with `ResizeObserver` and writes the real height to `--assessment-progress-height` so scroll targets stay below both progress bars. Auto-scroll after answer selection targets each question’s `<legend>` (not the full fieldset) and the `#assessment-actions` sentinel on the last question.
+
+**Horizontal overflow:** The app shell uses `overflow-x-hidden` on the root `PageLayout` wrapper; long question and option text use `break-words` and `min-w-0` on flex rows in `DomainQuestionForm`.
 
 **Content clearance:** When fixed bottom actions are active, `AssessmentShell` adds `pb-[calc(5rem+env(safe-area-inset-bottom))]` on the content wrapper so form content and footer are not hidden behind the bottom bar.
 

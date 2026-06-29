@@ -49,6 +49,7 @@ describe("recoverAccess", () => {
       name: "Test",
       email: "test@example.com",
       phone: null,
+      phoneVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -66,6 +67,7 @@ describe("recoverAccess", () => {
       name: "Test",
       email: "test@example.com",
       phone: null,
+      phoneVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -91,6 +93,7 @@ describe("recoverAccess", () => {
       name: "Test",
       email: "stored@example.com",
       phone: "09123456789",
+      phoneVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -114,6 +117,7 @@ describe("recoverAccess", () => {
       name: "Test",
       email: null,
       phone: "09123456789",
+      phoneVerifiedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

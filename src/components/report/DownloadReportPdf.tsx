@@ -6,7 +6,7 @@ import { resolveApiError } from "@/lib/page-messages";
 
 interface DownloadReportPdfProps {
   reportId: string;
-  token: string;
+  token?: string;
   className?: string;
 }
 
@@ -28,10 +28,10 @@ export function DownloadReportPdf({
     const timeoutId = window.setTimeout(() => controller.abort(), PDF_TIMEOUT_MS);
 
     try {
-      const response = await fetch(
-        `/api/reports/${reportId}/pdf?token=${encodeURIComponent(token)}`,
-        { signal: controller.signal },
-      );
+      const pdfUrl = token
+        ? `/api/reports/${reportId}/pdf?token=${encodeURIComponent(token)}`
+        : `/api/reports/${reportId}/pdf`;
+      const response = await fetch(pdfUrl, { signal: controller.signal });
 
       if (!response.ok) {
         let message = "دانلود PDF ناموفق بود. دوباره تلاش کنید.";

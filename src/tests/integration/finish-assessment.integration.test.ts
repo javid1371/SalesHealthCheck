@@ -15,12 +15,26 @@ import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question
 
 const RUN_ID = Date.now();
 
-function startPayload() {
+async function createTestUser(overrides: {
+  email?: string;
+  phone?: string;
+  name?: string;
+} = {}) {
+  return db.user.create({
+    data: {
+      name: overrides.name ?? "Finish Gate Tester",
+      email: overrides.email ?? `finish-gate-${RUN_ID}@example.com`,
+      phone: overrides.phone ?? `0912${String(RUN_ID).slice(-7)}`,
+      phoneVerifiedAt: new Date(),
+    },
+  });
+}
+
+function startPayload(userId: string) {
   return {
     user: {
       name: "Finish Gate Tester",
       email: `finish-gate-${RUN_ID}@example.com`,
-      phone: `0912${String(RUN_ID).slice(-7)}`,
     },
     organization: {
       businessName: "Finish Gate Co",
@@ -28,7 +42,16 @@ function startPayload() {
       teamSize: "1-5",
       salesModel: "online" as const,
     },
+    context: { userId },
   };
+}
+
+async function startAssessmentForUser(
+  userOverrides: { email?: string; phone?: string; name?: string } = {},
+) {
+  const user = await createTestUser(userOverrides);
+  const { context, ...payload } = startPayload(user.id);
+  return startAssessment(payload, context);
 }
 
 function buildAllAnswers(questions: QuestionsForAssessmentDto) {
@@ -48,7 +71,7 @@ describe("finishAssessment (integration)", () => {
   });
 
   it("completes full flow: start → 80 answers → finish → report + reportSpec", async () => {
-    const start = await startAssessment(startPayload());
+    const start = await startAssessmentForUser();
     const questions = await getAssessmentQuestions(start.assessmentId);
     const answers = buildAllAnswers(questions);
 
@@ -61,7 +84,9 @@ describe("finishAssessment (integration)", () => {
     expect(finish.status).toBe("completed");
     expect(finish.reportId).toBeTruthy();
 
-    const report = await getReport(finish.reportId!, start.resultToken);
+    const report = await getReport(finish.reportId!, {
+      token: start.resultToken,
+    });
     expect(report.reportSpec).toBeTruthy();
     expect(report.reportSpec!.domainBreakdown).toHaveLength(16);
     const structured = report.structuredReport as {
@@ -72,13 +97,9 @@ describe("finishAssessment (integration)", () => {
   });
 
   it("returns the same reportId on idempotent finish", async () => {
-    const start = await startAssessment({
-      ...startPayload(),
-      user: {
-        ...startPayload().user,
-        email: `finish-idempotent-${RUN_ID}@example.com`,
-        phone: `0913${String(RUN_ID).slice(-7)}`,
-      },
+    const start = await startAssessmentForUser({
+      email: `finish-idempotent-${RUN_ID}@example.com`,
+      phone: `0913${String(RUN_ID).slice(-7)}`,
     });
     const questions = await getAssessmentQuestions(start.assessmentId);
     await saveAnswers(start.assessmentId, {
@@ -93,13 +114,9 @@ describe("finishAssessment (integration)", () => {
   });
 
   it("rejects finish when not all 80 questions are answered", async () => {
-    const start = await startAssessment({
-      ...startPayload(),
-      user: {
-        ...startPayload().user,
-        email: `finish-incomplete-${RUN_ID}@example.com`,
-        phone: `0914${String(RUN_ID).slice(-7)}`,
-      },
+    const start = await startAssessmentForUser({
+      email: `finish-incomplete-${RUN_ID}@example.com`,
+      phone: `0914${String(RUN_ID).slice(-7)}`,
     });
     const questions = await getAssessmentQuestions(start.assessmentId);
     const partial = buildAllAnswers(questions).slice(0, 10);

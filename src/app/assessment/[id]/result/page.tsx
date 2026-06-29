@@ -51,18 +51,13 @@ function ResultContent() {
 
     async function fetchResult() {
       const token =
-        searchParams.get("token") ?? getResultToken(assessmentId) ?? "";
-
-      if (!token) {
-        setError(PAGE_MESSAGES.tokenMissing);
-        setLoading(false);
-        return;
-      }
+        searchParams.get("token") ?? getResultToken(assessmentId) ?? undefined;
+      const url = token
+        ? `/api/assessments/${assessmentId}/result?token=${encodeURIComponent(token)}`
+        : `/api/assessments/${assessmentId}/result`;
 
       try {
-        const data = await apiGet<AssessmentResultResponse>(
-          `/api/assessments/${assessmentId}/result?token=${encodeURIComponent(token)}`,
-        );
+        const data = await apiGet<AssessmentResultResponse>(url);
         if (cancelled) return;
         setResult(data);
         setError(null);
@@ -142,7 +137,13 @@ function ResultDashboard({
     return { ...bottleneck, summary };
   });
 
-  const reportUrl = `/report/${result.report.id}?token=${encodeURIComponent(token)}&assessmentId=${encodeURIComponent(assessmentId)}`;
+  const reportQuery = new URLSearchParams({
+    assessmentId,
+  });
+  if (token) {
+    reportQuery.set("token", token);
+  }
+  const reportUrl = `/report/${result.report.id}?${reportQuery.toString()}`;
   const diagnosisSummary = result.report.diagnosisSummary;
 
   return (
@@ -152,9 +153,9 @@ function ResultDashboard({
         healthLevel={result.overallScore.healthLevel}
       />
       {token && <CopyResultLink assessmentId={assessmentId} token={token} />}
-      {token && result.report.reportSpec && (
+      {result.report.reportSpec && (
         <Card padding="compact">
-          <DownloadReportPdf reportId={result.report.id} token={token} />
+          <DownloadReportPdf reportId={result.report.id} token={token || undefined} />
         </Card>
       )}
       {diagnosisSummary && <DiagnosisSummaryPanel summary={diagnosisSummary} />}

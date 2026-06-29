@@ -42,7 +42,7 @@ describe("generateReportPdf", () => {
     mockEnv.pdfGenerationEnabled = false;
 
     await expect(
-      generateReportPdf("report-1", "secret-token"),
+      generateReportPdf("report-1", { token: "secret-token" }),
     ).rejects.toMatchObject({
       code: "pdf_generation_disabled",
       status: 503,
@@ -52,7 +52,7 @@ describe("generateReportPdf", () => {
   });
 
   it("throws when token is missing", async () => {
-    await expect(generateReportPdf("report-1", null)).rejects.toMatchObject({
+    await expect(generateReportPdf("report-1", {})).rejects.toMatchObject({
       code: "assessment_access_denied",
       status: 403,
     });
@@ -65,7 +65,7 @@ describe("generateReportPdf", () => {
     } as Awaited<ReturnType<typeof getReport>>);
 
     await expect(
-      generateReportPdf("report-1", "secret-token"),
+      generateReportPdf("report-1", { token: "secret-token" }),
     ).rejects.toMatchObject({
       code: "report_not_found",
       status: 404,
@@ -94,7 +94,7 @@ describe("generateReportPdf", () => {
       newPage: mockNewPage,
     } as Awaited<ReturnType<typeof chromium.launch>>);
 
-    const result = await generateReportPdf("report-1", "secret-token");
+    const result = await generateReportPdf("report-1", { token: "secret-token" });
 
     expect(result).toEqual(pdfBytes);
     expect(mockGoto).toHaveBeenCalledWith(
@@ -116,7 +116,7 @@ describe("generateReportPdf", () => {
     mockLaunch.mockRejectedValue(new Error("browser failed"));
 
     await expect(
-      generateReportPdf("report-1", "secret-token"),
+      generateReportPdf("report-1", { token: "secret-token" }),
     ).rejects.toMatchObject({
       code: "pdf_generation_failed",
       status: 500,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { AccountNavLink } from "@/components/layout/AccountNavLink";
 
 interface PageLayoutProps {
   children: React.ReactNode;
@@ -31,11 +32,11 @@ export function PageLayout({
 }: PageLayoutProps) {
   return (
     <div
-      className="min-h-screen bg-zinc-50 pb-[env(safe-area-inset-bottom)]"
+      className="min-h-screen overflow-x-hidden bg-zinc-50 pb-[env(safe-area-inset-bottom)]"
       style={
         {
           "--header-height": "calc(env(safe-area-inset-top) + 3.25rem)",
-          "--assessment-progress-height": "7rem",
+          "--assessment-progress-height": "9rem",
           "--assessment-scroll-offset":
             "calc(var(--header-height) + var(--assessment-progress-height))",
         } as CSSProperties
@@ -51,14 +52,17 @@ export function PageLayout({
           >
             Sales Health Check
           </Link>
-          {showBack && (
-            <Link
-              href={backHref}
-              className="text-sm text-zinc-600 hover:text-zinc-900"
-            >
-              بازگشت
-            </Link>
-          )}
+          <div className="flex items-center gap-4">
+            <AccountNavLink />
+            {showBack && (
+              <Link
+                href={backHref}
+                className="text-sm text-zinc-600 hover:text-zinc-900"
+              >
+                بازگشت
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
@@ -86,6 +90,10 @@ export function PageLayout({
         >
           {footer === "full" && (
             <>
+              <AccountNavLink />
+              <span aria-hidden className="text-zinc-300">
+                ·
+              </span>
               <Link
                 href="/recover"
                 className="text-emerald-700 hover:text-emerald-800"

@@ -14,7 +14,6 @@ import type { RecoverAccessResponse } from "@/modules/access-recovery/access-rec
 import { RECOVER_ACCESS_SUCCESS_MESSAGE } from "@/modules/access-recovery/access-recovery.types";
 
 export default function RecoverPage() {
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -25,16 +24,15 @@ export default function RecoverPage() {
     setError(null);
     setSuccessMessage(null);
 
-    if (!email.trim() && !phone.trim()) {
-      setError("لطفاً ایمیل یا شماره تماس را وارد کنید.");
+    if (!phone.trim()) {
+      setError("لطفاً شماره تماس را وارد کنید.");
       return;
     }
 
     setSubmitting(true);
     try {
       const result = await apiPost<RecoverAccessResponse>("/api/access/recover", {
-        ...(email.trim() ? { email: email.trim() } : {}),
-        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        phone: phone.trim(),
       });
       setSuccessMessage(result.message);
     } catch (err) {
@@ -65,7 +63,7 @@ export default function RecoverPage() {
   return (
     <PageLayout
       title="بازیابی لینک نتیجه"
-      subtitle="ایمیل یا شماره تماسی که هنگام شروع ارزیابی وارد کردید را بنویسید. اگر ارزیابی تکمیل‌شده‌ای داشته باشید، لینک نتیجه برایتان ارسال می‌شود."
+      subtitle="شماره موبایلی که با آن ارزیابی را شروع کردید را وارد کنید. اگر ارزیابی تکمیل‌شده‌ای داشته باشید، لینک نتیجه برایتان ارسال می‌شود."
       showBack
       backHref="/"
       maxWidth="md"
@@ -76,25 +74,26 @@ export default function RecoverPage() {
           <Alert variant="success" title="درخواست ثبت شد">
             <p>{successMessage}</p>
             {successMessage === RECOVER_ACCESS_SUCCESS_MESSAGE && (
-              <p className="mt-2">
-                صندوق ورودی و پوشه اسپم را بررسی کنید.
-              </p>
+              <>
+                <p className="mt-2">
+                  اگر ایمیل ثبت کرده باشید، صندوق ورودی و پوشه اسپم را بررسی کنید.
+                </p>
+                <p className="mt-2">
+                  یا از بخش{" "}
+                  <Link
+                    href="/account/login"
+                    className="font-medium text-emerald-700 hover:text-emerald-800"
+                  >
+                    حساب من
+                  </Link>{" "}
+                  با همان شماره وارد شوید.
+                </p>
+              </>
             )}
           </Alert>
         )}
 
-        <FieldLabel label="ایمیل">
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="example@company.com"
-            dir="ltr"
-            autoComplete="email"
-          />
-        </FieldLabel>
-
-        <FieldLabel label="شماره تماس">
+        <FieldLabel label="شماره تماس" required>
           <Input
             type="tel"
             value={phone}
@@ -102,12 +101,9 @@ export default function RecoverPage() {
             placeholder="09123456789"
             dir="ltr"
             autoComplete="tel"
+            required
           />
         </FieldLabel>
-
-        <p className="text-sm text-zinc-500">
-          حداقل یکی از فیلدهای بالا را پر کنید.
-        </p>
 
         <Button
           type="submit"
@@ -117,6 +113,17 @@ export default function RecoverPage() {
         >
           ارسال لینک بازیابی
         </Button>
+
+        <p className="text-center text-sm text-zinc-500">
+          یا از بخش{" "}
+          <Link
+            href="/account/login"
+            className="font-medium text-emerald-700 hover:text-emerald-800"
+          >
+            حساب من
+          </Link>{" "}
+          با همان شماره وارد شوید.
+        </p>
 
         <p className="text-center text-sm text-zinc-600">
           ارزیابی جدید می‌خواهید؟{" "}

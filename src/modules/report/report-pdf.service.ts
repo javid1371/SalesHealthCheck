@@ -3,6 +3,8 @@ import { chromium } from "playwright";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { getReport } from "@/modules/assessment/assessment.service";
+import { findReportById } from "@/modules/assessment/assessment.repository";
+import type { ResultAccessInput } from "@/modules/assessment/assessment.types";
 
 const PDF_TIMEOUT_MS = 30_000;
 const PRINT_READY_SELECTOR = "html[data-print-ready='true']";
@@ -31,7 +33,7 @@ function buildPrintUrl(reportId: string, token: string): string {
 
 export async function generateReportPdf(
   reportId: string,
-  token: string | null | undefined,
+  access: ResultAccessInput = {},
 ): Promise<Buffer> {
   if (!env.pdfGenerationEnabled) {
     throw new AppError(
@@ -41,7 +43,9 @@ export async function generateReportPdf(
     );
   }
 
-  if (!token) {
+  const hasAccessCredential =
+    !!access.token || !!access.userSession || !!access.adminSession;
+  if (!hasAccessCredential) {
     throw new AppError(
       "assessment_access_denied",
       "Access token is required",
@@ -49,7 +53,7 @@ export async function generateReportPdf(
     );
   }
 
-  const report = await getReport(reportId, token);
+  const report = await getReport(reportId, access);
 
   if (!report.reportSpec) {
     throw new AppError(
@@ -60,7 +64,21 @@ export async function generateReportPdf(
     );
   }
 
-  const printUrl = buildPrintUrl(reportId, token);
+  let printToken = access.token;
+  if (!printToken) {
+    const storedReport = await findReportById(reportId);
+    printToken = storedReport?.assessmentSession.resultToken;
+  }
+
+  if (!printToken) {
+    throw new AppError(
+      "assessment_access_denied",
+      "Access token is required",
+      403,
+    );
+  }
+
+  const printUrl = buildPrintUrl(reportId, printToken);
 
   try {
     const browser = await getBrowser();

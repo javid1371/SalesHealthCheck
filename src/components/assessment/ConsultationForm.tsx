@@ -24,7 +24,6 @@ export function ConsultationForm({
   onSuccess,
 }: ConsultationFormProps) {
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
   const [consented, setConsented] = useState(false);
@@ -34,8 +33,8 @@ export function ConsultationForm({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!email.trim() && !phone.trim()) {
-      setError("حداقل یکی از ایمیل یا شماره تماس الزامی است.");
+    if (!phone.trim()) {
+      setError("لطفاً شماره تماس را وارد کنید.");
       return;
     }
     if (!consented) {
@@ -53,8 +52,7 @@ export function ConsultationForm({
         "/api/consultation-requests",
         {
           name,
-          email: email || undefined,
-          phone: phone || undefined,
+          phone: phone.trim(),
           message: message || undefined,
           assessmentSessionId: assessmentId,
           reportId,
@@ -98,28 +96,16 @@ export function ConsultationForm({
         />
       </FieldLabel>
 
-      <FieldLabel label="ایمیل" htmlFor="email">
-        <Input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-      </FieldLabel>
-
-      <FieldLabel label="شماره تماس" htmlFor="phone">
+      <FieldLabel label="شماره تماس" required htmlFor="phone">
         <Input
           id="phone"
           type="tel"
+          required
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           dir="ltr"
         />
       </FieldLabel>
-
-      <p className="text-xs text-zinc-500">
-        حداقل یکی از ایمیل یا شماره تماس الزامی است.
-      </p>
 
       <FieldLabel label="توضیحات (اختیاری)" htmlFor="message">
         <Textarea

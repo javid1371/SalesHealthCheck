@@ -32,18 +32,13 @@ function ReportContent() {
       const token =
         searchParams.get("token") ??
         (assessmentId ? getResultToken(assessmentId) : null) ??
-        "";
-
-      if (!token) {
-        setError(PAGE_MESSAGES.tokenMissing);
-        setLoading(false);
-        return;
-      }
+        undefined;
+      const url = token
+        ? `/api/reports/${reportId}?token=${encodeURIComponent(token)}`
+        : `/api/reports/${reportId}`;
 
       try {
-        const data = await apiGet<ReportResponse>(
-          `/api/reports/${reportId}?token=${encodeURIComponent(token)}`,
-        );
+        const data = await apiGet<ReportResponse>(url);
         if (cancelled) return;
         setReport(data);
         setError(null);
@@ -115,9 +110,9 @@ function ReportBody({
 
   return (
     <>
-      {report.reportSpec && token && (
+      {report.reportSpec && (
         <Card padding="compact" className="mb-8">
-          <DownloadReportPdf reportId={reportId} token={token} />
+          <DownloadReportPdf reportId={reportId} token={token || undefined} />
         </Card>
       )}
       <DetailedReportSections

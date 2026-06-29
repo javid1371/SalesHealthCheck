@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ReportPrintView } from "@/components/report/ReportPrintView";
 import { isAppError } from "@/lib/errors";
+import { readAdminSession, readUserSession } from "@/lib/session";
 import { getReport } from "@/modules/assessment/assessment.service";
 import type { ReportResponse } from "@/modules/assessment/assessment.types";
 
@@ -16,10 +17,18 @@ type PrintPageResult =
 
 async function loadPrintReport(
   reportId: string,
-  token: string,
+  access: {
+    token?: string;
+    userSession: Awaited<ReturnType<typeof readUserSession>>;
+    adminSession: Awaited<ReturnType<typeof readAdminSession>>;
+  },
 ): Promise<PrintPageResult> {
   try {
-    const report = await getReport(reportId, token);
+    const report = await getReport(reportId, {
+      token: access.token,
+      userSession: access.userSession,
+      adminSession: access.adminSession,
+    });
 
     if (!report.reportSpec) {
       return { status: "not_found" };
@@ -43,14 +52,23 @@ export default async function ReportPrintPage({
 }: ReportPrintPageProps) {
   const { reportId } = await params;
   const { token } = await searchParams;
+  const [userSession, adminSession] = await Promise.all([
+    readUserSession(),
+    readAdminSession(),
+  ]);
 
-  if (!token) {
+  const hasAccessCredential = !!token || !!userSession || !!adminSession;
+  if (!hasAccessCredential) {
     return (
       <PrintAccessError message="برای مشاهده نسخه چاپ، توکن دسترسی در آدرس لازم است." />
     );
   }
 
-  const result = await loadPrintReport(reportId, token);
+  const result = await loadPrintReport(reportId, {
+    token,
+    userSession,
+    adminSession,
+  });
 
   if (result.status === "not_found") {
     notFound();

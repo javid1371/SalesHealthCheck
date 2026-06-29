@@ -1,12 +1,23 @@
 import type { SalesModel } from "@prisma/client";
+import type { AdminSession, UserSession } from "@/lib/session";
 import type { StructuredReport } from "@/types/report";
 import type { ReportSpec, ExpertViewSpec } from "@/types/report-spec";
+
+export type ResultAccessInput = {
+  token?: string | null;
+  userSession?: UserSession | null;
+  adminSession?: AdminSession | null;
+};
+
+export type ExpertViewAccessInput = {
+  adminToken?: string | null;
+  adminSession?: AdminSession | null;
+};
 
 export interface StartAssessmentInput {
   user: {
     name: string;
     email?: string;
-    phone?: string;
   };
   organization: {
     businessName: string;
@@ -55,6 +66,10 @@ export interface AssessmentProgressResponse {
   answeredQuestions: number;
   totalQuestions: number;
   percentage: number;
+}
+
+export interface StartAssessmentContext {
+  userId: string;
 }
 
 export interface StartAssessmentResponse {

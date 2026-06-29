@@ -9,7 +9,6 @@ import type {
 } from "./assessment.types";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_REGEX = /^[\d+\-\s()]{8,20}$/;
 
 const SALES_MODELS = new Set<string>(Object.values(SalesModel));
 
@@ -62,16 +61,6 @@ export function validateStartRequest(body: unknown): StartAssessmentInput {
 
   const email =
     typeof userObj.email === "string" ? userObj.email.trim() : undefined;
-  const phone =
-    typeof userObj.phone === "string" ? userObj.phone.trim() : undefined;
-
-  if (!email && !phone) {
-    throw new AppError(
-      "invalid_user_data",
-      "Email or phone is required",
-      400,
-    );
-  }
 
   if (email && !EMAIL_REGEX.test(email)) {
     throw new AppError(
@@ -79,15 +68,6 @@ export function validateStartRequest(body: unknown): StartAssessmentInput {
       "Invalid email format",
       400,
       { field: "email" },
-    );
-  }
-
-  if (phone && !PHONE_REGEX.test(phone)) {
-    throw new AppError(
-      "invalid_user_data",
-      "Invalid phone format",
-      400,
-      { field: "phone" },
     );
   }
 
@@ -125,7 +105,6 @@ export function validateStartRequest(body: unknown): StartAssessmentInput {
     user: {
       name: name.trim(),
       email,
-      phone,
     },
     organization: {
       businessName: orgObj.businessName.trim(),

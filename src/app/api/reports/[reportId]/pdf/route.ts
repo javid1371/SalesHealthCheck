@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { errorResponse, isAppError, AppError } from "@/lib/errors";
+import { readSessionsFromRequest } from "@/lib/session";
 import { generateReportPdf } from "@/modules/report/report-pdf.service";
 
 export async function GET(
@@ -10,7 +11,12 @@ export async function GET(
   try {
     const { reportId } = await params;
     const token = request.nextUrl.searchParams.get("token");
-    const pdf = await generateReportPdf(reportId, token);
+    const { userSession, adminSession } = readSessionsFromRequest(request);
+    const pdf = await generateReportPdf(reportId, {
+      token,
+      userSession,
+      adminSession,
+    });
 
     return new Response(new Uint8Array(pdf), {
       status: 200,

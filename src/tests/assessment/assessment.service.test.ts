@@ -3,6 +3,8 @@ import { AppError } from "@/lib/errors";
 
 vi.mock("@/modules/assessment/assessment.repository", () => ({
   findUserByEmailOrPhone: vi.fn(),
+  findUserById: vi.fn(),
+  updateUserProfile: vi.fn(),
   createUser: vi.fn(),
   createOrganization: vi.fn(),
   createAssessmentSession: vi.fn(),
@@ -42,10 +44,12 @@ import {
   createOrganization,
   createUser,
   findAssessmentById,
+  findUserById,
   getAnswersWithDetails,
   persistAssessmentResults,
   updateAssessmentBusinessMetrics,
   updateReportSpec,
+  updateUserProfile,
   upsertAnswer,
 } from "@/modules/assessment/assessment.repository";
 import {
@@ -58,6 +62,7 @@ import {
   toScoringLayerInputs,
 } from "@/modules/question-bank/question-bank.repository";
 import {
+  loadActiveModelVersion,
   validateOptionBelongsToQuestion,
   validateQuestionBelongsToModelVersion,
 } from "@/modules/question-bank/question-bank.service";
@@ -65,6 +70,7 @@ import {
   finishAssessment,
   getAssessmentAnswers,
   saveAnswers,
+  startAssessment,
   updateBusinessMetrics,
 } from "@/modules/assessment/assessment.service";
 import { validateBusinessMetricsRequest } from "@/modules/assessment/assessment.validators";
@@ -474,6 +480,69 @@ describe("updateBusinessMetrics", () => {
     expect(result.report.id).toBe("report-1");
     expect(result.report.reportSpec).not.toBeNull();
     expect(result.report.reportSpec?.valueAtStake).not.toBeNull();
+  });
+});
+
+describe("startAssessment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const validPayload = {
+    user: { name: "Test User", email: "test@example.com" },
+    organization: {
+      businessName: "Test Co",
+      industry: "tech",
+      teamSize: "5-10",
+      salesModel: "online" as const,
+    },
+  };
+
+  it("rejects when session user is not found", async () => {
+    vi.mocked(findUserById).mockResolvedValue(null);
+
+    await expect(
+      startAssessment(validPayload, { userId: "missing-user" }),
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+    });
+
+    expect(createAssessmentSession).not.toHaveBeenCalled();
+  });
+
+  it("starts assessment for authenticated session user", async () => {
+    vi.mocked(findUserById).mockResolvedValue({
+      id: "user-1",
+      name: "Test User",
+      email: "test@example.com",
+      phone: "09123456789",
+      phoneVerifiedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    vi.mocked(updateUserProfile).mockResolvedValue({} as never);
+    vi.mocked(loadActiveModelVersion).mockResolvedValue({
+      id: "model-1",
+      versionNumber: "1.0.0",
+    } as never);
+    vi.mocked(createOrganization).mockResolvedValue({
+      id: "org-1",
+    } as never);
+    vi.mocked(createAssessmentSession).mockResolvedValue({
+      id: "assessment-1",
+      status: "started",
+    } as never);
+
+    const result = await startAssessment(validPayload, { userId: "user-1" });
+
+    expect(updateUserProfile).toHaveBeenCalledWith("user-1", {
+      name: "Test User",
+      email: "test@example.com",
+    });
+    expect(createAssessmentSession).toHaveBeenCalledOnce();
+    expect(result.assessmentId).toBe("assessment-1");
+    expect(result.resultToken).toBeTruthy();
   });
 });
 
