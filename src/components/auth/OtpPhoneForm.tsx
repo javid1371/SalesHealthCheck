@@ -11,7 +11,7 @@ import { OTP_SEND_SUCCESS_MESSAGE } from "@/modules/auth/auth.types";
 
 interface OtpPhoneFormProps {
   defaultPhone?: string;
-  onSent: (phone: string) => void;
+  onSent: (phone: string, devCode?: string) => void;
   submitLabel?: string;
 }
 
@@ -35,8 +35,8 @@ export function OtpPhoneForm({
 
     setSubmitting(true);
     try {
-      await sendOtpRequest(phone.trim());
-      onSent(phone.trim());
+      const result = await sendOtpRequest(phone.trim());
+      onSent(phone.trim(), result.devCode);
     } catch (err) {
       setError(formatAuthApiError(err));
     } finally {

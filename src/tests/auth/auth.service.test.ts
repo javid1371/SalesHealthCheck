@@ -78,6 +78,7 @@ describe("sendOtp", () => {
     const result = await sendOtp({ phone: "+98 912 345 6789" });
 
     expect(result.message).toBe(OTP_SEND_SUCCESS_MESSAGE);
+    expect(result.devCode).toMatch(/^\d{6}$/);
     expect(consumeActiveOtpCodesForPhone).toHaveBeenCalledWith(PHONE);
     expect(createOtpCode).toHaveBeenCalledOnce();
     const createArgs = vi.mocked(createOtpCode).mock.calls[0]![0];

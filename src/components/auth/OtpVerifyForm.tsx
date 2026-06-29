@@ -11,6 +11,7 @@ import {
   sendOtpRequest,
   verifyOtpRequest,
 } from "@/lib/auth-client";
+import { clearDevOtp, readDevOtp, storeDevOtp } from "@/lib/dev-otp";
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -30,6 +31,11 @@ export function OtpVerifyForm({
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [devCode, setDevCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDevCode(readDevOtp(phone));
+  }, [phone]);
 
   useEffect(() => {
     if (resendCooldown <= 0) {
@@ -55,6 +61,7 @@ export function OtpVerifyForm({
     setSubmitting(true);
     try {
       await verifyOtpRequest(phone, code.trim());
+      clearDevOtp();
       onVerified();
     } catch (err) {
       setError(formatAuthApiError(err));
@@ -71,7 +78,11 @@ export function OtpVerifyForm({
     setError(null);
     setResending(true);
     try {
-      await sendOtpRequest(phone);
+      const result = await sendOtpRequest(phone);
+      if (result.devCode) {
+        storeDevOtp(phone, result.devCode);
+        setDevCode(result.devCode);
+      }
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(formatAuthApiError(err));
@@ -83,6 +94,18 @@ export function OtpVerifyForm({
   return (
     <Card as="form" onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
       {error && <ErrorMessage message={error} />}
+
+      {devCode && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-medium">حالت توسعه — SMS ارسال نمی‌شود</p>
+          <p className="mt-1">
+            کد تأیید:{" "}
+            <span className="font-mono text-base font-semibold tracking-widest" dir="ltr">
+              {devCode}
+            </span>
+          </p>
+        </div>
+      )}
 
       <p className="text-sm text-zinc-600">
         کد تأیید به شماره{" "}

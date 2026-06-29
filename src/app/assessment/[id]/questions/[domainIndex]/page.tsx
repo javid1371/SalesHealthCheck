@@ -35,15 +35,22 @@ export default function DomainQuestionsPage() {
   const domainIndex = Number.parseInt(params.domainIndex, 10);
 
   const [questionsData, setQuestionsData] =
-    useState<QuestionsForAssessmentDto | null>(() => getQuestions(assessmentId));
-  const [answers, setAnswers] = useState<AnswerMap>(() =>
-    getAnswers(assessmentId),
-  );
-  const [loading, setLoading] = useState(() => !getQuestions(assessmentId));
+    useState<QuestionsForAssessmentDto | null>(null);
+  const [answers, setAnswers] = useState<AnswerMap>({});
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+
+  useEffect(() => {
+    const cachedQuestions = getQuestions(assessmentId);
+    if (!cachedQuestions) return;
+
+    setQuestionsData(cachedQuestions);
+    setAnswers(getAnswers(assessmentId));
+    setLoading(false);
+  }, [assessmentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,12 +200,6 @@ export default function DomainQuestionsPage() {
 
   return (
     <AssessmentShell
-      title={domain?.name ?? "سوالات ارزیابی"}
-      subtitle={
-        domain
-          ? `بخش ${domainIndex + 1} از ${questionsData!.domains.length} — ${domain.layer.name}`
-          : undefined
-      }
       loading={loading}
       loadingMessage={PAGE_MESSAGES.loading.questions}
       error={loadErrorMessage}

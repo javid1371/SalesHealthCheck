@@ -32,7 +32,7 @@ export function PageLayout({
 }: PageLayoutProps) {
   return (
     <div
-      className="min-h-screen overflow-x-hidden bg-zinc-50 pb-[env(safe-area-inset-bottom)]"
+      className="min-h-screen bg-zinc-50 pb-[env(safe-area-inset-bottom)]"
       style={
         {
           "--header-height": "calc(env(safe-area-inset-top) + 3.25rem)",

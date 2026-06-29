@@ -55,6 +55,13 @@ function generateOtpCode(): string {
   return String(randomInt(100000, 1000000));
 }
 
+function shouldExposeDevOtp(): boolean {
+  return (
+    env.nodeEnv !== "production" &&
+    !(env.kavenegarApiKey && env.kavenegarOtpTemplate)
+  );
+}
+
 function invalidOtpError(): AppError {
   return new AppError("UNAUTHORIZED", OTP_VERIFY_INVALID_MESSAGE, 401);
 }
@@ -96,7 +103,10 @@ export async function sendOtp(
     console.error("Failed to send OTP SMS:", error);
   }
 
-  return { message: OTP_SEND_SUCCESS_MESSAGE };
+  return {
+    message: OTP_SEND_SUCCESS_MESSAGE,
+    ...(shouldExposeDevOtp() ? { devCode: code } : {}),
+  };
 }
 
 export async function verifyOtp(body: unknown): Promise<VerifyOtpResult> {

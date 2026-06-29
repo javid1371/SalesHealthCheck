@@ -4,6 +4,8 @@ export interface SendOtpInput {
 
 export interface SendOtpResponse {
   message: string;
+  /** Present in development when SMS is not configured (Kavenegar). */
+  devCode?: string;
 }
 
 export interface VerifyOtpInput {

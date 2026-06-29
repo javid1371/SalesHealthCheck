@@ -9,6 +9,8 @@ import {
 import { StickyZone } from "@/components/ui/StickyZone";
 import { SITE_HEADER_SELECTOR } from "@/lib/assessment-scroll";
 
+type MaxWidth = "sm" | "md" | "lg" | "xl" | "2xl";
+
 interface AssessmentProgressHeaderProps {
   overall: { current: number; total: number; label?: string };
   domain?: {
@@ -19,6 +21,7 @@ interface AssessmentProgressHeaderProps {
     domainName?: string;
   };
   saveStatus?: SaveStatus;
+  maxWidth?: MaxWidth;
 }
 
 const PROGRESS_HEIGHT_VAR = "--assessment-progress-height";
@@ -44,6 +47,7 @@ export function AssessmentProgressHeader({
   overall,
   domain,
   saveStatus = "idle",
+  maxWidth = "lg",
 }: AssessmentProgressHeaderProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -86,7 +90,12 @@ export function AssessmentProgressHeader({
   }, []);
 
   return (
-    <StickyZone position="top" data-assessment-progress>
+    <StickyZone
+      position="top"
+      mode="fixed"
+      maxWidth={maxWidth}
+      data-assessment-progress
+    >
       <div ref={contentRef} className="relative space-y-3 py-3">
         {saveStatus !== "idle" && (
           <SaveStatusIndicator

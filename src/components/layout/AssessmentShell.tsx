@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 type MaxWidth = "sm" | "md" | "lg" | "xl" | "2xl";
 
 interface AssessmentShellProps {
-  title: string;
+  title?: string;
   subtitle?: string;
   maxWidth?: MaxWidth;
   loading?: boolean;
@@ -47,6 +47,7 @@ export function AssessmentShell({
   const showCard = Boolean(children ?? actions);
   const stickyProgressContent = stickyProgress ?? progress;
   const hasActions = Boolean(actions);
+  const hasStickyProgress = Boolean(stickyProgressContent);
 
   return (
     <PageLayout
@@ -64,6 +65,7 @@ export function AssessmentShell({
         <div
           className={cn(
             "min-w-0",
+            hasStickyProgress && "pt-[var(--assessment-progress-height)]",
             hasActions &&
               "pb-[calc(5rem+env(safe-area-inset-bottom))]",
           )}

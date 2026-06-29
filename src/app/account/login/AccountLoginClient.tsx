@@ -6,6 +6,7 @@ import { useState } from "react";
 import { OtpPhoneForm } from "@/components/auth/OtpPhoneForm";
 import { OtpVerifyForm } from "@/components/auth/OtpVerifyForm";
 import { PageLayout } from "@/components/layout/PageLayout";
+import { storeDevOtp } from "@/lib/dev-otp";
 
 type LoginStep = "phone" | "verify";
 
@@ -30,7 +31,10 @@ export function AccountLoginClient() {
         <>
           <OtpPhoneForm
             defaultPhone={phone}
-            onSent={(nextPhone) => {
+            onSent={(nextPhone, devCode) => {
+              if (devCode) {
+                storeDevOtp(nextPhone, devCode);
+              }
               setPhone(nextPhone);
               setStep("verify");
             }}

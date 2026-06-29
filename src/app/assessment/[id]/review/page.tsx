@@ -14,6 +14,7 @@ import {
   getQuestions,
   mergeAnswersFromServer,
   saveQuestions,
+  type AnswerMap,
 } from "@/lib/assessment-storage";
 import { PAGE_MESSAGES, resolveApiError } from "@/lib/page-messages";
 import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question-bank.types";
@@ -36,8 +37,8 @@ export default function ReviewPage() {
   const assessmentId = params.id;
 
   const [questionsData, setQuestionsData] =
-    useState<QuestionsForAssessmentDto | null>(() => getQuestions(assessmentId));
-  const [answers, setAnswers] = useState(() => getAnswers(assessmentId));
+    useState<QuestionsForAssessmentDto | null>(null);
+  const [answers, setAnswers] = useState<AnswerMap>({});
   const [status, setStatus] = useState<AssessmentStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

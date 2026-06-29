@@ -28,6 +28,9 @@ function getPositionClass(
   mode: StickyZoneMode,
 ): string {
   if (position === "top") {
+    if (mode === "fixed") {
+      return "fixed inset-x-0 top-[var(--header-height,3.25rem)] z-20 border-b";
+    }
     return "sticky top-[var(--header-height,3.25rem)] z-20 border-b";
   }
   if (mode === "fixed") {
@@ -50,11 +53,13 @@ export function StickyZone({
   className,
   "data-assessment-progress": dataAssessmentProgress,
 }: StickyZoneProps) {
-  const isFixedBottom = position === "bottom" && mode === "fixed";
+  const isFixed =
+    mode === "fixed" && (position === "top" || position === "bottom");
 
-  if (isFixedBottom) {
+  if (isFixed) {
     return (
       <div
+        {...(dataAssessmentProgress ? { "data-assessment-progress": true } : {})}
         className={cn(
           getPositionClass(position, mode),
           variantClass[variant],
