@@ -1,0 +1,361 @@
+## 8. TypeScript types
+Cursor باید این typeها را بسازد:
+```typescript
+export type DomainLevelKey =
+  | "critical"
+  | "weak"
+  | "average"
+  | "healthy"
+  | "advanced"
+
+export type DomainFamily =
+  | "strategy"
+  | "acquisition"
+  | "nurture"
+  | "operations"
+  | "conversion"
+  | "retention"
+  | "experience"
+  | "measurement"
+
+export type DomainLevelContent = {
+  level_key: DomainLevelKey
+  score_min: number
+  score_max: number
+  label_fa: string
+  headline_fa: string
+  interpretation_fa?: string
+}
+
+export type AnswerOptionContent = {
+  score: 0 | 1 | 2 | 3
+  text_fa: string
+  option_meaning_fa: string
+  public_reflection_fa: string
+}
+
+export type QuestionContent = {
+  question_id: string
+  question_number: number
+  question_text_fa: string
+  internal_diagnosis_fa: string
+  public_evidence_label_fa: string
+  options: AnswerOptionContent[]
+}
+
+export type RootCauseContent = {
+  root_id: string
+  root_title_fa: string
+  public_root_sentence_fa: string
+  mechanism_fa: string
+  sales_impact_fa: string
+}
+
+export type QuestionRootRule = {
+  question_id: string
+  condition: string
+  root_id: string
+  evidence_sentence_template_fa: string
+}
+
+export type ActionContent = {
+  action_id: string
+  action_title_fa: string
+  quick_win_summary_fa: string
+  full_action_fa?: string
+  locked_teaser_fa: string
+}
+
+export type DomainBundle = {
+  domain_id: string
+  domain_number: number
+  engine_id: string
+  title_fa: string
+  family: DomainFamily
+  role_in_funnel_fa: string
+  public_summary_fa: string
+  internal_diagnosis_summary_fa: string
+  domain_levels: DomainLevelContent[]
+  symptoms: string[]
+  root_causes: RootCauseContent[]
+  questions: QuestionContent[]
+  question_root_rules: QuestionRootRule[]
+  actions: ActionContent[]
+  rendering_rules_fa: string
+}
+```
+---
+## 9. Diagnosis object contract
+Report Engine باید این شکل ورودی را مصرف کند. اگر ساختار پروژه متفاوت است، یک adapter بساز.
+```typescript
+export type DiagnosisObject = {
+  per_domain: Array<{
+    domain_id: string
+    engine_id: string
+    raw_score: number
+    pct: number
+    level: "critical" | "weak" | "average" | "healthy" | "advanced"
+    weak_question_ids?: string[]
+  }>
+  answers: Array<{
+    question_id: string
+    selected_score: 0 | 1 | 2 | 3
+  }>
+  quick_win?: {
+    domain_id: string
+  }
+}
+```
+---
+## 10. خروجی Report Composer
+Report Composer باید خروجی ساختاریافته بسازد، نه JSX مستقیم.
+```typescript
+export type EvidenceCard = {
+  question_id: string
+  question_text_fa: string
+  selected_score: 0 | 1 | 2 | 3
+  selected_option_text_fa: string
+  public_reflection_fa: string
+  evidence_sentence_fa?: string
+}
+
+export type RootCauseReportCard = {
+  root_id: string
+  root_title_fa: string
+  public_root_sentence_fa: string
+  mechanism_fa: string
+  sales_impact_fa: string
+  evidence: EvidenceCard[]
+}
+
+export type DomainReportSection = {
+  domain_id: string
+  engine_id: string
+  title_fa: string
+  family: DomainFamily
+  raw_score: number
+  pct: number
+  level: DomainLevelKey
+  level_headline_fa: string
+  level_interpretation_fa?: string
+  symptoms: string[]
+  evidence_cards: EvidenceCard[]
+  root_causes: RootCauseReportCard[]
+  locked_action_teaser?: string
+  quick_win_action?: {
+    action_id: string
+    action_title_fa: string
+    quick_win_summary_fa: string
+    full_action_fa?: string
+  }
+}
+```
+---
+## 11. توابعی که باید پیاده‌سازی شوند
+### 11.1 getDomainBundle
+```typescript
+getDomainBundle(domainId: string): DomainBundle
+```
+رفتار:
+- از `REPORT_CONTENT_LIBRARY_V1` دامنه را پیدا کند.
+- اگر پیدا نشد، خطای کنترل‌شده یا fallback بدهد.
+- نباید باعث شکستن کل گزارش شود.
+### 11.2 getDomainLevel
+```typescript
+getDomainLevel(bundle: DomainBundle, rawScore: number): DomainLevelContent
+```
+رفتار:
+- بر اساس `score_min` و `score_max` سطح درست را پیدا کند.
+- اگر سطح پیدا نشد، fallback level بدهد.
+### 11.3 getSelectedAnswerOption
+```typescript
+getSelectedAnswerOption(
+  bundle: DomainBundle,
+  questionId: string,
+  selectedScore: 0 | 1 | 2 | 3
+): AnswerOptionContent
+```
+رفتار:
+- سؤال را در bundle پیدا کند.
+- گزینه متناظر با score انتخاب‌شده را پیدا کند.
+- اگر گزینه نبود، fallback امن بدهد:
+	- متن پاسخ: `پاسخ شما: {score} از ۳`
+	- public_reflection: خالی یا متن fallback
+### 11.4 getTriggeredRootCauses
+```typescript
+getTriggeredRootCauses(
+  bundle: DomainBundle,
+  answers: Array<{ question_id: string; selected_score: 0 | 1 | 2 | 3 }>
+): Array<{
+  root_cause: RootCauseContent
+  evidence: Array<{
+    question_id: string
+    question_text_fa: string
+    selected_option_text_fa: string
+    public_reflection_fa: string
+    evidence_sentence_fa: string
+  }>
+}>
+```
+رفتار:
+- ruleهای `question_root_rules` را بخواند.
+- شرط‌های ساده مثل `score <= 1` را روی پاسخ‌ها اعمال کند.
+- root causeهای فعال را پیدا کند.
+- evidence را از سؤال، پاسخ انتخاب‌شده و public_reflection بسازد.
+- root causeهای تکراری را merge کند.
+### 11.5 buildDomainBreakdown
+```typescript
+buildDomainBreakdown(
+  diagnosisDomain: {
+    domain_id: string
+    engine_id: string
+    raw_score: number
+    pct: number
+    level: string
+    weak_question_ids?: string[]
+  },
+  answers: Array<{ question_id: string; selected_score: 0 | 1 | 2 | 3 }>,
+  quickWinDomainId?: string
+): DomainReportSection
+```
+رفتار:
+1. `domain_id` را از diagnosis بگیرد.
+2. `DomainBundle` مربوطه را پیدا کند.
+3. سطح دامنه را از `domain_levels` پیدا کند.
+4. سؤال‌های ضعیف را شناسایی کند.
+5. پاسخ انتخاب‌شده کاربر را پیدا کند.
+6. root causeهای فعال را با ruleها استخراج کند.
+7. EvidenceCard بسازد.
+8. RootCauseReportCard بسازد.
+9. اگر `domain_id === quickWinDomainId`، راهکار کامل را باز کند.
+10. اگر quick win نیست، فقط `locked_teaser_fa` را نشان دهد.
+### 11.6 composeReport
+```typescript
+composeReport(diagnosis: DiagnosisObject): {
+  domain_sections: DomainReportSection[]
+}
+```
+رفتار:
+- برای هر دامنه diagnosis، `buildDomainBreakdown` را اجرا کند.
+- دامنه‌های بحرانی و ضعیف را کامل‌تر نمایش دهد.
+- دامنه‌های سالم را خلاصه‌تر نمایش دهد.
+- خروجی کاملاً deterministic باشد.
+---
+## 12. قانون نمایش ریشه در گزارش
+برای هر دامنه ضعیف یا بحرانی، ساختار نمایش باید این باشد:
+```plain text
+1. عنوان دامنه
+2. امتیاز و سطح
+3. تفسیر سطح
+4. نشانه‌ها
+5. شواهد از پاسخ کاربر
+6. ریشه قابل فهم
+7. مکانیزم اثرگذاری
+8. اثر روی فروش
+9. اقدام قفل‌شده یا quick win
+```
+### قالب Evidence Card
+```plain text
+سؤال:
+[question_text_fa]
+
+پاسخ شما:
+[selected_option_text_fa]
+
+برداشت:
+[public_reflection_fa]
+```
+### قالب Root Cause Card
+```plain text
+ریشه احتمالی:
+[public_root_sentence_fa]
+
+چرا این اتفاق روی فروش اثر می‌گذارد؟
+[mechanism_fa]
+
+اثر روی فروش:
+[sales_impact_fa]
+```
+### قالب Locked Action
+```plain text
+🔒 چطور درستش کنیم؟
+[locked_teaser_fa]
+```
+### قالب Quick Win
+```plain text
+✅ برد سریع پیشنهادی
+[quick_win_summary_fa]
+
+اقدام کامل:
+[full_action_fa]
+```
+---
+## 13. قانون quick win و محتوای قفل‌شده
+<callout icon="🔒" color="gray_bg">
+	گزارش رایگان باید تشخیص را سخاوتمندانه نشان دهد، اما درمان کامل را فقط برای quick win باز کند.
+</callout>
+قانون:
+```plain text
+If domain_id === quickWinDomainId:
+	Show quick_win_summary_fa
+	Show full_action_fa if available
+
+Else:
+	Show locked_teaser_fa only
+	Do not show full_action_fa
+```
+این قانون برای حفظ مرز رایگان/پولی مهم است.
+---
+## 14. Fallback rules
+Renderer و Composer نباید null، undefined یا بخش خالی نشان دهند.
+### قوانین fallback
+```plain text
+If field is missing:
+	1. Use field-specific fallback from report-content.fallbacks.ts.
+	2. If no fallback exists, omit that sub-section.
+	3. Never render null/undefined.
+	4. Never break the whole report because one field is missing.
+```
+### fallbackهای پیشنهادی
+```typescript
+export const REPORT_CONTENT_FALLBACKS = {
+  missingDomainTitle: "این بخش از قیف فروش",
+  missingSelectedOption: (score: number) => `پاسخ شما: ${score} از ۳`,
+  missingPublicReflection: "این پاسخ یک نشانه قابل بررسی در مسیر فروش شماست.",
+  missingRootCause: "در این بخش یک الگوی قابل بررسی دیده می‌شود.",
+  missingMechanism: "این وضعیت می‌تواند روی کیفیت تصمیم‌گیری و فروش اثر بگذارد.",
+  missingSalesImpact: "اثر این بخش معمولاً در کاهش تبدیل، افزایش اصطکاک یا سخت‌تر شدن رشد فروش دیده می‌شود.",
+  missingLockedTeaser: "در نسخه کامل، مسیر اصلاح این بخش به‌صورت مرحله‌به‌مرحله ارائه می‌شود."
+}
+```
+---
+## 15. UI Components
+### DomainBreakdownCard
+نمای کلی هر دامنه:
+- عنوان دامنه
+- امتیاز خام
+- درصد
+- سطح
+- headline سطح
+- تفسیر سطح
+### EvidenceCard
+نمای سؤال و پاسخ کاربر:
+- متن سؤال
+- پاسخ انتخاب‌شده
+- public reflection
+### RootCauseCard
+نمای ریشه:
+- عنوان ریشه
+- public root sentence
+- mechanism
+- sales impact
+### LockedActionCard
+نمای قفل:
+- locked teaser
+- CTA به تماس یا خرید تحلیل کامل
+### QuickWinCard
+نمای اقدام کامل:
+- action title
+- quick win summary
+- full action
+---

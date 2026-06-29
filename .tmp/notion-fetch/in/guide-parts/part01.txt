@@ -1,0 +1,253 @@
+Here is the result of "view" for the Page with URL https://app.notion.com/p/47c733bfa68d43d9a9de581b5f88284c as of 2026-06-29T15:10:57.690Z:
+<page url="https://app.notion.com/p/47c733bfa68d43d9a9de581b5f88284c" icon="🛠️">
+<ancestor-path>
+<parent-page url="https://app.notion.com/p/8a472c052d3242fcbf7e68c4921ecdf6" title="Sales Health Check — Report Content Library v1"/>
+<ancestor-2-page url="https://app.notion.com/p/38229b5c6a0d80abb21af0cb79fab2d5" title="دوره قیف فروش"/>
+<ancestor-3-data-source url="collection://37c29b5c-6a0d-8035-9958-000b3e450b90" name="Projects"/>
+<ancestor-4-database url="https://app.notion.com/p/37c29b5c6a0d80ada1e0dd0790db3a82" title=""/>
+<ancestor-5-page url="https://app.notion.com/p/37429b5c6a0d80949700ca8698b54915" title="My Business"/>
+</ancestor-path>
+<properties>
+{"title":"Cursor Implementation Guide — Report Content Library v1"}
+</properties>
+<content>
+<callout icon="🛠️" color="blue_bg">
+	این صفحه راهنمای اجرایی Cursor برای پیاده‌سازی **Report Content Library v1** در پروژه Sales Health Check است. این صفحه را به Cursor بده تا دقیقاً بفهمد دیتابیس محتوایی جدید چه نقشی دارد، چه فایل‌هایی باید بسازد، چه typeهایی لازم است، و Report Engine چطور باید از محتوا استفاده کند.
+</callout>
+## 1. هدف این راهنما
+این پروژه یک **Sales Health Check MVP** دارد که سه لایه اصلی دارد:
+```plain text
+Assessment Question Bank
+	↓
+Diagnosis Engine
+	↓
+Report Content Library
+	↓
+Report Engine
+	↓
+User Report / PDF
+```
+**هدف این راهنما:**  
+پیاده‌سازی یک لایه گزارش‌دهی قطعی، تست‌پذیر، بدون AI و مبتنی بر محتوای آماده.
+## 2. نقش هر لایه
+### Assessment Question Bank
+منبع سؤال‌ها، گزینه‌ها و امتیازهای خام است. این لایه برای ساخت فرم و گرفتن پاسخ کاربر استفاده می‌شود.
+### Diagnosis Engine
+مسئول تشخیص است.
+کارهای مجاز Diagnosis Engine:
+- محاسبه امتیازها
+- تعیین سطح هر دامنه
+- تشخیص دامنه‌های ضعیف
+- انتخاب primary issue
+- انتخاب structural roots
+- انتخاب binding constraint
+- انتخاب quick win
+- تولید `diagnosis_object`
+### Report Content Library
+منبع متن‌های آماده گزارش است.
+این لایه شامل:
+- تفسیر سطح دامنه
+- نشانه‌های قابل نمایش
+- ریشه‌های قابل فهم برای کاربر
+- مکانیزم اثرگذاری ریشه
+- اثر روی فروش
+- متن آینه‌سازی پاسخ کاربر
+- اقدام quick win
+- تیزر راهکار قفل‌شده
+### Report Engine
+مسئول روایت و رندر گزارش است.
+کارهای مجاز Report Engine:
+- گرفتن `diagnosis_object`
+- پیدا کردن محتوای متناظر در Report Content Library
+- ساختن Report Spec
+- رندر گزارش در اپ و PDF
+کارهای غیرمجاز Report Engine:
+- تشخیص جدید نسازد
+- امتیازها را دوباره محاسبه نکند
+- از AI برای تولید متن استفاده نکند
+- فیلدهای internal را به کاربر نشان ندهد
+- راهکار کامل همه دامنه‌ها را رایگان نشان ندهد
+---
+## 3. منبع داده در Notion
+صفحه منبع:
+<mention-page url="https://app.notion.com/p/8a472c052d3242fcbf7e68c4921ecdf6">Sales Health Check — Report Content Library v1</mention-page>
+دیتابیس منبع:
+<mention-page url="https://app.notion.com/p/32af24eade0544d092052dc8c7b4f75d"/>
+هر ردیف این دیتابیس نماینده یک **DomainBundle** از مدل ۱۶ دامنه‌ای Sales Health Check است.
+## 4. ردیف‌های دیتابیس
+در دیتابیس ۱۶ ردیف وجود دارد:
+<table header-row="true">
+<tr>
+<td>ردیف</td>
+<td>domain_id</td>
+<td>عنوان</td>
+<td>نقش</td>
+</tr>
+<tr>
+<td>D01</td>
+<td>persona</td>
+<td>Persona / شناخت مشتری مناسب</td>
+<td>شناخت مشتری مناسب و نامناسب</td>
+</tr>
+<tr>
+<td>D02</td>
+<td>uvp</td>
+<td>UVP / ارزش پیشنهادی</td>
+<td>وضوح دلیل انتخاب و تمایز</td>
+</tr>
+<tr>
+<td>D03</td>
+<td>offer_pricing</td>
+<td>طراحی پیشنهاد، قیمت‌گذاری و بسته‌بندی خرید</td>
+<td>شفافیت پیشنهاد و دفاع از قیمت</td>
+</tr>
+<tr>
+<td>D04</td>
+<td>lead_generation</td>
+<td>تولید سرنخ</td>
+<td>جریان ورودی جدید و کیفیت جذب</td>
+</tr>
+<tr>
+<td>D05</td>
+<td>lead_nurturing</td>
+<td>پرورش سرنخ‌ها</td>
+<td>گرم‌کردن سرنخ‌های ناآماده</td>
+</tr>
+<tr>
+<td>D06</td>
+<td>lead_response_capture</td>
+<td>سرعت ارتباط اولیه و ثبت سرنخ</td>
+<td>ثبت، مالکیت و پاسخ سریع به سرنخ</td>
+</tr>
+<tr>
+<td>D07</td>
+<td>lead_qualification</td>
+<td>صلاحیت‌سنجی و اولویت‌بندی سرنخ‌ها</td>
+<td>تشخیص لید مناسب و بااولویت</td>
+</tr>
+<tr>
+<td>D08</td>
+<td>first_contact_trust</td>
+<td>کیفیت ارتباط اولیه و اعتمادسازی</td>
+<td>اعتمادسازی در اولین تماس</td>
+</tr>
+<tr>
+<td>D09</td>
+<td>needs_discovery</td>
+<td>کشف نیاز</td>
+<td>فهم مسئله واقعی مشتری قبل از ارائه</td>
+</tr>
+<tr>
+<td>D10</td>
+<td>professional_presentation</td>
+<td>ارائه حرفه‌ای</td>
+<td>ارائه نتیجه‌محور و متصل به مسئله مشتری</td>
+</tr>
+<tr>
+<td>D11</td>
+<td>objection_handling</td>
+<td>برخورد با اعتراضات</td>
+<td>مدیریت تردید، اعتراض و ریسک خرید</td>
+</tr>
+<tr>
+<td>D12</td>
+<td>sales_closing</td>
+<td>نهایی‌سازی فروش</td>
+<td>کاهش اصطکاک لحظه خرید</td>
+</tr>
+<tr>
+<td>D13</td>
+<td>customer_loyalty</td>
+<td>وفاداری مشتری</td>
+<td>خرید مجدد، رضایت، معرفی و CLV</td>
+</tr>
+<tr>
+<td>D14</td>
+<td>touchpoint_consistency</td>
+<td>یکپارچگی Touchpoint</td>
+<td>یکدستی تجربه مشتری در نقاط تماس</td>
+</tr>
+<tr>
+<td>D15</td>
+<td>sales_path_clarity</td>
+<td>شفافیت مسیر فروش</td>
+<td>شناخت مسیر واقعی مشتری و نقطه ریزش</td>
+</tr>
+<tr>
+<td>D16</td>
+<td>sales_measurement_optimization</td>
+<td>اندازه‌گیری، تحلیل و بهینه‌سازی فروش</td>
+<td>مدیریت داده‌محور قیف فروش</td>
+</tr>
+</table>
+---
+## 5. قانون معماری اصلی
+<callout icon="⚠️" color="yellow_bg">
+	**Diagnosis Engine تصمیم می‌گیرد چه چیزی خراب است. Report Engine فقط تصمیم می‌گیرد چطور آن را به کاربر نشان دهد.**
+</callout>
+Cursor باید این قانون را رعایت کند:
+```plain text
+Do not create new diagnosis inside the Report Engine.
+Do not recalculate scores inside the Report Engine.
+Do not generate report text with AI.
+Only map diagnosis_object to Report Content Library.
+```
+---
+## 6. قانون نمایش public و internal
+### فیلدهای داخلی
+این فیلدها فقط برای موتور، تست، دیباگ، QA یا Expert View هستند:
+```plain text
+internal_diagnosis_fa
+internal_diagnosis_summary_fa
+rendering_rules_fa
+```
+این فیلدها نباید مستقیماً به کاربر نهایی نمایش داده شوند.
+### فیلدهای قابل نمایش به کاربر
+این فیلدها مجازند در گزارش کاربر نمایش داده شوند:
+```plain text
+public_summary_fa
+public_reflection_fa
+public_root_sentence_fa
+mechanism_fa
+sales_impact_fa
+quick_win_summary_fa
+locked_teaser_fa
+level_interpretation_fa
+symptoms
+```
+### قانون سخت
+```plain text
+Never render internal_diagnosis_fa directly to the user.
+Never render internal_diagnosis_summary_fa directly to the user.
+Never render rendering_rules_fa directly to the user.
+```
+---
+## 7. فایل‌هایی که باید ساخته شوند
+Cursor باید این ساختار را بسازد یا با ساختار فعلی پروژه هماهنگ کند:
+```plain text
+src/
+	features/
+		report-content/
+			report-content.types.ts
+			report-content-library.v1.ts
+			report-content.service.ts
+			report-content.mapper.ts
+			report-content.fallbacks.ts
+
+		report-engine/
+			report-engine.types.ts
+			report-composer.ts
+			report-renderer.tsx
+			report-blocks/
+				DomainBreakdownCard.tsx
+				EvidenceCard.tsx
+				RootCauseCard.tsx
+				LockedActionCard.tsx
+				QuickWinCard.tsx
+
+	tests/
+		report-content.test.ts
+		report-composer.test.ts
+```
+اگر پروژه ساختار متفاوتی دارد، همین مسئولیت‌ها باید در مسیرهای معادل پیاده‌سازی شوند.
+---

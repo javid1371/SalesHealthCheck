@@ -1,0 +1,298 @@
+## 16. تست‌هایی که باید نوشته شوند
+Cursor باید تست‌هایی بنویسد که این موارد را ثابت کند:
+```plain text
+1. Internal diagnosis fields are never included in user-facing output.
+2. A weak answer triggers the correct root cause.
+3. selected_score maps to the correct answer option.
+4. quick_win domain shows full_action.
+5. non-quick_win domain shows only locked_teaser.
+6. missing content does not render null/undefined.
+7. composer output is deterministic for the same input.
+8. Report Engine does not recalculate score.
+9. Report Engine does not create new diagnosis.
+```
+### تست نمونه
+```typescript
+it("does not expose internal diagnosis fields", () => {
+  const report = composeReport(sampleDiagnosis)
+  const serialized = JSON.stringify(report)
+
+  expect(serialized).not.toContain("internal_diagnosis_fa")
+  expect(serialized).not.toContain("internal_diagnosis_summary_fa")
+})
+```
+### تست quick win
+```typescript
+it("shows full action only for quick win domain", () => {
+  const report = composeReport({
+    ...sampleDiagnosis,
+    quick_win: { domain_id: "persona" }
+  })
+
+  const persona = report.domain_sections.find(s => s.domain_id === "persona")
+  const uvp = report.domain_sections.find(s => s.domain_id === "uvp")
+
+  expect(persona?.quick_win_action?.full_action_fa).toBeDefined()
+  expect(uvp?.quick_win_action).toBeUndefined()
+  expect(uvp?.locked_action_teaser).toBeDefined()
+})
+```
+---
+## 17. Cursor Prompt — مرحله اول: ساخت Data Layer و Composer
+این پرامپت را به Cursor بده:
+```plain text
+You are working on the Sales Health Check MVP.
+
+I have created a Notion page called:
+Sales Health Check — Report Content Library v1
+
+Inside it, there is a database:
+Report Content Library — Domain Bundles
+
+This database is the final content library for the Report Engine.
+
+Important architecture rule:
+The Diagnosis Engine decides what is wrong.
+The Report Engine must NOT create new diagnosis.
+The Report Engine only receives diagnosis_object and maps it to prepared content from Report Content Library.
+
+Please implement the Report Content Library and Report Composer.
+
+Goal:
+Build a deterministic, no-AI report generation layer that uses the content library to create user-facing report sections.
+
+Required files:
+- src/features/report-content/report-content.types.ts
+- src/features/report-content/report-content-library.v1.ts
+- src/features/report-content/report-content.service.ts
+- src/features/report-content/report-content.mapper.ts
+- src/features/report-content/report-content.fallbacks.ts
+- src/features/report-engine/report-composer.ts
+- src/features/report-engine/report-engine.types.ts
+- src/features/report-engine/report-renderer.tsx
+- tests/report-content.test.ts
+- tests/report-composer.test.ts
+
+Data source:
+Use the Notion database rows as seed data.
+Each row represents one DomainBundle.
+For D01 to D04, the full Cursor seed JSON is inside the page body.
+For D05 to D16, use the database properties:
+- domain_id
+- domain_number
+- engine_id
+- family
+- role_in_funnel_fa
+- public_summary_fa
+- internal_diagnosis_summary_fa
+- domain_levels_json
+- questions_json
+- root_causes_json
+- question_root_rules_json
+- symptoms_json
+- actions_json
+- rendering_rules_fa
+
+Create TypeScript types:
+- DomainBundle
+- DomainLevelContent
+- QuestionContent
+- AnswerOptionContent
+- RootCauseContent
+- QuestionRootRule
+- ActionContent
+
+Important:
+Never render internal fields to the user:
+- internal_diagnosis_fa
+- internal_diagnosis_summary_fa
+- rendering_rules_fa
+
+Only render public-facing fields:
+- public_summary_fa
+- public_reflection_fa
+- public_root_sentence_fa
+- mechanism_fa
+- sales_impact_fa
+- quick_win_summary_fa
+- locked_teaser_fa
+
+Implement these functions:
+1. getDomainBundle(domainId: string): DomainBundle
+2. getDomainLevel(bundle: DomainBundle, rawScore: number): DomainLevelContent
+3. getSelectedAnswerOption(bundle, questionId, selectedScore): AnswerOptionContent
+4. getTriggeredRootCauses(bundle, answers)
+5. buildDomainBreakdown(diagnosisDomain, answers, quickWinDomainId)
+6. composeReport(diagnosis)
+
+Rendering rule:
+For each weak or critical domain, render:
+1. Domain header
+2. Symptoms
+3. Evidence cards:
+   - question text
+   - selected answer text
+   - public reflection
+4. Root cause card
+5. Sales impact
+6. Locked action teaser
+
+If domain_id === quickWinDomainId:
+Show the quick_win_summary_fa and full_action_fa.
+Otherwise:
+Only show locked_teaser_fa.
+
+Fallback rules:
+If a field is missing:
+- Do not render empty/null/undefined.
+- Use fallback text from report-content.fallbacks.ts.
+- If no fallback exists, omit the sub-section.
+- Never break the report UI because of missing content.
+
+Tests:
+Write tests that prove:
+1. Internal diagnosis fields are never included in user-facing output.
+2. A weak answer triggers the correct root cause.
+3. selected_score maps to the correct answer option.
+4. quick_win domain shows full_action.
+5. non-quick_win domain shows only locked_teaser.
+6. missing content does not render null/undefined.
+7. composer output is deterministic for the same input.
+
+Do not modify the Diagnosis Engine.
+Do not recalculate scores in the Report Engine.
+Do not use AI generation.
+The output must be deterministic and snapshot-testable.
+```
+---
+## 18. Cursor Prompt — مرحله دوم: اتصال به UI گزارش
+بعد از اینکه مرحله اول انجام شد، این پرامپت را بده:
+```plain text
+Now connect the Report Content Library to the existing Report Engine.
+
+Find the current report generation flow.
+
+Wherever the app currently renders domain diagnosis, replace the direct rendering with buildDomainBreakdown() from the report-content layer.
+
+The report should show:
+- domain title
+- score and level
+- level interpretation
+- symptoms
+- evidence from user answers
+- public root cause
+- mechanism
+- sales impact
+- locked action teaser
+- quick win full action only for quick_win domain
+
+Important:
+Do not show raw internal diagnosis.
+Do not show full corrective actions for every domain.
+Only quick_win can show full_action_fa.
+All other domains show locked_teaser_fa.
+
+Add or update UI components:
+- DomainBreakdownCard
+- EvidenceCard
+- RootCauseCard
+- LockedActionCard
+- QuickWinCard
+
+Make sure the report is still deterministic and passes tests.
+```
+---
+## 19. Cursor Prompt — مرحله سوم: PDF
+اگر خروجی PDF هم داری، این پرامپت را بده:
+```plain text
+Make the PDF report use the same Report Spec as the in-app report.
+
+Do not create separate PDF logic.
+
+The flow should be:
+diagnosis_object
+→ report composer
+→ report spec
+→ app renderer
+→ pdf renderer
+
+Both app and PDF must use the same content library and the same report spec.
+Only the visual layout can differ.
+
+Do not duplicate report logic in the PDF renderer.
+```
+---
+## 20. نکات اجرایی مهم برای Cursor
+### 20.1 فایل ثابت بهتر از اتصال مستقیم به Notion است
+برای MVP، بهتر است دیتای Notion به یک فایل ثابت TypeScript تبدیل شود:
+```plain text
+src/features/report-content/report-content-library.v1.ts
+```
+مثال:
+```typescript
+export const REPORT_CONTENT_LIBRARY_V1: DomainBundle[] = [
+  {
+    domain_id: "persona",
+    domain_number: 1,
+    engine_id: "D01",
+    title_fa: "Persona / شناخت مشتری مناسب",
+    family: "strategy",
+    ...
+  }
+]
+```
+مزیت:
+- deterministic
+- تست‌پذیر
+- سریع
+- بدون وابستگی runtime به Notion API
+- مناسب snapshot test
+### 20.2 از Notion به seed
+روش پیشنهادی:
+```plain text
+1. دیتابیس Report Content Library — Domain Bundles را باز کن.
+2. ردیف‌های D01 تا D16 را به Cursor بده.
+3. برای D01-D04 از JSON کامل داخل body هر ردیف استفاده کن.
+4. برای D05-D16 از propertyهای دیتابیس استفاده کن.
+5. خروجی را در report-content-library.v1.ts ذخیره کن.
+```
+### 20.3 بعداً می‌توان sync ساخت
+در نسخه‌های بعدی می‌توان یک sync script ساخت که Notion را بخواند و seed تولید کند، اما برای MVP لازم نیست.
+---
+## 21. چیزهایی که نباید انجام شود
+```plain text
+Do not use AI to write the report.
+Do not ask the model to invent root causes.
+Do not render internal diagnosis directly.
+Do not reveal full corrective actions for every domain.
+Do not recalculate diagnosis in report layer.
+Do not make PDF report logic separate from app report logic.
+```
+---
+## 22. تعریف موفقیت
+این پیاده‌سازی وقتی موفق است که:
+```plain text
+1. یک diagnosis_object یکسان همیشه گزارش یکسان بسازد.
+2. همه متن‌های گزارش از Report Content Library بیایند.
+3. internal diagnosis در گزارش کاربر دیده نشود.
+4. ریشه‌ها به زبان قابل فهم و بدون قضاوت نمایش داده شوند.
+5. شواهد از پاسخ واقعی کاربر ساخته شوند.
+6. فقط quick_win راهکار کامل داشته باشد.
+7. باقی دامنه‌ها locked teaser داشته باشند.
+8. خروجی app و PDF از یک Report Spec مشترک ساخته شوند.
+9. تست‌ها ثابت کنند Report Engine تشخیص جدید نمی‌سازد.
+```
+---
+## 23. ساختار نهایی تجربه گزارش
+برای هر دامنه مشکل‌دار، گزارش باید این حس را بسازد:
+```plain text
+من دارم نشانه‌ای را می‌بینم که در پاسخ‌های خودم هم وجود دارد.
+پس تشخیص بی‌ربط یا کلی نیست.
+حالا می‌فهمم ریشه احتمالی چیست.
+می‌فهمم این مشکل چطور روی فروش اثر می‌گذارد.
+یک برد سریع می‌گیرم.
+برای راهکار کامل باید وارد مرحله بعد شوم.
+```
+این یعنی گزارش فقط یک خروجی تحلیلی نیست؛ خودش بخشی از قیف فروش محصول است.
+</content>
+</page>

@@ -4,7 +4,7 @@ overview: انتقال کامل مستندات و دادهٔ «Report Content Li
 todos:
   - id: import-docs
     content: snapshot راهنمای Notion + صفحهٔ Library + JSON هر ۱۶ دامنه (شامل body صفحات D01–D04) داخل docs/specs/report-content-library-v1/
-    status: pending
+    status: completed
   - id: adr-rules
     content: نوشتن ADR 0015 + به‌روزرسانی .cursor/rules/project-rules.md و README و ثبت گپ report-engine-v1-spec.md
     status: pending
