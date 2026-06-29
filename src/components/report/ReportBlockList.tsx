@@ -8,34 +8,37 @@ import type { ReportSpec } from "@/types/report-spec";
 import { SurvivalBanner } from "@/components/report/blocks/SurvivalBanner";
 import { HealthGauge } from "@/components/report/blocks/HealthGauge";
 import { ChartsSection } from "@/components/report/blocks/ChartsSection";
-import { QuickWinTeaser } from "@/components/report/blocks/QuickWinTeaser";
+import { QuickWinBlock } from "@/components/report/blocks/QuickWinBlock";
 import { IssuesSection } from "@/components/report/blocks/IssuesSection";
 import { DomainAnatomy } from "@/components/report/blocks/DomainAnatomy";
 import { BusinessMetricsGate } from "@/components/report/blocks/BusinessMetricsGate";
 import { ValueAtStakeSection } from "@/components/report/blocks/ValueAtStakeSection";
-import { QuickWinFull } from "@/components/report/blocks/QuickWinFull";
+import { ValueStakeTeaser } from "@/components/report/blocks/ValueStakeTeaser";
 import { LockedPlanTeaser } from "@/components/report/blocks/LockedPlanTeaser";
 import { ConfidenceNote } from "@/components/report/blocks/ConfidenceNote";
 import { CtaSection } from "@/components/report/blocks/CtaSection";
+import { SummaryActions } from "@/components/report/blocks/SummaryActions";
 import { cn } from "@/lib/utils";
 
 interface ReportBlockListProps {
   viewModel: ReportViewModel;
   assessmentId?: string;
-  onCtaClick?: (destination: "consultation" | "ai-purchase") => void;
+  reportUrl?: string;
+  onCtaClick?: () => void;
   onReportUpdated?: (reportSpec: ReportSpec) => void;
 }
 
 export function ReportBlockList({
   viewModel,
   assessmentId,
+  reportUrl,
   onCtaClick,
   onReportUpdated,
 }: ReportBlockListProps) {
   const { medium, presentation } = viewModel;
   const showMetricsGate =
     !presentation.hideInteractive &&
-    viewModel.valueAtStake === null &&
+    viewModel.showMetricsGate &&
     assessmentId &&
     onReportUpdated;
 
@@ -53,6 +56,14 @@ export function ReportBlockList({
             medium={medium}
           />
         );
+      case "health-gauge":
+        return (
+          <HealthGauge
+            key={blockId}
+            gauge={viewModel.healthGauge}
+            medium={medium}
+          />
+        );
       case "health-charts":
         return (
           <div key={blockId} className={cn("space-y-6", pageBreakClass)}>
@@ -66,16 +77,36 @@ export function ReportBlockList({
             key={blockId}
             issues={viewModel.issues}
             medium={medium}
+            compact={presentation.compactIssues}
           />
         );
-      case "quick-win-teaser":
-        return viewModel.quickWinTeaser ? (
-          <QuickWinTeaser
+      case "quick-win":
+        return viewModel.quickWin ? (
+          <QuickWinBlock
             key={blockId}
-            teaser={viewModel.quickWinTeaser}
+            quickWin={viewModel.quickWin}
+            medium={medium}
+            compact={presentation.compactIssues}
+          />
+        ) : null;
+      case "metrics-gate":
+        return showMetricsGate ? (
+          <BusinessMetricsGate
+            key={blockId}
+            assessmentId={assessmentId}
+            onReportUpdated={onReportUpdated}
+          />
+        ) : null;
+      case "value-at-stake":
+        return viewModel.valueAtStake ? (
+          <ValueAtStakeSection
+            key={blockId}
+            valueAtStake={viewModel.valueAtStake}
             medium={medium}
           />
         ) : null;
+      case "value-stake-teaser":
+        return <ValueStakeTeaser key={blockId} medium={medium} />;
       case "domain-breakdown":
         return (
           <div key={blockId} className={cn("space-y-6", pageBreakClass)}>
@@ -86,30 +117,8 @@ export function ReportBlockList({
                 presentation.hideInteractive ? undefined : onCtaClick
               }
             />
-            {showMetricsGate && (
-              <BusinessMetricsGate
-                assessmentId={assessmentId}
-                onReportUpdated={onReportUpdated}
-              />
-            )}
           </div>
         );
-      case "value-at-stake":
-        return viewModel.valueAtStake ? (
-          <ValueAtStakeSection
-            key={blockId}
-            valueAtStake={viewModel.valueAtStake}
-            medium={medium}
-          />
-        ) : null;
-      case "quick-win-full":
-        return viewModel.quickWin ? (
-          <QuickWinFull
-            key={blockId}
-            quickWin={viewModel.quickWin}
-            medium={medium}
-          />
-        ) : null;
       case "locked-plan":
         return (
           <LockedPlanTeaser
@@ -118,22 +127,33 @@ export function ReportBlockList({
             medium={medium}
           />
         );
-      case "confidence-cta":
+      case "confidence-note":
         return (
-          <div key={blockId} className="space-y-6">
-            <ConfidenceNote note={viewModel.confidenceNote} medium={medium} />
-            {!presentation.hideInteractive && onCtaClick && (
-              <CtaSection ctas={viewModel.ctas} onCtaClick={onCtaClick} />
-            )}
-            {presentation.hideInteractive && viewModel.ctas.length > 0 && (
-              <CtaSection
-                ctas={viewModel.ctas}
-                medium={medium}
-                hideButtons
-              />
-            )}
-          </div>
+          <ConfidenceNote
+            key={blockId}
+            note={viewModel.confidenceNote}
+            medium={medium}
+          />
         );
+      case "cta":
+        if (viewModel.ctas.length === 0) return null;
+        return (
+          <CtaSection
+            key={blockId}
+            ctas={viewModel.ctas}
+            medium={medium}
+            hideButtons={presentation.hideInteractive}
+            onCtaClick={onCtaClick}
+          />
+        );
+      case "summary-actions":
+        return reportUrl ? (
+          <SummaryActions
+            key={blockId}
+            reportUrl={reportUrl}
+            onConsultationClick={onCtaClick ? () => onCtaClick() : undefined}
+          />
+        ) : null;
       default:
         return null;
     }

@@ -5,13 +5,13 @@ export type CtaMoment = "urgency" | "trust";
 export type CtaDestination = "consultation" | "ai-purchase";
 
 export const ctaButtonLabels: Record<CapacityMode, string> = {
-  free: "درخواست تماس",
-  full: "خرید تحلیل AI + راهکارها",
+  free: "درخواست مشاوره رایگان",
+  full: "درخواست مشاوره رایگان",
 };
 
 export const ctaDestinationByCapacity: Record<CapacityMode, CtaDestination> = {
   free: "consultation",
-  full: "ai-purchase",
+  full: "consultation",
 };
 
 export interface CtaPersonalizationInput {
@@ -23,15 +23,15 @@ export interface CtaPersonalizationInput {
 export const ctaHeadlineTemplates = {
   urgency: {
     withBinding:
-      "گلوگاه اصلی شما در {domainName} است — {rootSentence}. همین حالا قدم بعدی را بردارید.",
+      "اولویت اصلی شما در {domainName} است — {rootSentence}. برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
     default:
-      "هر روز تأخیر، بخشی از فروش بالقوه را از دست می‌دهید. همین حالا اقدام کنید.",
+      "برای تبدیل این تحلیل به نقشه اقدام عملی، یک جلسه مشاوره رایگان رزرو کنید.",
   },
   trust: {
     withRoots:
-      "ریشه‌های ساختاری در {rootNames} شناسایی شد — نقشه کامل اصلاح را با کارشناس بسازید.",
+      "ریشه‌های اصلی در {rootNames} شناسایی شد — نقشه اصلاح را با کارشناس بسازید.",
     default:
-      "راهکار سریع را دیدید؛ نقشه ۳۰ روزه اختصاصی‌تان آماده است.",
+      "اولین قدم را دیدید؛ برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
   },
 } as const;
 

@@ -35,7 +35,7 @@ export const SURVIVAL_BANNER_COLORS: Record<
 > = COLOR_TOKENS.survival;
 
 export const ISSUE_ROLE_LABELS: Record<ReportIssue["role"], string> = {
-  primary_issue: "عارضه اصلی",
+  primary_issue: "مشکل اصلی",
   structural_root: "ریشه ساختاری",
   binding_constraint: "گلوگاه جریان",
 };

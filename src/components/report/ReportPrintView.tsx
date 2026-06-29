@@ -20,7 +20,7 @@ export function ReportPrintView({
   businessName,
   createdAt,
 }: ReportPrintViewProps) {
-  const viewModel = renderReport(reportSpec, { medium: "print" });
+  const viewModel = renderReport(reportSpec, { medium: "print", variant: "full" });
 
   return (
     <div className="mx-auto max-w-[210mm] space-y-8 px-4 py-8">

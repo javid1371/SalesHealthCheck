@@ -6,7 +6,7 @@ interface CtaSectionProps {
   ctas: CtaViewModel[];
   medium?: RenderMedium;
   hideButtons?: boolean;
-  onCtaClick?: (destination: CtaViewModel["destination"]) => void;
+  onCtaClick?: () => void;
 }
 
 export function CtaSection({
@@ -17,34 +17,28 @@ export function CtaSection({
 }: CtaSectionProps) {
   if (ctas.length === 0) return null;
 
+  const cta = ctas[0];
+
   return (
-    <section className={cn("space-y-4", medium === "print" && "print-avoid-break")}>
-      {ctas.map((cta) => (
-        <div
-          key={cta.moment}
-          className={`rounded-2xl p-6 text-center sm:p-8 ${
-            cta.moment === "urgency"
-              ? "border border-red-200 bg-red-50"
-              : "border border-emerald-200 bg-emerald-50"
-          }`}
+    <section
+      id="result-actions"
+      className={cn(
+        "scroll-mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center sm:p-8",
+        medium === "print" && "print-avoid-break",
+      )}
+    >
+      <h2 className="text-lg font-semibold leading-8 text-zinc-900">
+        {cta.headline}
+      </h2>
+      {!hideButtons && onCtaClick && (
+        <Button
+          className="mt-6"
+          size="lg"
+          onClick={() => onCtaClick()}
         >
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-            {cta.moment === "urgency" ? "فوریت" : "اعتماد"}
-          </p>
-          <h2 className="mt-2 text-lg font-semibold leading-8 text-zinc-900">
-            {cta.headline}
-          </h2>
-          {!hideButtons && onCtaClick && (
-            <Button
-              className="mt-6"
-              size="lg"
-              onClick={() => onCtaClick(cta.destination)}
-            >
-              {cta.buttonLabel}
-            </Button>
-          )}
-        </div>
-      ))}
+          {cta.buttonLabel}
+        </Button>
+      )}
     </section>
   );
 }

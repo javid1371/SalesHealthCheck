@@ -18,6 +18,7 @@ interface SurvivalChartData {
   status: string;
   alerts: Array<{
     domainSlug: string;
+    domainName?: string;
     engineId: number;
     flag: string;
     pct: number;
@@ -61,7 +62,9 @@ function SurvivalChartPanel({ data }: { data: SurvivalChartData }) {
               key={`${alert.engineId}-${alert.domainSlug}`}
               className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm"
             >
-              <span className="text-zinc-700">{alert.domainSlug}</span>
+              <span className="text-zinc-700">
+                {alert.domainName ?? alert.domainSlug}
+              </span>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   alert.flag === "RED"

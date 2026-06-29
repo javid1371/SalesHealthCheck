@@ -337,7 +337,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
   "ctas": [
     {
       "destination": "consultation",
-      "headline": "گلوگاه اصلی شما در سرعت ارتباط اولیه و ثبت سرنخ است — استانداردبودن و سرعت پاسخ اولیه به سرنخ را می‌سنجد.. همین حالا قدم بعدی را بردارید.",
+      "headline": "اولویت اصلی شما در سرعت ارتباط اولیه و ثبت سرنخ است — استانداردبودن و سرعت پاسخ اولیه به سرنخ را می‌سنجد.. برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
       "moment": "urgency",
       "personalization": {
         "bindingConstraint": "سرعت ارتباط اولیه و ثبت سرنخ",
@@ -349,7 +349,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
     },
     {
       "destination": "consultation",
-      "headline": "ریشه‌های ساختاری در اندازه‌گیری، تحلیل و بهینه‌سازی فروش، شناخت مشتری مناسب شناسایی شد — نقشه کامل اصلاح را با کارشناس بسازید.",
+      "headline": "ریشه‌های اصلی در اندازه‌گیری، تحلیل و بهینه‌سازی فروش، شناخت مشتری مناسب شناسایی شد — نقشه اصلاح را با کارشناس بسازید.",
       "moment": "trust",
       "personalization": {
         "bindingConstraint": "سرعت ارتباط اولیه و ثبت سرنخ",
@@ -370,7 +370,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "استراتژیک",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -391,7 +391,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "استراتژیک",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -412,7 +412,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "استراتژیک",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -433,7 +433,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "استراتژیک",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -454,7 +454,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "ورودی",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -475,7 +475,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "اعتماد و اقناع",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -496,7 +496,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "ورودی",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار این دامنه را پایین‌تر، در برد سریع، کامل باز کرده‌ایم.",
+        "label": "راهکار این حوزه در بخش «اولین قدم پیشنهادی» باز شده است.",
         "locked": false,
       },
       "incomplete": false,
@@ -517,7 +517,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "مدیریتی/سیستمی",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -538,7 +538,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "اعتماد و اقناع",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -559,7 +559,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "اعتماد و اقناع",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -580,7 +580,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "اعتماد و اقناع",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -601,7 +601,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "اعتماد و اقناع",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -622,7 +622,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "تبدیل",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -643,7 +643,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -664,7 +664,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "مدیریتی/سیستمی",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,
@@ -685,7 +685,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
       "family": "مدیریتی/سیستمی",
       "fixLock": {
         "destination": "consultation",
-        "label": "راهکار کامل این دامنه در برنامه اختصاصی است.",
+        "label": "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.",
         "locked": true,
       },
       "incomplete": false,

@@ -1,128 +1,35 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
-import { SpiderChart } from "@/components/charts/SpiderChart";
+import { AdminReportPreview } from "@/components/report/AdminReportPreview";
 import { ReportShell } from "@/components/layout/ReportShell";
-import { BottleneckCard } from "@/components/report/BottleneckCard";
-import { DiagnosisSummaryPanel } from "@/components/report/DiagnosisSummaryPanel";
-import { HealthBadge } from "@/components/report/HealthBadge";
-import { ResultStickySummary } from "@/components/report/ResultStickySummary";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/LinkButton";
-import { SectionHeader } from "@/components/ui/SectionHeader";
-import { healthLevelBarColor } from "@/lib/health-colors";
+import { HealthBadge } from "@/components/report/HealthBadge";
 import { isAppError } from "@/lib/errors";
-import { layerStatusLabelFa } from "@/lib/health-level";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import { readAdminSession } from "@/lib/session";
 import { getAssessmentResult } from "@/modules/assessment/assessment.service";
 import type { AssessmentResultResponse } from "@/modules/assessment/assessment.types";
 import { getAssessmentForAdmin } from "@/modules/admin/admin.service";
 import { AdminLogoutButton } from "../AdminLogoutButton";
-import type { StructuredReport } from "@/types/report";
 
 interface AdminAssessmentDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
 function AdminResultBody({ result }: { result: AssessmentResultResponse }) {
-  const bottleneckSummaries =
-    result.report.bottleneckSummaries as StructuredReport["bottleneckSummaries"];
-
-  const bottlenecksWithSummary = result.bottlenecks.map((bottleneck) => {
-    const summary = bottleneckSummaries?.find(
-      (item) => item.domainName === bottleneck.domainName,
-    );
-    return { ...bottleneck, summary };
-  });
+  if (result.report.reportSpec) {
+    return <AdminReportPreview reportSpec={result.report.reportSpec} />;
+  }
 
   return (
-    <div className="space-y-8">
-      <ResultStickySummary
-        percentage={result.overallScore.percentage}
-        healthLevel={result.overallScore.healthLevel}
-      />
-
-      {result.report.diagnosisSummary && (
-        <DiagnosisSummaryPanel summary={result.report.diagnosisSummary} />
-      )}
-
-      <Card as="section" padding="compact">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <SectionHeader
-            label="نتیجه ارزیابی"
-            title={`${Math.round(result.overallScore.percentage)}%`}
-            subtitle="امتیاز کلی سلامت فروش"
-          />
-          <HealthBadge level={result.overallScore.healthLevel} size="lg" />
-        </div>
-        <p className="mt-6 leading-7 text-zinc-700">
-          {result.report.overallSummary}
-        </p>
-      </Card>
-
-      <Card as="section" padding="compact">
-        <SectionHeader
-          label="نمودار"
-          title="نمودار ۱۶ دامنه"
-          subtitle="نمای کلی وضعیت هر بخش از مسیر فروش"
-        />
-        <div className="mt-6">
-          <SpiderChart data={result.spiderChartData} />
-        </div>
-      </Card>
-
-      <Card as="section" padding="compact">
-        <SectionHeader label="لایه‌ها" title="وضعیت ۴ لایه" />
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {result.layerScores.map((layer) => (
-            <div
-              key={layer.layerId}
-              className="rounded-xl border border-zinc-100 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-zinc-900">{layer.name}</p>
-                <span className="text-sm font-semibold text-zinc-700">
-                  {Math.round(layer.percentage)}%
-                </span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-100">
-                <div
-                  className={`h-full rounded-full ${healthLevelBarColor(layer.healthLevel)}`}
-                  style={{ width: `${layer.percentage}%` }}
-                />
-              </div>
-              <p className="mt-2 text-sm text-zinc-500">
-                {layerStatusLabelFa(
-                  layer.healthLevel as
-                    | "healthy"
-                    | "medium"
-                    | "weak"
-                    | "critical",
-                )}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          ۳ گلوگاه اصلی فروش
-        </h2>
-        <div className="space-y-4">
-          {bottlenecksWithSummary.map((bottleneck) => (
-            <BottleneckCard
-              key={bottleneck.domainId}
-              rank={bottleneck.rank}
-              domainName={bottleneck.domainName}
-              priorityScore={bottleneck.priorityScore}
-              summary={bottleneck.summary?.summary}
-            />
-          ))}
-        </div>
-      </section>
-    </div>
+    <Card className="text-center">
+      <p className="text-sm leading-7 text-zinc-600">
+        این ارزیابی reportSpec ندارد (نسخه قدیمی). از لینک «گزارش کامل» یا
+        «داشبورد نتیجه» در بالا استفاده کنید.
+      </p>
+    </Card>
   );
 }
 

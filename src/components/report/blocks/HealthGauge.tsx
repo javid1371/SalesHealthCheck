@@ -2,7 +2,6 @@ import type { HealthGaugeViewModel, RenderMedium } from "@/modules/report/report
 import { HealthBadge } from "@/components/report/HealthBadge";
 import { healthLevelBarColor } from "@/lib/health-colors";
 import { resolveHealthLevel } from "@/lib/health-level";
-import { SURVIVAL_LABELS } from "@/lib/report-ui";
 import { cn } from "@/lib/utils";
 
 interface HealthGaugeProps {
@@ -15,8 +14,9 @@ export function HealthGauge({ gauge, medium = "app" }: HealthGaugeProps) {
 
   return (
     <div
+      id="result-summary"
       className={cn(
-        "rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm",
+        "scroll-mt-8 rounded-2xl border border-zinc-100 bg-white p-6 shadow-sm",
         medium === "print" && "print-avoid-break",
       )}
     >
@@ -25,9 +25,6 @@ export function HealthGauge({ gauge, medium = "app" }: HealthGaugeProps) {
           <p className="text-sm font-medium text-emerald-700">{gauge.label}</p>
           <p className="mt-1 text-4xl font-bold tabular-nums text-zinc-900">
             {Math.round(gauge.percentage)}%
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">
-            {SURVIVAL_LABELS[gauge.survivalStatus]}
           </p>
         </div>
         <HealthBadge level={level} size="lg" />
@@ -40,9 +37,6 @@ export function HealthGauge({ gauge, medium = "app" }: HealthGaugeProps) {
             style={{ width: `${Math.min(100, Math.max(0, gauge.percentage))}%` }}
           />
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          بر اساس سلامت وزن‌دار قیف — نه درصد کلی خام
-        </p>
       </div>
     </div>
   );

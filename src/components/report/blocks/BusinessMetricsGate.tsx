@@ -57,18 +57,18 @@ export function BusinessMetricsGate({
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-lg font-semibold text-zinc-900">
-        ارزش در خطر — ورود ۴ عدد
+        برآورد پتانسیل بهبود (اختیاری)
       </h2>
       <p className="mt-2 text-sm leading-7 text-zinc-600">
-        برای محاسبه پتانسیل قابل بازیابی، چهار عدد کسب‌وکار را وارد کنید.
-        این بخش اختیاری است و می‌توانید بعداً تکمیل کنید.
+        با وارد کردن چند عدد ساده، برآورد ریالی پتانسیل بهبود فروش را
+        محاسبه می‌کنیم. این بخش اختیاری است.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm font-medium text-zinc-700">
-              درآمد ماهانه (R0) — تومان
+              درآمد ماهانه — تومان
             </span>
             <input
               type="number"
@@ -82,7 +82,7 @@ export function BusinessMetricsGate({
           </label>
           <label className="block">
             <span className="text-sm font-medium text-zinc-700">
-              میانگین سفارش (AOV) — تومان
+              میانگین مبلغ هر سفارش — تومان
             </span>
             <input
               type="number"
@@ -96,7 +96,7 @@ export function BusinessMetricsGate({
           </label>
           <label className="block">
             <span className="text-sm font-medium text-zinc-700">
-              سرنخ ماهانه (L)
+              تعداد سرنخ ماهانه
             </span>
             <input
               type="number"
@@ -110,7 +110,7 @@ export function BusinessMetricsGate({
           </label>
           <label className="block">
             <span className="text-sm font-medium text-zinc-700">
-              نرخ تکرار خرید (RP) — اختیاری
+              میانگین دفعات خرید هر مشتری — اختیاری
             </span>
             <input
               type="number"

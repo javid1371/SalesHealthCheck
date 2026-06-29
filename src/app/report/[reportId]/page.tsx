@@ -97,14 +97,11 @@ function ReportBody({
     searchParams.get("token") ?? getResultToken(report.assessmentId) ?? "";
   const assessmentId = report.assessmentId;
 
-  function navigateToCta(destination?: "consultation" | "ai-purchase") {
+  function navigateToCta() {
     const params = new URLSearchParams({
       token,
       reportId,
     });
-    if (destination === "ai-purchase") {
-      params.set("mode", "ai");
-    }
     router.push(`/assessment/${assessmentId}/cta?${params.toString()}`);
   }
 

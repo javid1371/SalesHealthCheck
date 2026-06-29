@@ -9,7 +9,7 @@ interface ReportSpecViewProps {
   reportSpec: ReportSpec;
   assessmentId: string;
   businessName?: string | null;
-  onCtaClick: (destination: "consultation" | "ai-purchase") => void;
+  onCtaClick: () => void;
 }
 
 export function ReportSpecView({
@@ -21,7 +21,7 @@ export function ReportSpecView({
   const [reportSpec, setReportSpec] = useState(initialSpec);
 
   const viewModel = useMemo(
-    () => renderReport(reportSpec, { medium: "app" }),
+    () => renderReport(reportSpec, { medium: "app", variant: "full" }),
     [reportSpec],
   );
 

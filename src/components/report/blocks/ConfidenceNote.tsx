@@ -19,7 +19,7 @@ export function ConfidenceNote({ note, medium = "app" }: ConfidenceNoteProps) {
       <p className="text-sm leading-7 text-amber-900">{note.message}</p>
       {note.instrumentFirst && (
         <p className="mt-2 text-xs text-amber-800">
-          پیشنهاد موازی: ساخت داشبورد ساده اندازه‌گیری فروش در هفته اول.
+          پیشنهاد: یک داشبورد ساده برای پیگیری فروش در هفته اول بسازید.
         </p>
       )}
     </section>

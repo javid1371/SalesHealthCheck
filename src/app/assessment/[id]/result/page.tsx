@@ -2,43 +2,31 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import { CopyResultLink } from "@/components/assessment/CopyResultLink";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ReportShell } from "@/components/layout/ReportShell";
-import { SpiderChart } from "@/components/charts/SpiderChart";
-import { HealthBadge } from "@/components/report/HealthBadge";
-import { ResultStickySummary } from "@/components/report/ResultStickySummary";
-import { BottleneckCard } from "@/components/report/BottleneckCard";
-import { DiagnosisSummaryPanel } from "@/components/report/DiagnosisSummaryPanel";
-import { DownloadReportPdf } from "@/components/report/DownloadReportPdf";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { ResultSummaryView } from "@/components/report/ResultSummaryView";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageState } from "@/components/ui/PageState";
-import { SectionHeader } from "@/components/ui/SectionHeader";
+import { LinkButton } from "@/components/ui/LinkButton";
 import { apiGet } from "@/lib/api-client";
 import { getResultToken } from "@/lib/assessment-storage";
-import { healthLevelBarColor } from "@/lib/health-colors";
-import { layerStatusLabelFa } from "@/lib/health-level";
 import {
   PAGE_MESSAGES,
   isTokenAccessError,
   resolveApiError,
 } from "@/lib/page-messages";
 import type { AssessmentResultResponse } from "@/modules/assessment/assessment.types";
-import type { StructuredReport } from "@/types/report";
 
 const RESULT_TOC = [
-  { id: "result-score", label: "امتیاز کلی" },
-  { id: "result-chart", label: "نمودار دامنه‌ها" },
-  { id: "result-layers", label: "وضعیت لایه‌ها" },
-  { id: "result-bottlenecks", label: "گلوگاه‌ها" },
-  { id: "result-report-cta", label: "گزارش کامل" },
+  { id: "result-summary", label: "خلاصه وضعیت" },
+  { id: "result-priorities", label: "اولویت‌ها" },
+  { id: "result-actions", label: "قدم بعدی" },
 ];
 
 function ResultContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const assessmentId = params.id;
 
   const [result, setResult] = useState<AssessmentResultResponse | null>(null);
@@ -110,6 +98,7 @@ function ResultContent() {
           token={
             searchParams.get("token") ?? getResultToken(assessmentId) ?? ""
           }
+          router={router}
         />
       )}
     </PageState>
@@ -120,166 +109,60 @@ function ResultDashboard({
   assessmentId,
   result,
   token,
+  router,
 }: {
   assessmentId: string;
   result: AssessmentResultResponse;
   token: string;
+  router: ReturnType<typeof useRouter>;
 }) {
-  const bottleneckSummaries =
-    result.report.bottleneckSummaries as StructuredReport["bottleneckSummaries"];
-  const layerSummaries =
-    result.report.layerSummaries as StructuredReport["layerSummaries"];
+  const reportSpec = result.report.reportSpec;
 
-  const bottlenecksWithSummary = result.bottlenecks.map((bottleneck) => {
-    const summary = bottleneckSummaries?.find(
-      (item) => item.domainName === bottleneck.domainName,
-    );
-    return { ...bottleneck, summary };
-  });
-
-  const reportQuery = new URLSearchParams({
-    assessmentId,
-  });
+  const reportQuery = new URLSearchParams({ assessmentId });
   if (token) {
     reportQuery.set("token", token);
   }
   const reportUrl = `/report/${result.report.id}?${reportQuery.toString()}`;
-  const diagnosisSummary = result.report.diagnosisSummary;
+
+  function navigateToConsultation() {
+    const params = new URLSearchParams({
+      token,
+      reportId: result.report.id,
+    });
+    router.push(`/assessment/${assessmentId}/cta?${params.toString()}`);
+  }
+
+  if (!reportSpec) {
+    return (
+      <div className="space-y-6 text-center">
+        <p className="text-sm leading-7 text-zinc-600">
+          گزارش شما در حال آماده‌سازی است. لطفاً چند لحظه دیگر دوباره تلاش
+          کنید.
+        </p>
+        <LinkButton href="/recover" variant="secondary" size="sm">
+          بازیابی لینک نتیجه
+        </LinkButton>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      <ResultStickySummary
-        percentage={result.overallScore.percentage}
-        healthLevel={result.overallScore.healthLevel}
-      />
-      {token && <CopyResultLink assessmentId={assessmentId} token={token} />}
-      {result.report.reportSpec && (
-        <Card padding="compact">
-          <DownloadReportPdf reportId={result.report.id} token={token || undefined} />
-        </Card>
-      )}
-      {diagnosisSummary && <DiagnosisSummaryPanel summary={diagnosisSummary} />}
-      <Card
-        as="section"
-        id="result-score"
-        padding="compact"
-        className="scroll-mt-8"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <SectionHeader
-            label="نتیجه ارزیابی"
-            title={`${Math.round(result.overallScore.percentage)}%`}
-            subtitle="امتیاز کلی سلامت فروش"
-          />
-          <HealthBadge level={result.overallScore.healthLevel} size="lg" />
-        </div>
-        <p className="mt-6 leading-7 text-zinc-700">
-          {result.report.overallSummary}
-        </p>
-      </Card>
-
-      <Card
-        as="section"
-        id="result-chart"
-        padding="compact"
-        className="scroll-mt-8"
-      >
-        <SectionHeader
-          label="نمودار"
-          title="نمودار ۱۶ دامنه"
-          subtitle="نمای کلی وضعیت هر بخش از مسیر فروش"
-        />
-        <div className="mt-6">
-          <SpiderChart data={result.spiderChartData} />
-        </div>
-      </Card>
-
-      <Card
-        as="section"
-        id="result-layers"
-        padding="compact"
-        className="scroll-mt-8"
-      >
-        <SectionHeader label="لایه‌ها" title="وضعیت ۴ لایه" />
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          {result.layerScores.map((layer) => (
-            <div
-              key={layer.layerId}
-              className="rounded-xl border border-zinc-100 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-zinc-900">{layer.name}</p>
-                <span className="text-sm font-semibold text-zinc-700">
-                  {Math.round(layer.percentage)}%
-                </span>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-100">
-                <div
-                  className={`h-full rounded-full ${healthLevelBarColor(layer.healthLevel)}`}
-                  style={{ width: `${layer.percentage}%` }}
-                />
-              </div>
-              <p className="mt-2 text-sm text-zinc-500">
-                {layerStatusLabelFa(
-                  layer.healthLevel as "healthy" | "medium" | "weak" | "critical",
-                )}
-              </p>
-              {layerSummaries?.find((s) => s.layerName === layer.name) && (
-                <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-600">
-                  {
-                    layerSummaries.find((s) => s.layerName === layer.name)
-                      ?.summary
-                  }
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <section id="result-bottlenecks" className="scroll-mt-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          ۳ گلوگاه اصلی فروش
-        </h2>
-        <div className="space-y-4">
-          {bottlenecksWithSummary.map((bottleneck) => (
-            <BottleneckCard
-              key={bottleneck.domainId}
-              rank={bottleneck.rank}
-              domainName={bottleneck.domainName}
-              priorityScore={bottleneck.priorityScore}
-              summary={bottleneck.summary?.summary}
-            />
-          ))}
-        </div>
-      </section>
-
-      <Card
-        as="section"
-        id="result-report-cta"
-        padding="compact"
-        className="scroll-mt-8 border border-emerald-200 bg-emerald-50 text-center"
-      >
-        <h2 className="text-lg font-semibold text-zinc-900">
-          گزارش کامل و برنامه اقدام
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-zinc-600">
-          برای تحلیل عمیق ۱۶ دامنه، تشخیص ریشه‌ای و برنامه ۷ و ۳۰ روزه، گزارش
-          تفصیلی را ببینید.
-        </p>
-        <Link href={reportUrl} className="mt-6 inline-block">
-          <Button size="lg">مشاهده گزارش کامل</Button>
-        </Link>
-      </Card>
-    </div>
+    <ResultSummaryView
+      reportSpec={reportSpec}
+      assessmentId={assessmentId}
+      reportId={result.report.id}
+      token={token || undefined}
+      reportUrl={reportUrl}
+      onConsultationClick={navigateToConsultation}
+    />
   );
 }
 
 export default function ResultPage() {
   return (
     <ReportShell
-      title="داشبورد نتیجه"
-      subtitle="خلاصه وضعیت فروش و اولویت‌های بهبود"
+      title="خلاصه نتیجه"
+      subtitle="وضعیت فروش و اولویت‌های بهبود"
       toc={RESULT_TOC}
     >
       <Suspense

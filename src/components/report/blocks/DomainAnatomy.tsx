@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 interface DomainAnatomyProps {
   domains: DomainBreakdownViewModel[];
   medium?: RenderMedium;
-  onFixLockClick?: (destination: "consultation" | "ai-purchase") => void;
+  onFixLockClick?: () => void;
 }
 
 function DomainCard({
@@ -61,7 +61,7 @@ function DomainCard({
       {isExpanded && (
         <div className="mt-5 space-y-5 border-t border-zinc-100 pt-5">
           <section>
-            <p className="text-xs font-medium text-emerald-700">۲. علائم</p>
+            <p className="text-xs font-medium text-emerald-700">علائم</p>
             <p className="mt-2 text-sm leading-7 text-zinc-700">
               {domain.symptoms}
             </p>
@@ -69,7 +69,9 @@ function DomainCard({
 
           {domain.evidence.length > 0 && (
             <section>
-              <p className="text-xs font-medium text-emerald-700">۳. شواهد</p>
+              <p className="text-xs font-medium text-emerald-700">
+                شواهد از پاسخ‌های شما
+              </p>
               <ul className="mt-3 space-y-3">
                 {domain.evidence.map((item) => (
                   <li
@@ -93,7 +95,7 @@ function DomainCard({
           )}
 
           <section>
-            <p className="text-xs font-medium text-emerald-700">۴. تفسیر</p>
+            <p className="text-xs font-medium text-emerald-700">تفسیر</p>
             <p className="mt-2 text-sm leading-7 text-zinc-700">
               {domain.interpretation}
             </p>
@@ -101,7 +103,7 @@ function DomainCard({
 
           <section>
             <p className="text-xs font-medium text-emerald-700">
-              ۵. هزینه کیفی
+              اثر بر کسب‌وکار
             </p>
             <p className="mt-2 text-sm leading-7 text-zinc-700">
               {domain.qualitativeCost}
@@ -109,17 +111,17 @@ function DomainCard({
           </section>
 
           <section>
-            <p className="text-xs font-medium text-emerald-700">۶. راهکار</p>
+            <p className="text-xs font-medium text-emerald-700">راهکار</p>
             {domain.fixLock.locked ? (
               <div className="mt-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-600">{domain.fixLock.label}</p>
                 {!isPrint && onFixLockClick && (
                   <button
                     type="button"
-                    onClick={() => onFixLockClick(domain.fixLock.destination)}
+                    onClick={() => onFixLockClick?.()}
                     className="mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-800"
                   >
-                    {domain.fixLock.buttonLabel}
+                    درخواست مشاوره برای دریافت راهکار
                   </button>
                 )}
               </div>
@@ -132,14 +134,10 @@ function DomainCard({
         </div>
       )}
 
-      {!isPrint && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-3 text-xs font-medium text-emerald-700 hover:text-emerald-800"
-        >
-          {isExpanded ? "بستن جزئیات" : "مشاهده آناتومی ۶بخشی"}
-        </button>
+      {!isPrint && !isExpanded && (
+        <p className="mt-3 text-xs font-medium text-emerald-700">
+          برای جزئیات بیشتر روی عنوان کلیک کنید
+        </p>
       )}
     </article>
   );
@@ -192,9 +190,9 @@ export function DomainAnatomy({
         isPrint && "print-avoid-break",
       )}
     >
-      <h2 className="text-lg font-semibold text-zinc-900">آناتومی ۱۶ دامنه</h2>
+      <h2 className="text-lg font-semibold text-zinc-900">جزئیات ۱۶ حوزه فروش</h2>
       <p className="mt-1 text-sm text-zinc-500">
-        دامنه‌های ضعیف باز و دامنه‌های سالم جمع‌شده
+        حوزه‌های ضعیف باز و حوزه‌های سالم جمع‌شده
       </p>
       <div className="mt-6 space-y-4">
         {domains.map((domain) => (

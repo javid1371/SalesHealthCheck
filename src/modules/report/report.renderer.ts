@@ -11,32 +11,40 @@ import { getCtaButtonLabel } from "@/config/model-v1/report-content/cta-template
 import type {
   CapacityMode,
   ReportChart,
+  ReportCta,
   ReportSpec,
   ToneMode,
 } from "@/types/report-spec";
 
 export type RenderMedium = "app" | "print";
+export type ReportVariant = "summary" | "full";
 
 export interface RenderReportOptions {
   medium?: RenderMedium;
+  variant?: ReportVariant;
 }
 
 export interface ReportPresentationFlags {
   expandAllDomains: boolean;
   hideInteractive: boolean;
   showPageBreakHints: boolean;
+  compactIssues: boolean;
 }
 
 export type ReportBlockId =
   | "survival-banner"
+  | "health-gauge"
   | "health-charts"
   | "issues"
-  | "quick-win-teaser"
-  | "domain-breakdown"
+  | "quick-win"
+  | "metrics-gate"
   | "value-at-stake"
-  | "quick-win-full"
+  | "value-stake-teaser"
+  | "domain-breakdown"
   | "locked-plan"
-  | "confidence-cta";
+  | "confidence-note"
+  | "cta"
+  | "summary-actions";
 
 export interface SurvivalBannerViewModel {
   status: ReportSpec["survivalBanner"]["status"];
@@ -56,10 +64,11 @@ export interface ChartViewModel {
   data: ReportChart["data"];
 }
 
-export interface QuickWinTeaserViewModel {
+export interface QuickWinViewModel {
   domainSlug: string;
   domainName: string;
-  suffix: string;
+  actionText: string | null;
+  teaserSuffix: string;
 }
 
 export interface DomainBreakdownViewModel {
@@ -101,15 +110,16 @@ export interface ConfidenceNoteViewModel {
 }
 
 export interface CtaViewModel {
-  moment: ReportSpec["ctas"][0]["moment"];
+  moment: ReportCta["moment"];
   headline: string;
-  destination: ReportSpec["ctas"][0]["destination"];
+  destination: ReportCta["destination"];
   buttonLabel: string;
-  personalization: ReportSpec["ctas"][0]["personalization"];
+  personalization: ReportCta["personalization"];
 }
 
 export interface ReportViewModel {
   medium: RenderMedium;
+  variant: ReportVariant;
   presentation: ReportPresentationFlags;
   capacityMode: CapacityMode;
   blockOrder: ReportBlockId[];
@@ -117,10 +127,10 @@ export interface ReportViewModel {
   healthGauge: HealthGaugeViewModel;
   charts: ChartViewModel[];
   issues: ReportSpec["issues"];
-  quickWinTeaser: QuickWinTeaserViewModel | null;
+  quickWin: QuickWinViewModel | null;
   domainBreakdown: DomainBreakdownViewModel[];
   valueAtStake: ValueAtStakeViewModel | null;
-  quickWin: ReportSpec["quickWin"];
+  showMetricsGate: boolean;
   lockedPlan: LockedPlanViewModel;
   confidenceNote: ConfidenceNoteViewModel;
   ctas: CtaViewModel[];
@@ -135,32 +145,89 @@ const CHART_TITLES: Record<ReportChart["kind"], string> = {
   "issue-family": "خانواده‌های مسئله",
 };
 
-function buildBlockOrder(spec: ReportSpec): ReportBlockId[] {
+const HEALTH_LABEL = "سلامت فروش";
+
+function buildQuickWinViewModel(spec: ReportSpec): QuickWinViewModel | null {
+  if (spec.quickWin) {
+    return {
+      domainSlug: spec.quickWin.domainSlug,
+      domainName: spec.quickWin.domainName,
+      actionText: spec.quickWin.actionText,
+      teaserSuffix: quickWinTeaserSuffix,
+    };
+  }
+
+  if (spec.quickWinTeaser) {
+    return {
+      domainSlug: spec.quickWinTeaser.domainSlug,
+      domainName: spec.quickWinTeaser.domainName,
+      actionText: null,
+      teaserSuffix: quickWinTeaserSuffix,
+    };
+  }
+
+  return null;
+}
+
+function buildBlockOrder(
+  spec: ReportSpec,
+  variant: ReportVariant,
+): ReportBlockId[] {
+  if (variant === "summary") {
+    const order: ReportBlockId[] = [
+      "survival-banner",
+      "health-gauge",
+      "issues",
+    ];
+
+    if (buildQuickWinViewModel(spec)) {
+      order.push("quick-win");
+    }
+
+    if (spec.valueAtStake) {
+      order.push("value-at-stake");
+    } else {
+      order.push("value-stake-teaser");
+    }
+
+    order.push("summary-actions");
+    return order;
+  }
+
   const order: ReportBlockId[] = [
     "survival-banner",
     "health-charts",
     "issues",
   ];
 
-  if (spec.quickWinTeaser) {
-    order.push("quick-win-teaser");
+  if (!spec.valueAtStake) {
+    order.push("metrics-gate");
   }
-
-  order.push("domain-breakdown");
 
   if (spec.valueAtStake) {
     order.push("value-at-stake");
   }
 
-  if (spec.quickWin) {
-    order.push("quick-win-full");
+  if (buildQuickWinViewModel(spec)) {
+    order.push("quick-win");
   }
+
+  order.push("domain-breakdown");
 
   if (spec.lockedPlan.titles.length > 0) {
     order.push("locked-plan");
   }
 
-  order.push("confidence-cta");
+  if (
+    shouldShowConfidenceNote(
+      spec.confidenceNote.level,
+      spec.confidenceNote.instrumentFirst,
+    )
+  ) {
+    order.push("confidence-note");
+  }
+
+  order.push("cta");
 
   return order;
 }
@@ -179,16 +246,64 @@ function collapsedSummaryForDomain(
   return entry.symptoms;
 }
 
-/**
- * Pure Renderer: ReportSpec → view-model for UI (and future PDF).
- * No selection logic — only sentence-building and presentation shaping.
- */
-function presentationFlagsForMedium(medium: RenderMedium): ReportPresentationFlags {
+function selectPrimaryCta(ctas: ReportCta[]): ReportCta | null {
+  const consultation = ctas.filter((cta) => cta.destination === "consultation");
+  if (consultation.length === 0) {
+    return null;
+  }
+
+  return (
+    consultation.find((cta) => cta.moment === "trust") ?? consultation[0]
+  );
+}
+
+function enrichChartData(
+  chart: ReportChart,
+  spec: ReportSpec,
+): unknown {
+  if (chart.kind !== "survival") {
+    return chart.data;
+  }
+
+  const data = chart.data as {
+    status: string;
+    alerts: Array<{
+      engineId: number;
+      domainSlug: string;
+      flag: string;
+      pct: number;
+    }>;
+  };
+
+  const nameByEngineId = new Map(
+    spec.domainBreakdown.map((entry) => [entry.engineId, entry.domainName]),
+  );
+  const nameBySlug = new Map(
+    spec.domainBreakdown.map((entry) => [entry.domainSlug, entry.domainName]),
+  );
+
+  return {
+    ...data,
+    alerts: data.alerts.map((alert) => ({
+      ...alert,
+      domainName:
+        nameByEngineId.get(alert.engineId) ??
+        nameBySlug.get(alert.domainSlug) ??
+        alert.domainSlug,
+    })),
+  };
+}
+
+function presentationFlagsForOptions(
+  medium: RenderMedium,
+  variant: ReportVariant,
+): ReportPresentationFlags {
   if (medium === "print") {
     return {
       expandAllDomains: true,
       hideInteractive: true,
       showPageBreakHints: true,
+      compactIssues: false,
     };
   }
 
@@ -196,22 +311,30 @@ function presentationFlagsForMedium(medium: RenderMedium): ReportPresentationFla
     expandAllDomains: false,
     hideInteractive: false,
     showPageBreakHints: false,
+    compactIssues: variant === "summary",
   };
 }
 
+/**
+ * Pure Renderer: ReportSpec → view-model for UI (and future PDF).
+ * No selection logic — only sentence-building and presentation shaping.
+ */
 export function renderReport(
   spec: ReportSpec,
   options?: RenderReportOptions,
 ): ReportViewModel {
   const medium = options?.medium ?? "app";
-  const presentation = presentationFlagsForMedium(medium);
+  const variant = options?.variant ?? (medium === "print" ? "full" : "full");
+  const presentation = presentationFlagsForOptions(medium, variant);
   const bannerContent = getSurvivalBannerContent(spec.survivalBanner.status);
+  const primaryCta = selectPrimaryCta(spec.ctas);
 
   return {
     medium,
+    variant,
     presentation,
     capacityMode: spec.capacityMode,
-    blockOrder: buildBlockOrder(spec),
+    blockOrder: buildBlockOrder(spec, variant),
     survivalBanner: {
       status: spec.survivalBanner.status,
       tone: spec.survivalBanner.tone,
@@ -219,21 +342,16 @@ export function renderReport(
     },
     healthGauge: {
       percentage: spec.healthDisplay,
-      label: "سلامت وزن‌دار قیف",
+      label: HEALTH_LABEL,
       survivalStatus: spec.survivalBanner.status,
     },
     charts: spec.charts.map((chart) => ({
       kind: chart.kind,
       title: CHART_TITLES[chart.kind],
-      data: chart.data,
+      data: enrichChartData(chart, spec),
     })),
     issues: spec.issues,
-    quickWinTeaser: spec.quickWinTeaser
-      ? {
-          ...spec.quickWinTeaser,
-          suffix: quickWinTeaserSuffix,
-        }
-      : null,
+    quickWin: buildQuickWinViewModel(spec),
     domainBreakdown: spec.domainBreakdown.map((entry) => ({
       ...entry,
       expanded: presentation.expandAllDomains ? true : entry.expanded,
@@ -246,7 +364,7 @@ export function renderReport(
     valueAtStake: spec.valueAtStake
       ? { visible: true, spec: spec.valueAtStake }
       : null,
-    quickWin: spec.quickWin,
+    showMetricsGate: !spec.valueAtStake,
     lockedPlan: {
       body: lockedPlanTeaserBody,
       titles: spec.lockedPlan.titles,
@@ -260,13 +378,17 @@ export function renderReport(
       level: spec.confidenceNote.level,
       instrumentFirst: spec.confidenceNote.instrumentFirst,
     },
-    ctas: spec.ctas.map((cta) => ({
-      moment: cta.moment,
-      headline: cta.headline,
-      destination: cta.destination,
-      buttonLabel: getCtaButtonLabel(spec.capacityMode),
-      personalization: cta.personalization,
-    })),
+    ctas: primaryCta
+      ? [
+          {
+            moment: primaryCta.moment,
+            headline: primaryCta.headline,
+            destination: primaryCta.destination,
+            buttonLabel: getCtaButtonLabel(spec.capacityMode),
+            personalization: primaryCta.personalization,
+          },
+        ]
+      : [],
     expertView: spec.expertView,
   };
 }

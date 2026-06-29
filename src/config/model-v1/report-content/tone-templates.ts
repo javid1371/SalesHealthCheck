@@ -28,13 +28,16 @@ export const survivalBannerTemplates: Record<
 };
 
 export const confidenceHonestyNote =
-  "این تشخیص فعلاً تخمینی است چون عدد ندارید؛ ساخت داشبورد ساده اولین قدم موازی است.";
+  "این تحلیل بر اساس پاسخ‌های شماست. برای دقت بیشتر، اندازه‌گیری منظم فروش را در اولویت بگذارید.";
 
 export const quickWinTeaserSuffix =
-  "یک اقدام سریع هست که می‌تواند از همین فردا شروع شود — کاملش پایین‌تر.";
+  "یک اقدام ساده وجود دارد که می‌توانید از همین هفته شروع کنید — جزئیات در گزارش کامل.";
 
 export const lockedPlanTeaserBody =
-  "نقشه ۳۰ روزه اختصاصی شما آماده است.";
+  "نقشه اقدام ۳۰ روزه اختصاصی در جلسه مشاوره برای شما تهیه می‌شود.";
+
+export const valueStakeTeaserBody =
+  "با وارد کردن چند عدد ساده کسب‌وکار، می‌توانید برآورد ریالی پتانسیل بهبود را در گزارش کامل ببینید.";
 
 export const healthyDomainSummaryLine =
   "این دامنه در وضعیت قابل قبول است و نیاز فوری به مداخله ندارد.";
@@ -42,9 +45,10 @@ export const healthyDomainSummaryLine =
 export const incompleteDomainLabel = "داده ناکافی";
 
 export const quickWinFixLockLabel =
-  "راهکار این دامنه را پایین‌تر، در برد سریع، کامل باز کرده‌ایم.";
+  "راهکار این حوزه در بخش «اولین قدم پیشنهادی» باز شده است.";
 
-export const lockedFixLabel = "راهکار کامل این دامنه در برنامه اختصاصی است.";
+export const lockedFixLabel =
+  "راهکار کامل این حوزه در جلسه مشاوره ارائه می‌شود.";
 
 export const selectedScoreFallbackLabel = (score: number, max = 3): string =>
   `پاسخ شما: ${score} از ${max}`;
