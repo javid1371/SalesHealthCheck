@@ -1,4 +1,7 @@
+"use client";
+
 import { type ReactNode } from "react";
+import { FixedZonePortal } from "@/components/ui/FixedZonePortal";
 import { cn } from "@/lib/utils";
 
 type StickyZoneMode = "sticky" | "fixed";
@@ -23,20 +26,31 @@ const maxWidthClass: Record<MaxWidth, string> = {
   "5xl": "max-w-6xl",
 };
 
-function getPositionClass(
+function getStickyPositionClass(
   position: StickyZoneProps["position"],
-  mode: StickyZoneMode,
 ): string {
   if (position === "top") {
-    if (mode === "fixed") {
-      return "fixed inset-x-0 top-[var(--header-height,3.25rem)] z-20 border-b";
-    }
-    return "sticky top-[var(--header-height,3.25rem)] z-20 border-b";
-  }
-  if (mode === "fixed") {
-    return "fixed inset-x-0 bottom-0 z-20 border-t pb-[env(safe-area-inset-bottom)]";
+    return "sticky top-[var(--header-height)] z-20 border-b";
   }
   return "sticky bottom-0 z-10 border-t pb-[env(safe-area-inset-bottom)]";
+}
+
+function getFixedShellClass(
+  position: StickyZoneProps["position"],
+  dataAssessmentProgress?: boolean,
+): string {
+  if (position === "top" && dataAssessmentProgress) {
+    return "assessment-progress-fixed";
+  }
+  if (position === "bottom") {
+    return "assessment-actions-fixed";
+  }
+  return cn(
+    "fixed inset-x-0 z-20",
+    position === "top"
+      ? "top-[var(--header-height)] border-b"
+      : "bottom-0 border-t pb-[env(safe-area-inset-bottom)]",
+  );
 }
 
 const variantClass: Record<NonNullable<StickyZoneProps["variant"]>, string> = {
@@ -57,13 +71,16 @@ export function StickyZone({
     mode === "fixed" && (position === "top" || position === "bottom");
 
   if (isFixed) {
-    return (
+    const shell = (
       <div
         {...(dataAssessmentProgress ? { "data-assessment-progress": true } : {})}
         className={cn(
-          getPositionClass(position, mode),
-          variantClass[variant],
-          className,
+          getFixedShellClass(position, dataAssessmentProgress),
+          !dataAssessmentProgress && position === "bottom" && variantClass[variant],
+          !dataAssessmentProgress &&
+            position === "top" &&
+            cn(variantClass[variant], className),
+          dataAssessmentProgress && className,
         )}
       >
         <div
@@ -76,6 +93,8 @@ export function StickyZone({
         </div>
       </div>
     );
+
+    return <FixedZonePortal>{shell}</FixedZonePortal>;
   }
 
   return (
@@ -83,7 +102,7 @@ export function StickyZone({
       {...(dataAssessmentProgress ? { "data-assessment-progress": true } : {})}
       className={cn(
         "-mx-4 px-4 sm:-mx-6 sm:px-6",
-        getPositionClass(position, mode),
+        getStickyPositionClass(position),
         variantClass[variant],
         className,
       )}

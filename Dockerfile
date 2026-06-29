@@ -12,10 +12,10 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG SENTRY_DSN
 ARG NEXT_PUBLIC_SENTRY_DSN
+ARG CACHEBUST
 ENV SENTRY_DSN=$SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-RUN npx prisma generate
-RUN npm run build
+RUN echo "Build cache bust: ${CACHEBUST:-none}" && npx prisma generate && npm run build
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app

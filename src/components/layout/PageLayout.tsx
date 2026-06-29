@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { AccountNavLink } from "@/components/layout/AccountNavLink";
 
 interface PageLayoutProps {
@@ -31,17 +30,7 @@ export function PageLayout({
   footer = "full",
 }: PageLayoutProps) {
   return (
-    <div
-      className="min-h-screen bg-zinc-50 pb-[env(safe-area-inset-bottom)]"
-      style={
-        {
-          "--header-height": "calc(env(safe-area-inset-top) + 3.25rem)",
-          "--assessment-progress-height": "9rem",
-          "--assessment-scroll-offset":
-            "calc(var(--header-height) + var(--assessment-progress-height))",
-        } as CSSProperties
-      }
-    >
+    <div className="min-h-screen bg-zinc-50 pb-[env(safe-area-inset-bottom)]">
       <header
         data-site-header
         className="sticky top-0 z-30 border-b border-zinc-200 bg-white pt-[env(safe-area-inset-top)]"

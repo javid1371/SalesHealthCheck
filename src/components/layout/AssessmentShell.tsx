@@ -65,9 +65,8 @@ export function AssessmentShell({
         <div
           className={cn(
             "min-w-0",
-            hasStickyProgress && "pt-[var(--assessment-progress-height)]",
-            hasActions &&
-              "pb-[calc(5rem+env(safe-area-inset-bottom))]",
+            hasStickyProgress && "assessment-content-offset-progress",
+            hasActions && "assessment-content-offset-actions",
           )}
         >
           {stickyProgressContent}
@@ -79,7 +78,7 @@ export function AssessmentShell({
                 <>
                   <div
                     id="assessment-actions"
-                    className="scroll-mt-[var(--assessment-scroll-offset)]"
+                    className="assessment-actions-scroll-target"
                     aria-hidden
                   />
                   <StickyActionBar

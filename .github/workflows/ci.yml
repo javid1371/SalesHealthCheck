@@ -95,6 +95,7 @@ jobs:
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }}
             INSTALL_PLAYWRIGHT=${{ vars.PDF_GENERATION_ENABLED == 'true' && 'true' || 'false' }}
+            CACHEBUST=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

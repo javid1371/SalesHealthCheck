@@ -29,17 +29,7 @@ const HEADER_HEIGHT_VAR = "--header-height";
 const FALLBACK_PROGRESS_HEIGHT = "9rem";
 const FALLBACK_HEADER_HEIGHT = "calc(env(safe-area-inset-top) + 3.25rem)";
 
-function findCssVariableRoot(
-  element: HTMLElement,
-  variableName: string,
-): HTMLElement {
-  let current: HTMLElement | null = element;
-  while (current) {
-    if (current.style.getPropertyValue(variableName)) {
-      return current;
-    }
-    current = current.parentElement;
-  }
+function findCssVariableRoot(): HTMLElement {
   return document.documentElement;
 }
 
@@ -58,7 +48,7 @@ export function AssessmentProgressHeader({
     const stickyEl = content.parentElement;
     if (!stickyEl) return;
 
-    const cssRoot = findCssVariableRoot(stickyEl, PROGRESS_HEIGHT_VAR);
+    const cssRoot = findCssVariableRoot();
     const siteHeader = document.querySelector(SITE_HEADER_SELECTOR);
 
     const updateMetrics = () => {
