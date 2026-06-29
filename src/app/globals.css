@@ -85,6 +85,11 @@
   }
 }
 
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   background: var(--color-surface);
   color: var(--color-foreground);

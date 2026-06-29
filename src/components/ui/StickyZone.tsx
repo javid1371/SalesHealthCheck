@@ -11,6 +11,7 @@ interface StickyZoneProps {
   mode?: StickyZoneMode;
   maxWidth?: MaxWidth;
   className?: string;
+  "data-assessment-progress"?: boolean;
 }
 
 const maxWidthClass: Record<MaxWidth, string> = {
@@ -47,6 +48,7 @@ export function StickyZone({
   mode = "sticky",
   maxWidth,
   className,
+  "data-assessment-progress": dataAssessmentProgress,
 }: StickyZoneProps) {
   const isFixedBottom = position === "bottom" && mode === "fixed";
 
@@ -73,6 +75,7 @@ export function StickyZone({
 
   return (
     <div
+      {...(dataAssessmentProgress ? { "data-assessment-progress": true } : {})}
       className={cn(
         "-mx-4 px-4 sm:-mx-6 sm:px-6",
         getPositionClass(position, mode),

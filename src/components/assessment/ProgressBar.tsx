@@ -31,7 +31,7 @@ export function ProgressBar({
   return (
     <div className={compact ? "space-y-1.5" : "space-y-2"}>
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium text-zinc-700">{label}</span>
+        <span className="min-w-0 break-words font-medium text-zinc-700">{label}</span>
         <span className="shrink-0 text-zinc-500">{progressLabel}</span>
       </div>
       <div

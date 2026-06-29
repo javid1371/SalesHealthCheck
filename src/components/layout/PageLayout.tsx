@@ -42,7 +42,10 @@ export function PageLayout({
         } as CSSProperties
       }
     >
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white pt-[env(safe-area-inset-top)]">
+      <header
+        data-site-header
+        className="sticky top-0 z-30 border-b border-zinc-200 bg-white pt-[env(safe-area-inset-top)]"
+      >
         <div
           className={`mx-auto flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 ${maxWidthClass[maxWidth]}`}
         >
@@ -72,12 +75,12 @@ export function PageLayout({
         {(title || subtitle) && (
           <div className="mb-8">
             {title && (
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
+              <h1 className="break-words text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl">
                 {title}
               </h1>
             )}
             {subtitle && (
-              <p className="mt-2 text-base leading-7 text-zinc-600">{subtitle}</p>
+              <p className="mt-2 break-words text-base leading-7 text-zinc-600">{subtitle}</p>
             )}
           </div>
         )}

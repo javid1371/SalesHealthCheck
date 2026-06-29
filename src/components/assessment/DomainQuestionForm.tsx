@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { scrollToAssessmentTargetAfterLayout } from "@/lib/assessment-scroll";
 import type { QuestionDto } from "@/modules/question-bank/question-bank.types";
 
 interface DomainQuestionFormProps {
@@ -9,61 +10,49 @@ interface DomainQuestionFormProps {
   onAnswerChange: (questionId: string, optionId: string) => void;
 }
 
-function scrollToElement(element: HTMLElement) {
-  const reducedMotion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)",
-  ).matches;
-  element.scrollIntoView({
-    behavior: reducedMotion ? "instant" : "smooth",
-    block: "start",
-  });
-}
-
 export function DomainQuestionForm({
   questions,
   answers,
   onAnswerChange,
 }: DomainQuestionFormProps) {
-  const legendRefs = useRef(new Map<string, HTMLLegendElement>());
+  const anchorRefs = useRef(new Map<string, HTMLDivElement>());
 
   const handleSelect = useCallback(
     (questionId: string, optionId: string) => {
       onAnswerChange(questionId, optionId);
 
       const index = questions.findIndex((q) => q.id === questionId);
-      requestAnimationFrame(() => {
-        if (index + 1 < questions.length) {
-          const nextLegend = legendRefs.current.get(questions[index + 1].id);
-          if (nextLegend) scrollToElement(nextLegend);
-          return;
-        }
+      if (index + 1 < questions.length) {
+        const nextAnchor = anchorRefs.current.get(questions[index + 1].id);
+        scrollToAssessmentTargetAfterLayout(nextAnchor);
+        return;
+      }
 
-        const actionsEl = document.getElementById("assessment-actions");
-        if (actionsEl) scrollToElement(actionsEl);
-      });
+      scrollToAssessmentTargetAfterLayout(
+        document.getElementById("assessment-actions"),
+      );
     },
     [onAnswerChange, questions],
   );
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-8">
       {questions.map((question, index) => (
-        <fieldset key={question.id} className="space-y-4">
-          <legend
+        <fieldset key={question.id} className="min-w-0 w-full space-y-4">
+          <legend className="sr-only">{question.text}</legend>
+          <div
             ref={(el) => {
               if (el) {
-                legendRefs.current.set(question.id, el);
+                anchorRefs.current.set(question.id, el);
               } else {
-                legendRefs.current.delete(question.id);
+                anchorRefs.current.delete(question.id);
               }
             }}
-            className="scroll-mt-[var(--assessment-scroll-offset)] break-words text-base font-medium leading-7 text-zinc-900"
+            className="break-words text-base font-medium leading-7 text-zinc-900"
           >
-            <span className="ml-2 text-sm text-zinc-400">
-              {index + 1}.
-            </span>
+            <span className="ml-2 text-sm text-zinc-400">{index + 1}.</span>
             {question.text}
-          </legend>
+          </div>
           <div className="space-y-3">
             {question.options.map((option) => {
               const isSelected = answers[question.id] === option.id;

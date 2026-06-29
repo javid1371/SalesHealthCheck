@@ -121,9 +121,9 @@ flowchart TB
 
 **Header offset:** `PageLayout` sets `--header-height: calc(env(safe-area-inset-top) + 3.25rem)` and keeps the site header `sticky top-0 z-30`. Top zones use `top-[var(--header-height)]` so progress never slides under the header.
 
-**Scroll offset:** `PageLayout` sets a fallback `--assessment-progress-height: 9rem` and `--assessment-scroll-offset: calc(var(--header-height) + var(--assessment-progress-height))`. After mount, `AssessmentProgressHeader` measures its sticky zone with `ResizeObserver` and writes the real height to `--assessment-progress-height` so scroll targets stay below both progress bars. Auto-scroll after answer selection targets each question’s `<legend>` (not the full fieldset) and the `#assessment-actions` sentinel on the last question.
+**Scroll offset:** `PageLayout` sets fallback `--header-height` and `--assessment-progress-height: 9rem`. After mount, `AssessmentProgressHeader` measures the site header (`data-site-header`) and progress sticky zone (`data-assessment-progress`) with `ResizeObserver` and writes real pixel heights to those CSS variables (for sticky `top` positioning). Auto-scroll after answer selection uses `scrollToAssessmentTarget` in `src/lib/assessment-scroll.ts`, which reads live DOM heights instead of relying on `scroll-margin` on `<legend>`. Each question’s visible text lives in a scroll anchor `div`; the last question scrolls to the `#assessment-actions` sentinel above the bottom bar.
 
-**Horizontal overflow:** The app shell uses `overflow-x-hidden` on the root `PageLayout` wrapper; long question and option text use `break-words` and `min-w-0` on flex rows in `DomainQuestionForm`.
+**Horizontal overflow:** The app shell uses `overflow-x-hidden` on `PageLayout` and `overflow-x: clip` on `html`/`body`. Question fieldsets use `min-w-0 w-full`; long question, option, title, and progress text use `break-words` and `min-w-0` on flex rows in `DomainQuestionForm`, `PageLayout`, and `AssessmentProgressHeader`.
 
 **Content clearance:** When fixed bottom actions are active, `AssessmentShell` adds `pb-[calc(5rem+env(safe-area-inset-bottom))]` on the content wrapper so form content and footer are not hidden behind the bottom bar.
 

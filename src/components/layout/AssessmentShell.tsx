@@ -63,6 +63,7 @@ export function AssessmentShell({
       >
         <div
           className={cn(
+            "min-w-0",
             hasActions &&
               "pb-[calc(5rem+env(safe-area-inset-bottom))]",
           )}
