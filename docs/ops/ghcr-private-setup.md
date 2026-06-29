@@ -7,39 +7,26 @@
 | کجا | چه توکنی | برای چه |
 |-----|----------|---------|
 | GitHub → Secrets → Actions | `GHCR_TOKEN` | deploy خودکار از CI به VPS |
-| VPS (یک بار) | همان PAT | `docker login ghcr.io` روی سرور |
-| لپ‌تاپ (اختیاری) | همان PAT | `./scripts/deploy-to-vps.sh` با `GHCR_TOKEN=...` |
+| VPS (یک بار) | Classic PAT | `docker login ghcr.io` روی سرور |
+| لپ‌تاپ (اختیاری) | Classic PAT | `./scripts/deploy-to-vps.sh` با `GHCR_TOKEN=...` |
 
 **Push image به GHCR** را CI با `GITHUB_TOKEN` داخلی انجام می‌دهد — برای build/push توکن جدا لازم نیست.
 
+> **مهم:** GitHub Packages (GHCR) فقط **Personal Access Token (classic)** را قبول می‌کند. Fine-grained token (`github_pat_...`) برای `docker pull` کار **نمی‌کند** — گزینه Packages در آن UI وجود ندارد.
+
 ---
 
-## مرحله ۱ — ساخت Personal Access Token
-
-### روش پیشنهادی: Fine-grained token
-
-1. برو به: [github.com/settings/tokens?type=beta](https://github.com/settings/tokens?type=beta)
-2. **Generate new token**
-3. **Token name:** مثلاً `sales-health-check-ghcr`
-4. **Expiration:** 90 days یا No expiration (پروژه شخصی — No expiration راحت‌تر، ولی امنیت کمتر)
-5. **Resource owner:** اکانت خودت (`javid1371`)
-6. **Repository access:** **Only select repositories** → تیک **SalesHealthCheck**
-7. **Permissions → Repository permissions:**
-   - **Contents:** Read-only (برای package لینک‌شده به repo خصوصی)
-8. **Permissions → Account permissions:**
-   - **Packages:** Read-only (برای pull روی VPS)
-9. **Generate token**
-10. توکن را **فقط یک بار** کپی کن (شبیه `github_pat_11ABC...` یا `ghp_xxxx`) — بعداً دوباره نشان داده نمی‌شود.
-
-### روش جایگزین: Classic token
+## مرحله ۱ — ساخت Classic token
 
 1. برو به: [github.com/settings/tokens](https://github.com/settings/tokens)
-2. **Generate new token (classic)**
-3. Note: `sales-health-check-ghcr`
-4. Scopes:
-   - ✅ `read:packages`
-   - ✅ `repo` (چون repository خصوصی است)
-5. Generate و کپی کن (`ghp_...`).
+2. **Generate new token** → **Generate new token (classic)**
+3. **Note:** `sales-health-check-ghcr`
+4. **Expiration:** 90 days یا No expiration
+5. **Scopes** (فقط این دو):
+   - ✅ **`read:packages`** — pull از GHCR
+   - ✅ **`repo`** — چون repository خصوصی است
+6. **Generate token**
+7. توکن `ghp_...` را **فقط یک بار** کپی کن — در chat، commit، یا screenshot نگذار.
 
 ---
 
@@ -47,37 +34,29 @@
 
 1. Repo → **Settings** → **Secrets and variables** → **Actions**
 2. **New repository secret**
-3. Name: `GHCR_TOKEN` — Value: همان PAT
+3. Name: `GHCR_TOKEN` — Value: Classic PAT (`ghp_...`)
 4. (اختیاری برای auto-deploy) secrets دیگر:
 
 | Name | Value |
 |------|--------|
 | `VPS_SSH_HOST` | `root@193.163.201.132` |
-| `VPS_SSH_KEY` | محتوای فایل private key (مثلاً `~/.ssh/id_ed25519`) |
-
-بعد از push به `main`، job `deploy` با این توکن روی VPS لاگین می‌کند و image را pull می‌کند.
+| `VPS_SSH_KEY` | محتوای فایل private key |
 
 ---
 
 ## مرحله ۳ — لاگین دائمی روی VPS (یک بار)
 
-SSH به سرور:
-
 ```bash
 ssh root@193.163.201.132
+read -s GHCR_TOKEN && echo "$GHCR_TOKEN" | docker login ghcr.io -u javid1371 --password-stdin
+unset GHCR_TOKEN
 ```
 
-لاگین Docker به GHCR (به‌جای `TOKEN` همان PAT را بگذار؛ username همان GitHub username):
+(`read -s` توکن را در history ترمینال ذخیره نمی‌کند.)
 
-```bash
-echo "TOKEN" | docker login ghcr.io -u javid1371 --password-stdin
-```
+Expected: `Login Succeeded` — اعبار در `/root/.docker/config.json` می‌ماند.
 
-Expected: `Login Succeeded`
-
-اعتبار در `/root/.docker/config.json` ذخیره می‌شود — deployهای بعدی بدون `GHCR_TOKEN` در env هم کار می‌کنند.
-
-تست pull:
+تست:
 
 ```bash
 docker pull ghcr.io/javid1371/sales-health-check:latest
@@ -87,21 +66,18 @@ docker pull ghcr.io/javid1371/sales-health-check:latest
 
 ## مرحله ۴ — bootstrap یا deploy
 
-**اولین بار** (از لپ‌تاپ):
+**اولین بار** (از لپ‌تاپ — توکن را inline ننویس؛ از env استفاده کن):
 
 ```bash
-cd /path/to/SalesHealthCheck
 chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
-
-# اگر روی VPS هنوز docker login نکردی:
-GHCR_TOKEN=github_pat_xxxx ./scripts/bootstrap-vps.sh root@193.163.201.132
+read -s GHCR_TOKEN && export GHCR_TOKEN
+./scripts/bootstrap-vps.sh root@193.163.201.132
+unset GHCR_TOKEN
 ```
 
-**به‌روزرسانی‌های بعدی:**
+**به‌روزرسانی‌های بعدی** (اگر روی VPS قبلاً `docker login` کردی):
 
 ```bash
-GHCR_TOKEN=github_pat_xxxx ./scripts/deploy-to-vps.sh root@193.163.201.132
-# یا اگر روی VPS قبلاً docker login کردی:
 ./scripts/deploy-to-vps.sh root@193.163.201.132
 ```
 
@@ -111,18 +87,18 @@ GHCR_TOKEN=github_pat_xxxx ./scripts/deploy-to-vps.sh root@193.163.201.132
 
 | خطا | علت | راه‌حل |
 |-----|-----|--------|
-| `denied` / `unauthorized` on pull | توکن نادرست یا scope کم | PAT با `read:packages` + دسترسی repo |
-| `manifest unknown` | هنوز CI image را push نکرده | Actions → آخرین run روی `main` → job `build-push` باید سبز باشد |
-| Package پیدا نمی‌شود | اولین build هنوز اجرا نشده | یک بار push به `main` و صبر برای CI |
-| `docker login` موفق ولی pull fail | package به repo دیگر لینک است | از URL دقیق `ghcr.io/javid1371/sales-health-check` استفاده کن |
+| `denied` / `unauthorized` | Classic PAT نیست یا scope کم | `read:packages` + `repo` |
+| Fine-grained ساختم ولی Packages ندارم | GHCR classic-only است | Classic token بساز |
+| `manifest unknown` | CI هنوز image push نکرده | Actions → job `build-push` روی `main` |
+| `docker login` OK ولی pull fail | tag یا نام image | `ghcr.io/javid1371/sales-health-check:latest` |
 
 ---
 
 ## امنیت
 
-- PAT را در chat، commit، یا `.env` commit‌شده نگذار.
-- فقط `read:packages` برای VPS کافی است — write لازم نیست.
-- اگر توکن لو رفت: GitHub → Settings → tokens → **Delete** و توکن جدید بساز.
+- PAT را **هرگز** در chat، issue، commit، یا `.env` commit‌شده نگذار.
+- اگر لو رفت: [github.com/settings/tokens](https://github.com/settings/tokens) → **Revoke** → توکن جدید بساز.
+- فقط `read:packages` (+ `repo`) کافی است — `write:packages` لازم نیست.
 
 ## Related
 

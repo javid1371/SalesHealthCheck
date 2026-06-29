@@ -122,7 +122,7 @@ Fast path: CI builds the image → GHCR → VPS pulls. See [production-deploy.md
 
 ```bash
 chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
-GHCR_TOKEN=github_pat_xxxx ./scripts/bootstrap-vps.sh root@your-vps-ip
+GHCR_TOKEN=ghp_xxxx ./scripts/bootstrap-vps.sh root@your-vps-ip
 ```
 
 **Updates** (after push to `main` and CI completes):

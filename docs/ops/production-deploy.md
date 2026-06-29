@@ -167,7 +167,7 @@ On every push to `main`, GitHub Actions runs tests, builds the Docker image, and
 
 | Secret | Example | Purpose |
 |--------|---------|---------|
-| `GHCR_TOKEN` | `github_pat_...` or `ghp_...` | Pull private images on VPS during deploy |
+| `GHCR_TOKEN` | `ghp_...` (classic PAT) | Pull private images on VPS during deploy |
 | `VPS_SSH_HOST` | `root@193.163.201.132` | SSH target (optional — skip auto-deploy if unset) |
 | `VPS_SSH_KEY` | private key contents | Deploy job authentication |
 
