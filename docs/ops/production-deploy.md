@@ -162,14 +162,14 @@ On every push to `main`, GitHub Actions runs tests, builds the Docker image, and
 ### GitHub setup (one time)
 
 1. **Actions permissions:** Settings → Actions → General → Workflow permissions → **Read and write**
-2. **GHCR package:** After the first successful build, open the package under your GitHub profile → Package settings → set visibility to **Public** (simplest), **or** keep private and configure tokens below
-3. **Optional auto-deploy secrets** (Settings → Secrets → Actions):
+2. **Private GHCR:** Keep the package private. Create a PAT and configure pull access — step-by-step: **[ghcr-private-setup.md](./ghcr-private-setup.md)**
+3. **Auto-deploy secrets** (Settings → Secrets → Actions):
 
 | Secret | Example | Purpose |
 |--------|---------|---------|
-| `VPS_SSH_HOST` | `root@193.163.201.132` | SSH target |
+| `GHCR_TOKEN` | `github_pat_...` or `ghp_...` | Pull private images on VPS during deploy |
+| `VPS_SSH_HOST` | `root@193.163.201.132` | SSH target (optional — skip auto-deploy if unset) |
 | `VPS_SSH_KEY` | private key contents | Deploy job authentication |
-| `GHCR_TOKEN` | PAT with `read:packages` | Pull private images on VPS (also pass when running scripts locally) |
 
 Optional repository variable: `PDF_GENERATION_ENABLED=true` — bakes Playwright into the CI-built image.
 

@@ -118,11 +118,11 @@ The entrypoint runs `prisma migrate deploy` and seeds only if no active model ex
 
 Fast path: CI builds the image → GHCR → VPS pulls. See [production-deploy.md](docs/ops/production-deploy.md#deploy-with-host-nginx-multi-project-vps).
 
-**First time:**
+**First time** (private GHCR — [how to create token](docs/ops/ghcr-private-setup.md)):
 
 ```bash
 chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
-./scripts/bootstrap-vps.sh root@your-vps-ip
+GHCR_TOKEN=github_pat_xxxx ./scripts/bootstrap-vps.sh root@your-vps-ip
 ```
 
 **Updates** (after push to `main` and CI completes):
@@ -131,7 +131,7 @@ chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
 ./scripts/deploy-to-vps.sh root@your-vps-ip
 ```
 
-Set GitHub Actions secrets `VPS_SSH_HOST` + `VPS_SSH_KEY` for automatic deploy on every merge to `main`.
+Set GitHub Actions secrets `GHCR_TOKEN`, `VPS_SSH_HOST`, and `VPS_SSH_KEY` for automatic deploy on every merge to `main`.
 
 ### Database backup
 
