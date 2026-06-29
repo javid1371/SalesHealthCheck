@@ -102,6 +102,8 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+For the **nginx + GHCR** path (recommended on multi-project VPS), see [Deploy with host nginx](#deploy-with-host-nginx-multi-project-vps) below — updates are `docker pull` only, no rebuild on the server.
+
 ## Architecture
 
 ```
@@ -141,27 +143,69 @@ Use this when the VPS already runs **nginx** on ports 80/443 for other projects 
 ### Stack
 
 - **postgres** + **app** only — see [`docker-compose.nginx.yml`](../../docker-compose.nginx.yml)
+- App image built in **GitHub Actions** and stored on **GHCR** (`ghcr.io/javid1371/sales-health-check`)
 - App bound to `127.0.0.1:${APP_PORT:-3105}` on the host
 - Host nginx reverse-proxies the public domain → localhost port
 - SSL via **certbot** (same pattern as other subdomains on the server)
 
-### One-command deploy from your machine
+### CI/CD flow
 
-```bash
-chmod +x scripts/deploy-to-vps.sh
-./scripts/deploy-to-vps.sh root@193.163.201.132
+```mermaid
+flowchart LR
+  Push[Push to main] --> CI[Tests + build]
+  CI --> GHCR[Push image to GHCR]
+  GHCR --> VPS[VPS: docker pull + compose up]
 ```
 
-The script rsyncs the repo to `/opt/sales-health-check`, creates `.env` with generated secrets on first run, builds Docker, installs nginx site config from [`deploy/nginx/health.javidmgdm.com.conf`](../../deploy/nginx/health.javidmgdm.com.conf), and runs certbot.
+On every push to `main`, GitHub Actions runs tests, builds the Docker image, and pushes tags `latest` and `<git-sha>` to GHCR. If repository secrets are set, the deploy job SSHs to the VPS and runs the update script.
 
-Override certbot email: `CERTBOT_EMAIL=you@example.com ./scripts/deploy-to-vps.sh`
+### GitHub setup (one time)
+
+1. **Actions permissions:** Settings → Actions → General → Workflow permissions → **Read and write**
+2. **GHCR package:** After the first successful build, open the package under your GitHub profile → Package settings → set visibility to **Public** (simplest), **or** keep private and configure tokens below
+3. **Optional auto-deploy secrets** (Settings → Secrets → Actions):
+
+| Secret | Example | Purpose |
+|--------|---------|---------|
+| `VPS_SSH_HOST` | `root@193.163.201.132` | SSH target |
+| `VPS_SSH_KEY` | private key contents | Deploy job authentication |
+| `GHCR_TOKEN` | PAT with `read:packages` | Pull private images on VPS (also pass when running scripts locally) |
+
+Optional repository variable: `PDF_GENERATION_ENABLED=true` — bakes Playwright into the CI-built image.
+
+### First-time bootstrap (server)
+
+```bash
+chmod +x scripts/bootstrap-vps.sh scripts/deploy-to-vps.sh
+# If GHCR package is private:
+GHCR_TOKEN=ghp_xxx ./scripts/bootstrap-vps.sh root@193.163.201.132
+# Public package:
+./scripts/bootstrap-vps.sh root@193.163.201.132
+```
+
+Bootstrap syncs compose/scripts, creates `.env` with generated secrets, pulls the image from GHCR, starts Docker, installs nginx site config, and runs certbot.
+
+Override certbot email: `CERTBOT_EMAIL=you@example.com ./scripts/bootstrap-vps.sh`
+
+### Routine deploy (manual, ~1–2 min)
+
+After CI has pushed a new image to GHCR:
+
+```bash
+./scripts/deploy-to-vps.sh root@193.163.201.132
+# Pin a specific build:
+./scripts/deploy-to-vps.sh root@193.163.201.132 abc1234def5678
+```
+
+This syncs only `docker-compose.nginx.yml`, `scripts/vps-update.sh`, and nginx config — then `docker compose pull` + restart. **No local Docker build, no image scp.**
 
 ### Manual steps (server)
 
 ```bash
 cd /opt/sales-health-check
-cp .env.production.example .env   # edit secrets
-docker compose -f docker-compose.nginx.yml up -d --build
+cp .env.production.example .env   # edit secrets; set APP_IMAGE
+docker login ghcr.io   # if package is private
+bash scripts/vps-update.sh
 
 cp deploy/nginx/health.javidmgdm.com.conf /etc/nginx/sites-available/
 ln -sf /etc/nginx/sites-available/health.javidmgdm.com.conf /etc/nginx/sites-enabled/
@@ -174,7 +218,7 @@ certbot --nginx -d health.javidmgdm.com
 ```
 Internet :443/:80
     → nginx (host, TLS via certbot)
-    → 127.0.0.1:3105 (Docker app)
+    → 127.0.0.1:3105 (Docker app from GHCR)
     → postgres:5432 (internal only)
 ```
 
@@ -183,7 +227,7 @@ Internet :443/:80
 ```bash
 ./scripts/deploy-to-vps.sh
 # or on server:
-cd /opt/sales-health-check && docker compose -f docker-compose.nginx.yml up -d --build
+cd /opt/sales-health-check && bash scripts/vps-update.sh
 ```
 
 ## Related

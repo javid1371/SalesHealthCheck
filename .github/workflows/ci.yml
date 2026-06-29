@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/javid1371/sales-health-check
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -26,6 +30,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sales_health_check
+      AUTH_SESSION_SECRET: ci-test-auth-session-secret-at-least-32-chars
+      ADMIN_PASSWORD: ci-admin-password
 
     steps:
       - name: Checkout
@@ -54,3 +60,69 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  build-push:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          build-args: |
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            INSTALL_PLAYWRIGHT=${{ vars.PDF_GENERATION_ENABLED == 'true' && 'true' || 'false' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_HOST: ${{ secrets.VPS_SSH_HOST }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          if [ -z "${VPS_SSH_KEY}" ] || [ -z "${VPS_SSH_HOST}" ]; then
+            echo "VPS_SSH_KEY or VPS_SSH_HOST not set — skipping auto-deploy."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          HOST="${VPS_SSH_HOST#*@}"
+          ssh-keyscan -H "${HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          export GHCR_TOKEN GHCR_USER SSH_IDENTITY_FILE=~/.ssh/deploy_key
+          bash scripts/deploy-to-vps.sh "${VPS_SSH_HOST}" "${{ github.sha }}"
