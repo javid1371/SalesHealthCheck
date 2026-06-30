@@ -74,6 +74,14 @@ export const env = {
   get adminPasswordHash(): string | undefined {
     return process.env.ADMIN_PASSWORD_HASH;
   },
+  /** Plain sales expert password for consultation leads panel. */
+  get salesExpertPassword(): string | undefined {
+    return process.env.SALES_EXPERT_PASSWORD;
+  },
+  /** Scrypt hash of sales expert password. */
+  get salesExpertPasswordHash(): string | undefined {
+    return process.env.SALES_EXPERT_PASSWORD_HASH;
+  },
   /** OTP validity window in seconds; default 300. */
   get otpTtlSeconds(): number {
     return parsePositiveInt(process.env.OTP_TTL_SECONDS, 300);

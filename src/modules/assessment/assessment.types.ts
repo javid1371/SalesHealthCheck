@@ -1,5 +1,5 @@
 import type { SalesModel } from "@prisma/client";
-import type { AdminSession, UserSession } from "@/lib/session";
+import type { AdminSession, SalesExpertSession, UserSession } from "@/lib/session";
 import type { StructuredReport } from "@/types/report";
 import type { ReportSpec, ExpertViewSpec } from "@/types/report-spec";
 
@@ -12,6 +12,7 @@ export type ResultAccessInput = {
 export type ExpertViewAccessInput = {
   adminToken?: string | null;
   adminSession?: AdminSession | null;
+  salesExpertSession?: SalesExpertSession | null;
 };
 
 export interface StartAssessmentInput {

@@ -4,9 +4,11 @@ import { env } from "@/lib/env";
 
 export const USER_SESSION_COOKIE = "shc_user_session";
 export const ADMIN_SESSION_COOKIE = "shc_admin_session";
+export const SALES_EXPERT_SESSION_COOKIE = "shc_sales_expert_session";
 
 const DEFAULT_USER_TTL_SECONDS = 60 * 60 * 24 * 30;
 const DEFAULT_ADMIN_TTL_SECONDS = 60 * 60 * 24;
+const DEFAULT_SALES_EXPERT_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export type UserSession = {
   userId: string;
@@ -14,6 +16,10 @@ export type UserSession = {
 
 export type AdminSession = {
   role: "admin";
+};
+
+export type SalesExpertSession = {
+  role: "sales_expert";
 };
 
 type UserSessionPayload = {
@@ -26,7 +32,12 @@ type AdminSessionPayload = {
   exp: number;
 };
 
-type SessionScope = "user" | "admin" | "all";
+type SalesExpertSessionPayload = {
+  role: "sales_expert";
+  exp: number;
+};
+
+type SessionScope = "user" | "admin" | "sales_expert" | "all";
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -41,7 +52,12 @@ function timingSafeCompare(a: string, b: string): boolean {
   return timingSafeEqual(aBuf, bBuf);
 }
 
-function signPayload(payload: UserSessionPayload | AdminSessionPayload): string {
+function signPayload(
+  payload:
+    | UserSessionPayload
+    | AdminSessionPayload
+    | SalesExpertSessionPayload,
+): string {
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = createHmac("sha256", env.authSessionSecret)
     .update(payloadB64)
@@ -113,6 +129,14 @@ function encodeAdminSession(ttlSeconds: number): string {
   return signPayload(payload);
 }
 
+function encodeSalesExpertSession(ttlSeconds: number): string {
+  const payload: SalesExpertSessionPayload = {
+    role: "sales_expert",
+    exp: nowSeconds() + ttlSeconds,
+  };
+  return signPayload(payload);
+}
+
 /** Parse a signed user session cookie value (e.g. from `NextRequest.cookies`). */
 export function parseUserSessionCookie(
   value: string | undefined,
@@ -137,6 +161,17 @@ export function parseAdminSessionCookie(
     return null;
   }
   return { role: "admin" };
+}
+
+/** Parse a signed sales expert session cookie value. */
+export function parseSalesExpertSessionCookie(
+  value: string | undefined,
+): SalesExpertSession | null {
+  const payload = verifySignedPayload<SalesExpertSessionPayload>(value);
+  if (!payload || payload.role !== "sales_expert") {
+    return null;
+  }
+  return { role: "sales_expert" };
 }
 
 export async function createUserSession(
@@ -172,6 +207,28 @@ export async function readAdminSession(): Promise<AdminSession | null> {
   );
 }
 
+export async function createSalesExpertSession(
+  options?: { ttlSeconds?: number },
+): Promise<SalesExpertSession> {
+  const ttlSeconds =
+    options?.ttlSeconds ?? DEFAULT_SALES_EXPERT_TTL_SECONDS;
+  const value = encodeSalesExpertSession(ttlSeconds);
+  const cookieStore = await cookies();
+  cookieStore.set(
+    SALES_EXPERT_SESSION_COOKIE,
+    value,
+    cookieOptions(ttlSeconds),
+  );
+  return { role: "sales_expert" };
+}
+
+export async function readSalesExpertSession(): Promise<SalesExpertSession | null> {
+  const cookieStore = await cookies();
+  return parseSalesExpertSessionCookie(
+    cookieStore.get(SALES_EXPERT_SESSION_COOKIE)?.value,
+  );
+}
+
 export async function clearSession(scope: SessionScope = "all"): Promise<void> {
   const cookieStore = await cookies();
   if (scope === "user" || scope === "all") {
@@ -179,6 +236,9 @@ export async function clearSession(scope: SessionScope = "all"): Promise<void> {
   }
   if (scope === "admin" || scope === "all") {
     cookieStore.delete(ADMIN_SESSION_COOKIE);
+  }
+  if (scope === "sales_expert" || scope === "all") {
+    cookieStore.delete(SALES_EXPERT_SESSION_COOKIE);
   }
 }
 
@@ -192,6 +252,7 @@ type RequestCookieReader = {
 export function readSessionsFromRequest(request: RequestCookieReader): {
   userSession: UserSession | null;
   adminSession: AdminSession | null;
+  salesExpertSession: SalesExpertSession | null;
 } {
   return {
     userSession: parseUserSessionCookie(
@@ -199,6 +260,9 @@ export function readSessionsFromRequest(request: RequestCookieReader): {
     ),
     adminSession: parseAdminSessionCookie(
       request.cookies.get(ADMIN_SESSION_COOKIE)?.value,
+    ),
+    salesExpertSession: parseSalesExpertSessionCookie(
+      request.cookies.get(SALES_EXPERT_SESSION_COOKIE)?.value,
     ),
   };
 }

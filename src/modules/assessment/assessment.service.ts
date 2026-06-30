@@ -810,7 +810,7 @@ export async function getExpertView(
   assessmentId: string,
   access: ExpertViewAccessInput = {},
 ): Promise<ExpertViewResponse> {
-  if (!access.adminSession) {
+  if (!access.adminSession && !access.salesExpertSession) {
     const expected = env.expertViewToken;
     if (expected) {
       if (access.adminToken !== expected) {

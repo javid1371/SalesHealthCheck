@@ -1,7 +1,7 @@
-import { scryptSync, timingSafeEqual } from "node:crypto";
 import type { AssessmentStatus } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
+import { verifyConfiguredPassword } from "@/lib/password-auth";
 import type { AdminSession } from "@/lib/session";
 import {
   countAssessmentsForAdmin,
@@ -24,43 +24,11 @@ const STATUS_LABELS: Record<AssessmentStatus, string> = {
   abandoned: "رها شده",
 };
 
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) {
-    return false;
-  }
-  return timingSafeEqual(aBuf, bBuf);
-}
-
-function verifyScryptPassword(password: string, stored: string): boolean {
-  const parts = stored.split(":");
-  if (parts.length !== 3 || parts[0] !== "scrypt") {
-    return false;
-  }
-
-  const salt = Buffer.from(parts[1], "base64");
-  const expectedHash = Buffer.from(parts[2], "base64");
-  if (salt.length === 0 || expectedHash.length === 0) {
-    return false;
-  }
-
-  const derived = scryptSync(password, salt, expectedHash.length);
-  return timingSafeEqual(derived, expectedHash);
-}
-
 function isAdminPasswordValid(password: string): boolean {
-  const hash = env.adminPasswordHash;
-  if (hash) {
-    return verifyScryptPassword(password, hash);
-  }
-
-  const plain = env.adminPassword;
-  if (plain) {
-    return timingSafeStringEqual(password, plain);
-  }
-
-  return false;
+  return verifyConfiguredPassword(password, {
+    plain: env.adminPassword,
+    hash: env.adminPasswordHash,
+  });
 }
 
 function formatAssessmentDate(date: Date): string {

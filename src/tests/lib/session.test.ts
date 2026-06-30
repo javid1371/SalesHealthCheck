@@ -14,6 +14,7 @@ vi.mock("@/lib/env", () => ({
 
 import {
   parseAdminSessionCookie,
+  parseSalesExpertSessionCookie,
   parseUserSessionCookie,
 } from "@/lib/session";
 
@@ -46,6 +47,17 @@ describe("session cookies", () => {
     });
 
     expect(parseAdminSessionCookie(value)).toEqual({ role: "admin" });
+  });
+
+  it("parses a valid sales expert session cookie", () => {
+    const value = signTestPayload({
+      role: "sales_expert",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+
+    expect(parseSalesExpertSessionCookie(value)).toEqual({
+      role: "sales_expert",
+    });
   });
 
   it("rejects expired sessions", () => {

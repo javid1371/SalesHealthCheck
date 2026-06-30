@@ -5,6 +5,7 @@ import { HealthBadge } from "@/components/report/HealthBadge";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { LinkButton } from "@/components/ui/LinkButton";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import { readAdminSession } from "@/lib/session";
 import { listAssessments } from "@/modules/admin/admin.service";
@@ -55,7 +56,10 @@ export default async function AdminAssessmentsPage({
       maxWidth="5xl"
       footer="minimal"
     >
-      <div className="mb-6 flex justify-end">
+      <div className="mb-6 flex justify-end gap-3">
+        <LinkButton href="/expert/consultations" variant="secondary" size="sm">
+          درخواست‌های مشاوره
+        </LinkButton>
         <AdminLogoutButton />
       </div>
 
