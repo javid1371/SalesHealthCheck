@@ -11,11 +11,13 @@ export async function GET(
   try {
     const { reportId } = await params;
     const token = request.nextUrl.searchParams.get("token");
-    const { userSession, adminSession } = readSessionsFromRequest(request);
+    const { userSession, adminSession, salesExpertSession } =
+      readSessionsFromRequest(request);
     const pdf = await generateReportPdf(reportId, {
       token,
       userSession,
       adminSession,
+      salesExpertSession,
     });
 
     return new Response(new Uint8Array(pdf), {

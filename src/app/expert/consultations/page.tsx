@@ -130,19 +130,35 @@ export default async function ExpertConsultationsPage({
                     {item.createdAt}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1 text-sm">
+                      {item.reportUrl ? (
+                        <Link
+                          href={item.reportUrl}
+                          className="font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          گزارش کامل
+                        </Link>
+                      ) : null}
+                      {item.resultUrl ? (
+                        <Link
+                          href={item.resultUrl}
+                          className="text-zinc-700 hover:text-zinc-900"
+                        >
+                          خلاصه نتیجه
+                        </Link>
+                      ) : null}
                       {item.expertViewUrl ? (
                         <Link
                           href={item.expertViewUrl}
-                          className="font-medium text-emerald-700 hover:text-emerald-800"
+                          className="text-zinc-600 hover:text-zinc-800"
                         >
-                          Expert View
+                          نمای فروش
                         </Link>
                       ) : null}
                       {adminSession && item.adminAssessmentUrl ? (
                         <Link
                           href={item.adminAssessmentUrl}
-                          className="text-zinc-600 hover:text-zinc-800"
+                          className="text-zinc-500 hover:text-zinc-700"
                         >
                           جزئیات ادمین
                         </Link>

@@ -9,13 +9,15 @@ export async function GET(
 ) {
   const { reportId } = await params;
   const token = request.nextUrl.searchParams.get("token");
-  const { userSession, adminSession } = readSessionsFromRequest(request);
+  const { userSession, adminSession, salesExpertSession } =
+    readSessionsFromRequest(request);
 
   return handleApiRequest(() =>
     getReport(reportId, {
       token,
       userSession,
       adminSession,
+      salesExpertSession,
     }),
   );
 }

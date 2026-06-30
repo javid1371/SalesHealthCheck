@@ -21,6 +21,8 @@ export interface ConsultationListItem {
   overallScorePercentage: number | null;
   assessmentId: string | null;
   reportId: string | null;
+  resultUrl: string | null;
+  reportUrl: string | null;
   expertViewUrl: string | null;
   adminAssessmentUrl: string | null;
 }

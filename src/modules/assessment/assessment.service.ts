@@ -176,9 +176,10 @@ function assertAssessmentCompleted(status: string) {
 export function assertResultAccess(params: {
   assessment: { userId: string; resultToken: string };
 } & ResultAccessInput): void {
-  const { assessment, token, userSession, adminSession } = params;
+  const { assessment, token, userSession, adminSession, salesExpertSession } =
+    params;
 
-  if (adminSession) {
+  if (adminSession || salesExpertSession) {
     return;
   }
 

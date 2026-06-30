@@ -7,6 +7,7 @@ export type ResultAccessInput = {
   token?: string | null;
   userSession?: UserSession | null;
   adminSession?: AdminSession | null;
+  salesExpertSession?: SalesExpertSession | null;
 };
 
 export type ExpertViewAccessInput = {

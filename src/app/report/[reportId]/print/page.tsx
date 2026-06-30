@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { ReportPrintView } from "@/components/report/ReportPrintView";
 import { isAppError } from "@/lib/errors";
-import { readAdminSession, readUserSession } from "@/lib/session";
+import { readAdminSession, readSalesExpertSession, readUserSession } from "@/lib/session";
 import { getReport } from "@/modules/assessment/assessment.service";
 import type { ReportResponse } from "@/modules/assessment/assessment.types";
 
@@ -21,6 +21,7 @@ async function loadPrintReport(
     token?: string;
     userSession: Awaited<ReturnType<typeof readUserSession>>;
     adminSession: Awaited<ReturnType<typeof readAdminSession>>;
+    salesExpertSession: Awaited<ReturnType<typeof readSalesExpertSession>>;
   },
 ): Promise<PrintPageResult> {
   try {
@@ -28,6 +29,7 @@ async function loadPrintReport(
       token: access.token,
       userSession: access.userSession,
       adminSession: access.adminSession,
+      salesExpertSession: access.salesExpertSession,
     });
 
     if (!report.reportSpec) {
@@ -52,12 +54,14 @@ export default async function ReportPrintPage({
 }: ReportPrintPageProps) {
   const { reportId } = await params;
   const { token } = await searchParams;
-  const [userSession, adminSession] = await Promise.all([
+  const [userSession, adminSession, salesExpertSession] = await Promise.all([
     readUserSession(),
     readAdminSession(),
+    readSalesExpertSession(),
   ]);
 
-  const hasAccessCredential = !!token || !!userSession || !!adminSession;
+  const hasAccessCredential =
+    !!token || !!userSession || !!adminSession || !!salesExpertSession;
   if (!hasAccessCredential) {
     return (
       <PrintAccessError message="برای مشاهده نسخه چاپ، توکن دسترسی در آدرس لازم است." />
@@ -68,6 +72,7 @@ export default async function ReportPrintPage({
     token,
     userSession,
     adminSession,
+    salesExpertSession,
   });
 
   if (result.status === "not_found") {

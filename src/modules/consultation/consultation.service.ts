@@ -138,6 +138,11 @@ function toConsultationListItem(
       : null,
     assessmentId,
     reportId,
+    resultUrl: assessmentId ? `/assessment/${assessmentId}/result` : null,
+    reportUrl:
+      reportId && assessmentId
+        ? `/report/${reportId}?assessmentId=${assessmentId}`
+        : null,
     expertViewUrl: assessmentId ? `/expert/${assessmentId}` : null,
     adminAssessmentUrl: assessmentId
       ? `/admin/assessments/${assessmentId}`

@@ -44,7 +44,10 @@ export async function generateReportPdf(
   }
 
   const hasAccessCredential =
-    !!access.token || !!access.userSession || !!access.adminSession;
+    !!access.token ||
+    !!access.userSession ||
+    !!access.adminSession ||
+    !!access.salesExpertSession;
   if (!hasAccessCredential) {
     throw new AppError(
       "assessment_access_denied",

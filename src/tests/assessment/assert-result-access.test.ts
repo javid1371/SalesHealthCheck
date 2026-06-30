@@ -35,6 +35,15 @@ describe("assertResultAccess", () => {
     ).not.toThrow();
   });
 
+  it("allows any assessment when sales expert session is present", () => {
+    expect(() =>
+      assertResultAccess({
+        assessment,
+        salesExpertSession: { role: "sales_expert" },
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects invalid token without session", () => {
     expect(() =>
       assertResultAccess({
