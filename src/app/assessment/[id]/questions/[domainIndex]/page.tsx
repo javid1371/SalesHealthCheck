@@ -28,6 +28,12 @@ import type {
   SaveAnswersResponse,
 } from "@/modules/assessment/assessment.types";
 
+interface DevAutofillResponse {
+  resultUrl: string;
+}
+
+const isDevAutofillEnabled = process.env.NODE_ENV !== "production";
+
 export default function DomainQuestionsPage() {
   const params = useParams<{ id: string; domainIndex: string }>();
   const router = useRouter();
@@ -41,6 +47,7 @@ export default function DomainQuestionsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [devAutofilling, setDevAutofilling] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
 
   useEffect(() => {
@@ -193,6 +200,26 @@ export default function DomainQuestionsPage() {
     }
   }
 
+  async function handleDevAutofill() {
+    setDevAutofilling(true);
+    setSaveError(null);
+    setSaveStatus("saving");
+
+    try {
+      const data = await apiPost<DevAutofillResponse>(
+        `/api/dev/assessments/${assessmentId}/autofill`,
+        { strategy: "random" },
+      );
+      setSaveStatus("saved");
+      router.push(data.resultUrl);
+    } catch (err) {
+      setSaveError(resolveApiError(err, PAGE_MESSAGES.saveFailed));
+      setSaveStatus("error");
+    } finally {
+      setDevAutofilling(false);
+    }
+  }
+
   const domain = questionsData?.domains[domainIndex];
   const loadErrorMessage =
     loadError ??
@@ -237,12 +264,25 @@ export default function DomainQuestionsPage() {
       actions={
         questionsData && domain ? (
           <>
+            {isDevAutofillEnabled && (
+              <Button
+                variant="ghost"
+                fullWidth
+                className="sm:w-auto"
+                onClick={() => void handleDevAutofill()}
+                loading={devAutofilling}
+                loadingLabel="در حال ساخت گزارش تست..."
+                disabled={saving}
+              >
+                پر کردن تستی و دیدن گزارش
+              </Button>
+            )}
             <Button
               variant="secondary"
               fullWidth
               className="sm:w-auto"
               onClick={() => void handlePrevious()}
-              disabled={domainIndex === 0 || saving}
+              disabled={domainIndex === 0 || saving || devAutofilling}
             >
               بخش قبلی
             </Button>
@@ -252,6 +292,7 @@ export default function DomainQuestionsPage() {
               onClick={() => void handleNext()}
               loading={saving}
               loadingLabel="در حال ذخیره..."
+              disabled={devAutofilling}
             >
               {domainIndex === questionsData.domains.length - 1
                 ? "مرور پاسخ‌ها"

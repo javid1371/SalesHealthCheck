@@ -58,6 +58,32 @@ export interface ReportIssue {
   costHint: string; // qualitative bridge to value block
 }
 
+export interface DomainRootCauseEvidence {
+  questionNumber?: number;
+  questionText: string;
+  selectedOptionText: string;
+  publicReflection: string;
+  evidenceSentence: string;
+}
+
+/** Public root-cause card — no internal bundle fields. */
+export interface DomainRootCause {
+  rootId: string;
+  rootTitle: string;
+  publicRootSentence: string;
+  mechanism: string;
+  salesImpact: string;
+  evidence: DomainRootCauseEvidence[];
+}
+
+/** Full action disclosure — only populated for the quick-win domain in freemium mode. */
+export interface DomainQuickWinAction {
+  actionId: string;
+  actionTitle: string;
+  quickWinSummary: string;
+  fullAction?: string;
+}
+
 export interface DomainBreakdownEntry {
   engineId: number;
   domainSlug: string;
@@ -79,6 +105,16 @@ export interface DomainBreakdownEntry {
     label: string;
     destination: "consultation" | "ai-purchase";
   };
+  /** From DomainBundle domain_levels — public headline only. */
+  levelHeadline?: string;
+  /** Public symptom bullets from DomainBundle — preferred over legacy symptoms string. */
+  symptomsList?: string[];
+  /** Triggered root causes from question_root_rules — public fields only. */
+  rootCauses?: DomainRootCause[];
+  /** Teaser for locked corrective action — non-quick-win domains only. */
+  lockedActionTeaser?: string;
+  /** Full quick-win action — quick-win domain only in freemium mode. */
+  quickWinAction?: DomainQuickWinAction;
 }
 
 export interface DomainEvidence {

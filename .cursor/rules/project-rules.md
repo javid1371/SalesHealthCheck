@@ -61,6 +61,27 @@ Diagnosis Engine decides what is wrong (bottlenecks, roots, survival, priority).
 Report Engine only narrates structured diagnosis output — it must not compute diagnostic decisions.
 See ADR 0010 and `docs/specs/diagnosis-engine-v2-spec.md`.
 
+## Report Content Library Rule
+
+Report narration copy comes from the in-repo **Report Content Library v1** (DomainBundle), not from Notion at runtime.
+Canonical snapshot: `docs/specs/report-content-library-v1/` (`overview.md`, `cursor-implementation-guide.md`, `domain-bundles.v1.json`).
+Seed and types: `src/config/model-v1/report-content/`; resolvers: `src/modules/report/content-library.ts`.
+Regenerate seed after snapshot changes: `npm run sync:report-content` (supports `--check`).
+
+**Bundle-first user copy (ADR 0016):** prefer DomainBundle public fields when present; fall back to CSV `question-analysis-config` only when bundle data is missing.
+- Domain cards: `symptomsList` from `bundle.symptoms` (bullets); `levelHeadline`, `rootCauses`, actions from bundle.
+- Issue cards: `mechanism` from `public_summary_fa` when available.
+- Never expose `internal_*` fields (e.g. `internal_diagnosis_summary_fa`, `rendering_rules_fa`) in user-facing output.
+
+**Report narrative coherence (ADR 0016):**
+- `quickWin` in `StructuredDiagnosis` is chosen from `{primaryIssue, structuralRoots, bindingConstraint}` (see diagnosis-engine-v2-spec).
+- Composer dedupes issue cards by `engineId`; UI title «مهم‌ترین اولویت‌ها» (not a fixed count).
+- When `rootCauses` exist on a domain card, do not also render legacy standalone evidence for that domain.
+
+New `ReportSpec` fields from bundles are optional — do not break existing report output.
+Freemium: only the `quickWin` domain may show full corrective action; other domains show locked teasers only.
+See ADR 0015 and ADR 0016.
+
 ## ADR Rule
 
 If a proposed implementation conflicts with an ADR, stop and ask for a new ADR before changing the architecture.

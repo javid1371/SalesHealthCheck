@@ -112,16 +112,54 @@ function selectStructuralRoots(
     .map((entry) => entry.engineId);
 }
 
-function selectQuickWin(perDomain: PerDomainDiagnosis[]): number | null {
+function scoreQuickWinCandidate(domain: PerDomainDiagnosis): number {
+  return domain.gap * DOMAIN_CONSTANTS[domain.engineId].Q;
+}
+
+function selectQuickWinLegacy(perDomain: PerDomainDiagnosis[]): number | null {
   const candidates = eligibleDomains(perDomain)
     .filter((domain) => domain.raw <= 9 && DOMAIN_CONSTANTS[domain.engineId].Q === 3)
     .map((domain) => ({
       engineId: domain.engineId,
-      score: domain.gap * DOMAIN_CONSTANTS[domain.engineId].Q,
+      score: scoreQuickWinCandidate(domain),
     }))
     .sort((a, b) => b.score - a.score);
 
   return candidates[0]?.engineId ?? null;
+}
+
+function selectQuickWin(
+  perDomain: PerDomainDiagnosis[],
+  primaryIssue: number | null,
+  structuralRoots: number[],
+  bindingConstraint: number | null,
+): number | null {
+  const eligibleByEngineId = new Map(
+    eligibleDomains(perDomain).map((domain) => [domain.engineId, domain]),
+  );
+
+  const priorityEngineIds = [
+    primaryIssue,
+    ...structuralRoots.slice(0, 2),
+    bindingConstraint,
+  ].filter((engineId): engineId is number => engineId !== null);
+
+  const uniquePriorityIds = [...new Set(priorityEngineIds)];
+
+  const priorityCandidates = uniquePriorityIds
+    .map((engineId) => eligibleByEngineId.get(engineId))
+    .filter((domain): domain is PerDomainDiagnosis => domain !== undefined)
+    .map((domain) => ({
+      engineId: domain.engineId,
+      score: scoreQuickWinCandidate(domain),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  if (priorityCandidates.length > 0) {
+    return priorityCandidates[0]?.engineId ?? null;
+  }
+
+  return selectQuickWinLegacy(perDomain);
 }
 
 function buildIssueRootQuestions(
@@ -221,7 +259,12 @@ export function buildFinalOutputs(input: {
   );
   const primaryIssue = selectPrimaryIssue(priorityLadder);
   const structuralRoots = selectStructuralRoots(perDomain, primaryIssue);
-  const quickWin = selectQuickWin(perDomain);
+  const quickWin = selectQuickWin(
+    perDomain,
+    primaryIssue,
+    structuralRoots,
+    bindingConstraint,
+  );
   const measurementDomain = perDomain.find((domain) => domain.engineId === 16);
   const { confidence, instrumentFirst } = resolveConfidence(measurementDomain);
 

@@ -38,6 +38,23 @@ public_*    = مجاز برای نمایش به مخاطب
 locked_*    = تیزر راهکار، نه راهکار کامل
 ```
 
+## استفادهٔ فیلدهای bundle در گزارش (ADR 0016)
+
+Composer و UI باید **اول** از DomainBundle public استفاده کنند و **فقط در نبود داده** به CSV legacy (`question-analysis-config`) برگردند.
+
+| بخش گزارش | فیلد bundle (اول) | fallback legacy |
+|-----------|-------------------|-----------------|
+| کارت اولویت — `mechanism` | `public_summary_fa` | `diagnosticSymptoms` |
+| کارت دامنه — علائم | `symptoms[]` → `symptomsList` (bullet) | `symptoms` (رشته CSV) |
+| کارت دامنه — وضعیت | `domain_levels[].headline_fa` → `levelHeadline` | — |
+| کارت دامنه — ریشه | `root_causes` + `question_root_rules` → `rootCauses` | — |
+| Quick Win / locked action | `actions[]` → `quickWinAction` / `lockedActionTeaser` | — |
+| تفسیر / اثر (فعلاً) | — | `domainScoreBand`, `qualitativeCost` از CSV |
+
+**تکرار شواهد:** وقتی `rootCauses` پر است، بخش legacy «شواهد از پاسخ‌های شما» در UI نمایش داده نمی‌شود — شواهد داخل کارت ریشه می‌آید.
+
+**هم‌راستایی Quick Win:** `StructuredDiagnosis.quickWin` از بین `{primaryIssue, structuralRoots, bindingConstraint}` انتخاب می‌شود (جزئیات در `docs/specs/diagnosis-engine-v2-spec.md` و ADR 0016).
+
 ## منبع Notion (مرجع)
 
 - صفحه Library: [Sales Health Check — Report Content Library v1](https://app.notion.com/p/8a472c052d3242fcbf7e68c4921ecdf6)

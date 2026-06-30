@@ -69,6 +69,9 @@ export interface QuickWinViewModel {
   domainName: string;
   actionText: string | null;
   teaserSuffix: string;
+  actionTitle?: string;
+  quickWinSummary?: string;
+  fullAction?: string;
 }
 
 export interface DomainBreakdownViewModel {
@@ -84,12 +87,17 @@ export interface DomainBreakdownViewModel {
   expanded: boolean;
   collapsedSummary: string;
   symptoms: string;
+  symptomsList?: string[];
   evidence: ReportSpec["domainBreakdown"][0]["evidence"];
   interpretation: string;
   qualitativeCost: string;
   fixLock: ReportSpec["domainBreakdown"][0]["fixLock"] & {
     buttonLabel: string;
   };
+  levelHeadline?: ReportSpec["domainBreakdown"][0]["levelHeadline"];
+  rootCauses?: ReportSpec["domainBreakdown"][0]["rootCauses"];
+  lockedActionTeaser?: ReportSpec["domainBreakdown"][0]["lockedActionTeaser"];
+  quickWinAction?: ReportSpec["domainBreakdown"][0]["quickWinAction"];
 }
 
 export interface ValueAtStakeViewModel {
@@ -147,13 +155,52 @@ const CHART_TITLES: Record<ReportChart["kind"], string> = {
 
 const HEALTH_LABEL = "سلامت فروش";
 
+function bundleQuickWinFields(
+  spec: ReportSpec,
+  domainSlug: string,
+): Pick<QuickWinViewModel, "actionTitle" | "quickWinSummary" | "fullAction"> {
+  const bundleAction = spec.domainBreakdown.find(
+    (entry) => entry.domainSlug === domainSlug,
+  )?.quickWinAction;
+
+  if (!bundleAction) {
+    return {};
+  }
+
+  const fields: Pick<
+    QuickWinViewModel,
+    "actionTitle" | "quickWinSummary" | "fullAction"
+  > = {};
+
+  const actionTitle = bundleAction.actionTitle.trim();
+  if (actionTitle) {
+    fields.actionTitle = actionTitle;
+  }
+
+  const quickWinSummary = bundleAction.quickWinSummary.trim();
+  if (quickWinSummary) {
+    fields.quickWinSummary = quickWinSummary;
+  }
+
+  const fullAction = bundleAction.fullAction?.trim();
+  if (fullAction) {
+    fields.fullAction = fullAction;
+  }
+
+  return fields;
+}
+
 function buildQuickWinViewModel(spec: ReportSpec): QuickWinViewModel | null {
   if (spec.quickWin) {
+    const bundleFields = bundleQuickWinFields(spec, spec.quickWin.domainSlug);
+
     return {
       domainSlug: spec.quickWin.domainSlug,
       domainName: spec.quickWin.domainName,
-      actionText: spec.quickWin.actionText,
+      actionText:
+        bundleFields.quickWinSummary ?? spec.quickWin.actionText,
       teaserSuffix: quickWinTeaserSuffix,
+      ...bundleFields,
     };
   }
 
@@ -163,6 +210,7 @@ function buildQuickWinViewModel(spec: ReportSpec): QuickWinViewModel | null {
       domainName: spec.quickWinTeaser.domainName,
       actionText: null,
       teaserSuffix: quickWinTeaserSuffix,
+      ...bundleQuickWinFields(spec, spec.quickWinTeaser.domainSlug),
     };
   }
 
@@ -241,6 +289,11 @@ function collapsedSummaryForDomain(
 
   if (entry.level === "healthy" || entry.level === "advanced") {
     return healthyDomainSummaryLine;
+  }
+
+  const firstSymptom = entry.symptomsList?.[0]?.trim();
+  if (firstSymptom) {
+    return firstSymptom;
   }
 
   return entry.symptoms;

@@ -146,4 +146,12 @@ See [docs/ops/database-backup.md](docs/ops/database-backup.md) for cron setup, r
 
 ## Documentation
 
-See `docs/` for product and architecture documentation. Database overview: `docs/architecture/DatabaseSchema.md`. Manual QA: `docs/qa/MVP-Manual-Test-Scenarios.md`.
+See `docs/` for product and architecture documentation.
+
+| Topic | Location |
+|-------|----------|
+| Database schema | [docs/architecture/DatabaseSchema.md](docs/architecture/DatabaseSchema.md) |
+| Diagnosis Engine v2 | [docs/specs/diagnosis-engine-v2-spec.md](docs/specs/diagnosis-engine-v2-spec.md) |
+| Report Content Library v1 | [docs/specs/report-content-library-v1/overview.md](docs/specs/report-content-library-v1/overview.md) — domain bundles, public/internal fields, freemium rules; implementation guide and JSON snapshot in the same folder |
+| Architecture decisions (ADRs) | [docs/adr/](docs/adr/) — including [ADR 0015](docs/adr/0015-adopt-report-content-library-v1.md) (DomainBundle adoption) and [ADR 0016](docs/adr/0016-report-coherence-v1.md) (aligned report narrative + bundle-first copy) |
+| Manual QA | [docs/qa/MVP-Manual-Test-Scenarios.md](docs/qa/MVP-Manual-Test-Scenarios.md) |

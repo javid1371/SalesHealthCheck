@@ -1,6 +1,6 @@
 import type { DomainLevel } from "@/types/structured-diagnosis";
 
-export type FallbackFieldKey =
+export type LevelFallbackFieldKey =
   | "diagnosticSymptoms"
   | "diagnosticIntent"
   | "domainScoreBand"
@@ -8,10 +8,31 @@ export type FallbackFieldKey =
   | "correctiveAction"
   | "qualitativeCost";
 
+export type StaticFallbackFieldKey =
+  | "missingRootCause"
+  | "missingMechanism"
+  | "missingSalesImpact"
+  | "missingLockedTeaser"
+  | "missingPublicReflection";
+
+export type FallbackFieldKey = LevelFallbackFieldKey | StaticFallbackFieldKey;
+
 export type FieldFallbacks = Record<
-  FallbackFieldKey,
+  LevelFallbackFieldKey,
   Partial<Record<DomainLevel, string>>
 >;
+
+export const staticFieldFallbacksV1: Record<StaticFallbackFieldKey, string> = {
+  missingRootCause: "در این بخش یک الگوی قابل بررسی دیده می‌شود.",
+  missingMechanism:
+    "این وضعیت می‌تواند روی کیفیت تصمیم‌گیری و فروش اثر بگذارد.",
+  missingSalesImpact:
+    "اثر این بخش معمولاً در کاهش تبدیل، افزایش اصطکاک یا سخت‌تر شدن رشد فروش دیده می‌شود.",
+  missingLockedTeaser:
+    "در نسخه کامل، مسیر اصلاح این بخش به‌صورت مرحله‌به‌مرحله ارائه می‌شود.",
+  missingPublicReflection:
+    "این پاسخ یک نشانه قابل بررسی در مسیر فروش شماست.",
+};
 
 export const fieldFallbacksV1: FieldFallbacks = {
   diagnosticSymptoms: {
@@ -80,9 +101,17 @@ export const fieldFallbacksV1: FieldFallbacks = {
   },
 };
 
+export function getStaticFieldFallback(field: StaticFallbackFieldKey): string {
+  return staticFieldFallbacksV1[field];
+}
+
 export function getFieldFallback(
   field: FallbackFieldKey,
   level: DomainLevel,
 ): string | undefined {
-  return fieldFallbacksV1[field][level];
+  if (field in staticFieldFallbacksV1) {
+    return staticFieldFallbacksV1[field as StaticFallbackFieldKey];
+  }
+
+  return fieldFallbacksV1[field as LevelFallbackFieldKey][level];
 }

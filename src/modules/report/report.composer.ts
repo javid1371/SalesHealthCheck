@@ -12,18 +12,23 @@ import { getCtaDestination } from "@/config/model-v1/report-content/cta-template
 import {
   contentLibraryV1,
   type ContentLibraryV1,
+  type DomainAnswerSelection,
+  type TriggeredRootCause,
 } from "@/modules/report/content-library";
+import type { AnswerScore, DomainBundle } from "@/config/model-v1/report-content/domain-bundle.types";
 import { buildExpertView } from "@/modules/report/expert-view";
 import type {
   CapacityMode,
   DomainBreakdownEntry,
   DomainEvidence,
+  DomainQuickWinAction,
+  DomainRootCause,
   ReportChart,
   ReportCta,
   ReportIssue,
   ReportSpec,
 } from "@/types/report-spec";
-import type { StructuredDiagnosis } from "@/types/structured-diagnosis";
+import type { DomainLevel, StructuredDiagnosis } from "@/types/structured-diagnosis";
 import type { ValueAtStakeSpec } from "@/types/value-at-stake";
 
 export type ComposerAnswerInput = {
@@ -205,6 +210,23 @@ function findRootSentenceForEngine(
   return contentLibrary.resolveDiagnosticIntent(domainSlug, 1, level);
 }
 
+function resolveIssueMechanism(
+  domainSlug: string,
+  level: DomainLevel,
+  contentLibrary: ContentLibraryV1,
+): string {
+  const bundle = contentLibrary.getDomainBundle(domainSlug);
+  const publicSummary = bundle
+    ? contentLibrary.getDomainPublicSummary(bundle)
+    : undefined;
+
+  if (publicSummary) {
+    return publicSummary;
+  }
+
+  return contentLibrary.resolveDiagnosticSymptoms(domainSlug, level);
+}
+
 function buildIssue(
   role: ReportIssue["role"],
   engineId: number | null,
@@ -226,7 +248,7 @@ function buildIssue(
     domainSlug,
     domainName: resolveDomainName(engineId, domainNames),
     level,
-    mechanism: contentLibrary.resolveDiagnosticSymptoms(domainSlug, level),
+    mechanism: resolveIssueMechanism(domainSlug, level, contentLibrary),
     rootSentence: findRootSentenceForEngine(
       diagnosis,
       engineId,
@@ -244,37 +266,197 @@ function buildIssues(
   contentLibrary: ContentLibraryV1,
 ): ReportIssue[] {
   const issues: ReportIssue[] = [];
+  const seenEngineIds = new Set<number>();
 
-  const primary = buildIssue(
-    "primary_issue",
-    diagnosis.primaryIssue,
-    diagnosis,
-    domainNames,
-    contentLibrary,
-  );
-  if (primary) issues.push(primary);
+  const pushIssue = (issue: ReportIssue | null) => {
+    if (!issue || seenEngineIds.has(issue.engineId)) {
+      return;
+    }
+    seenEngineIds.add(issue.engineId);
+    issues.push(issue);
+  };
 
-  for (const engineId of diagnosis.structuralRoots.slice(0, 2)) {
-    const root = buildIssue(
-      "structural_root",
-      engineId,
+  pushIssue(
+    buildIssue(
+      "primary_issue",
+      diagnosis.primaryIssue,
       diagnosis,
       domainNames,
       contentLibrary,
+    ),
+  );
+
+  for (const engineId of diagnosis.structuralRoots.slice(0, 2)) {
+    pushIssue(
+      buildIssue(
+        "structural_root",
+        engineId,
+        diagnosis,
+        domainNames,
+        contentLibrary,
+      ),
     );
-    if (root) issues.push(root);
   }
 
-  const binding = buildIssue(
-    "binding_constraint",
-    diagnosis.bindingConstraint,
-    diagnosis,
-    domainNames,
-    contentLibrary,
+  pushIssue(
+    buildIssue(
+      "binding_constraint",
+      diagnosis.bindingConstraint,
+      diagnosis,
+      domainNames,
+      contentLibrary,
+    ),
   );
-  if (binding) issues.push(binding);
 
   return issues;
+}
+
+function buildDomainAnswerSelections(
+  domainSlug: string,
+  answers: ComposerAnswerInput[],
+  diagnosis: StructuredDiagnosis,
+  bundle: DomainBundle,
+): DomainAnswerSelection[] {
+  const domainAnswers = answers.filter((answer) => answer.domainSlug === domainSlug);
+
+  if (domainAnswers.length > 0) {
+    return domainAnswers.flatMap((answer) => {
+      const question = bundle.questions.find(
+        (entry) => entry.question_number === answer.questionNumber,
+      );
+      if (!question) {
+        return [];
+      }
+
+      return [
+        {
+          question_id: question.question_id,
+          selected_score: answer.score,
+        },
+      ];
+    });
+  }
+
+  return diagnosis.weakQuestions
+    .filter((question) => question.domainSlug === domainSlug)
+    .flatMap((question) => {
+      const bundleQuestion = bundle.questions.find(
+        (entry) => entry.question_number === question.questionNumber,
+      );
+      if (!bundleQuestion) {
+        return [];
+      }
+
+      return [
+        {
+          question_id: bundleQuestion.question_id,
+          selected_score: question.score as AnswerScore,
+        },
+      ];
+    });
+}
+
+function toDomainRootCauses(
+  bundle: DomainBundle,
+  triggered: TriggeredRootCause[],
+): DomainRootCause[] {
+  return triggered.map(({ root_cause, evidence }) => ({
+    rootId: root_cause.root_id,
+    rootTitle: root_cause.root_title_fa,
+    publicRootSentence: root_cause.public_root_sentence_fa,
+    mechanism: root_cause.mechanism_fa,
+    salesImpact: root_cause.sales_impact_fa,
+    evidence: evidence.map((entry) => {
+      const question = bundle.questions.find(
+        (candidate) => candidate.question_id === entry.question_id,
+      );
+
+      return {
+        questionNumber: question?.question_number,
+        questionText: entry.question_text_fa,
+        selectedOptionText: entry.selected_option_text_fa,
+        publicReflection: entry.public_reflection_fa,
+        evidenceSentence: entry.evidence_sentence_fa,
+      };
+    }),
+  }));
+}
+
+function buildQuickWinAction(action: DomainBundle["actions"][0]): DomainQuickWinAction {
+  const fullAction = action.full_action_fa?.trim();
+
+  return {
+    actionId: action.action_id,
+    actionTitle: action.action_title_fa,
+    quickWinSummary: action.quick_win_summary_fa,
+    ...(fullAction ? { fullAction } : {}),
+  };
+}
+
+function enrichDomainBreakdownFromBundle(
+  domainSlug: string,
+  rawScore: number,
+  level: DomainLevel,
+  answers: ComposerAnswerInput[],
+  diagnosis: StructuredDiagnosis,
+  isQuickWin: boolean,
+  contentLibrary: ContentLibraryV1,
+): Pick<
+  DomainBreakdownEntry,
+  | "levelHeadline"
+  | "symptomsList"
+  | "rootCauses"
+  | "lockedActionTeaser"
+  | "quickWinAction"
+> {
+  const bundle = contentLibrary.getDomainBundle(domainSlug);
+  if (!bundle) {
+    return {};
+  }
+
+  const enriched: Pick<
+    DomainBreakdownEntry,
+    | "levelHeadline"
+    | "symptomsList"
+    | "rootCauses"
+    | "lockedActionTeaser"
+    | "quickWinAction"
+  > = {};
+
+  const domainLevel = contentLibrary.getDomainLevel(bundle, rawScore);
+  const headline = domainLevel.headline_fa.trim();
+  if (headline) {
+    enriched.levelHeadline = headline;
+  }
+
+  const symptomsList = contentLibrary.getDomainSymptoms(bundle);
+  if (symptomsList.length > 0) {
+    enriched.symptomsList = symptomsList;
+  }
+
+  const selections = buildDomainAnswerSelections(
+    domainSlug,
+    answers,
+    diagnosis,
+    bundle,
+  );
+  const triggered = contentLibrary.getTriggeredRootCauses(bundle, selections);
+  if (triggered.length > 0) {
+    enriched.rootCauses = toDomainRootCauses(bundle, triggered);
+  }
+
+  const action = bundle.actions[0];
+  if (isQuickWin && action) {
+    enriched.quickWinAction = buildQuickWinAction(action);
+  } else if (!isQuickWin) {
+    enriched.lockedActionTeaser = contentLibrary.resolveLockedTeaser(
+      domainSlug,
+      level,
+      action?.locked_teaser_fa,
+    );
+  }
+
+  return enriched;
 }
 
 function buildDomainBreakdown(
@@ -332,6 +514,15 @@ function buildDomainBreakdown(
         label: isQuickWin ? quickWinFixLockLabel : lockedFixLabel,
         destination,
       },
+      ...enrichDomainBreakdownFromBundle(
+        domain.domainSlug,
+        domain.raw,
+        domain.level,
+        answers,
+        diagnosis,
+        isQuickWin,
+        contentLibrary,
+      ),
     };
   });
 }
@@ -439,6 +630,8 @@ function toReportCta(
 
 function buildCtas(
   issues: ReportIssue[],
+  diagnosis: StructuredDiagnosis,
+  domainNames: Map<string, string>,
   capacityMode: CapacityMode,
   contentLibrary: ContentLibraryV1,
 ): ReportCta[] {
@@ -447,9 +640,32 @@ function buildCtas(
     .filter((issue) => issue.role === "structural_root")
     .map((issue) => issue.domainName);
 
+  let bindingDomainName = bindingIssue?.domainName;
+  let bindingRootSentence = bindingIssue?.rootSentence;
+
+  if (
+    !bindingDomainName &&
+    diagnosis.bindingConstraint !== null
+  ) {
+    const bindingEngineId = diagnosis.bindingConstraint;
+    bindingDomainName = resolveDomainName(bindingEngineId, domainNames);
+    const bindingDomain = diagnosis.perDomain.find(
+      (entry) => entry.engineId === bindingEngineId,
+    );
+    if (bindingDomain) {
+      bindingRootSentence = findRootSentenceForEngine(
+        diagnosis,
+        bindingEngineId,
+        bindingDomain.domainSlug,
+        bindingDomain.level,
+        contentLibrary,
+      );
+    }
+  }
+
   const urgencyInput = {
-    bindingConstraintDomainName: bindingIssue?.domainName,
-    bindingConstraintRootSentence: bindingIssue?.rootSentence,
+    bindingConstraintDomainName: bindingDomainName,
+    bindingConstraintRootSentence: bindingRootSentence,
     structuralRootDomainNames: structuralNames,
   };
 
@@ -529,7 +745,13 @@ export function composeReport(input: ComposeReportInput): ReportSpec {
         quickWinEngineId,
       ),
     },
-    ctas: buildCtas(issues, capacityMode, contentLibrary),
+    ctas: buildCtas(
+      issues,
+      diagnosis,
+      domainNames,
+      capacityMode,
+      contentLibrary,
+    ),
     capacityMode,
     confidenceNote: {
       level: diagnosis.confidence,

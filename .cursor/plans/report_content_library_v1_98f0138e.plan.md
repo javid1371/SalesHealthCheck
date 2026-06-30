@@ -7,28 +7,28 @@ todos:
     status: completed
   - id: adr-rules
     content: نوشتن ADR 0015 + به‌روزرسانی .cursor/rules/project-rules.md و README و ثبت گپ report-engine-v1-spec.md
-    status: pending
+    status: completed
   - id: types
     content: افزودن DomainBundle و typeهای مرتبط در src/config/model-v1/report-content/domain-bundle.types.ts
-    status: pending
+    status: completed
   - id: crosswalk-seed
     content: ساخت کراس‌واک domain_number↔slug و seed قطعی REPORT_CONTENT_LIBRARY_V1 با merge از questionsV1
-    status: pending
+    status: completed
   - id: resolvers
     content: گسترش content-library.ts با getDomainBundle/getDomainLevel/getSelectedAnswerOption/getTriggeredRootCauses + fallbackهای جدید
-    status: pending
+    status: completed
   - id: composer
     content: افزودن فیلدهای optional به ReportSpec و گسترش buildDomainBreakdown با قانون freemium و جلوگیری از نشت فیلدهای internal
-    status: pending
+    status: completed
   - id: ui
     content: گسترش بلوک‌های گزارش برای رندر افزایشی root cause/level/locked/quick win
-    status: pending
+    status: completed
   - id: tests
     content: نوشتن ۹ تست قرارداد + به‌روزرسانی snapshot و اجرای کل تست‌ها
-    status: pending
+    status: completed
   - id: sync-optional
     content: (اختیاری) اسکریپت sync-report-content برای بازتولید seed از snapshot
-    status: pending
+    status: completed
 isProject: false
 ---
 

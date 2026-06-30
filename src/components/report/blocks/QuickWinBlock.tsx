@@ -7,12 +7,19 @@ interface QuickWinBlockProps {
   compact?: boolean;
 }
 
+function hasText(value?: string | null): value is string {
+  return Boolean(value?.trim());
+}
+
 export function QuickWinBlock({
   quickWin,
   medium = "app",
   compact = false,
 }: QuickWinBlockProps) {
-  const hasAction = Boolean(quickWin.actionText);
+  const summaryText =
+    quickWin.quickWinSummary ?? quickWin.actionText ?? null;
+  const hasSummary = hasText(summaryText);
+  const hasFullAction = hasText(quickWin.fullAction);
 
   return (
     <section
@@ -25,16 +32,27 @@ export function QuickWinBlock({
       <h2 className="mt-2 text-lg font-semibold text-zinc-900 sm:text-xl">
         {quickWin.domainName}
       </h2>
-      {hasAction ? (
-        <p className="mt-4 text-sm leading-8 text-zinc-700">
-          {quickWin.actionText}
+      {hasText(quickWin.actionTitle) && (
+        <p className="mt-2 text-sm font-medium text-zinc-800">
+          {quickWin.actionTitle}
         </p>
+      )}
+      {hasSummary ? (
+        <p className="mt-4 text-sm leading-8 text-zinc-700">{summaryText}</p>
       ) : (
         <p className="mt-3 text-sm leading-7 text-zinc-700">
           {quickWin.teaserSuffix}
         </p>
       )}
-      {!compact && hasAction && (
+      {hasFullAction && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-white/70 p-4">
+          <p className="text-xs font-medium text-emerald-800">اقدام کامل</p>
+          <p className="mt-2 text-sm leading-8 text-zinc-700">
+            {quickWin.fullAction}
+          </p>
+        </div>
+      )}
+      {!compact && hasSummary && (
         <p className="mt-3 text-xs text-emerald-800">
           این اقدام را می‌توانید از همین هفته شروع کنید.
         </p>

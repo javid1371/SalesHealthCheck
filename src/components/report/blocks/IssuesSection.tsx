@@ -24,7 +24,7 @@ export function IssuesSection({
         medium === "print" && "print-avoid-break",
       )}
     >
-      <h2 className="text-lg font-semibold text-zinc-900">۳ اولویت اصلی</h2>
+      <h2 className="text-lg font-semibold text-zinc-900">مهم‌ترین اولویت‌ها</h2>
       <p className="mt-1 text-sm text-zinc-500">
         مهم‌ترین نقاطی که باید روی آن‌ها تمرکز کنید
       </p>

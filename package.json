@@ -16,6 +16,7 @@
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "sync:report-content": "tsx scripts/sync-report-content.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {
