@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  CtaPlacementId,
   ReportBlockId,
   ReportViewModel,
 } from "@/modules/report/report.renderer";
@@ -42,6 +43,24 @@ export function ReportBlockList({
     assessmentId &&
     onReportUpdated;
 
+  function renderCtaPlacement(placementId: CtaPlacementId, blockId: string) {
+    const placement = viewModel.ctaPlacements.find((p) => p.id === placementId);
+    if (!placement) return null;
+
+    return (
+      <CtaSection
+        key={blockId}
+        headline={placement.headline}
+        buttonLabel={placement.buttonLabel}
+        variant={placement.variant}
+        medium={medium}
+        hideButtons={presentation.hideInteractive}
+        onCtaClick={onCtaClick}
+        sectionId={placementId === "final" ? "result-actions" : undefined}
+      />
+    );
+  }
+
   function renderBlock(blockId: ReportBlockId) {
     const pageBreakClass = cn(
       presentation.showPageBreakHints && "print-page-break",
@@ -56,6 +75,12 @@ export function ReportBlockList({
             medium={medium}
           />
         );
+      case "cta-top":
+        return renderCtaPlacement("top", blockId);
+      case "cta-score":
+        return renderCtaPlacement("score", blockId);
+      case "cta-value":
+        return renderCtaPlacement("afterValue", blockId);
       case "health-gauge":
         return (
           <HealthGauge
@@ -136,16 +161,7 @@ export function ReportBlockList({
           />
         );
       case "cta":
-        if (viewModel.ctas.length === 0) return null;
-        return (
-          <CtaSection
-            key={blockId}
-            ctas={viewModel.ctas}
-            medium={medium}
-            hideButtons={presentation.hideInteractive}
-            onCtaClick={onCtaClick}
-          />
-        );
+        return renderCtaPlacement("final", blockId);
       case "summary-actions":
         return reportUrl ? (
           <SummaryActions

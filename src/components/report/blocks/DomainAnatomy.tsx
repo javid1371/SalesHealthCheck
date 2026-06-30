@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { ctaDomainFixLabel } from "@/config/model-v1/report-content/cta-templates";
 import type {
   DomainBreakdownViewModel,
   RenderMedium,
@@ -122,13 +124,15 @@ function DomainLockedActionSection({
       <p className="text-xs font-medium text-zinc-500">چطور درستش کنیم؟</p>
       <p className="mt-2 text-sm leading-7 text-zinc-700">{teaser}</p>
       {!isPrint && onFixLockClick && (
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="secondary"
+          className="mt-3"
           onClick={() => onFixLockClick?.()}
-          className="mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-800"
         >
-          درخواست مشاوره برای دریافت راهکار
-        </button>
+          {ctaDomainFixLabel}
+        </Button>
       )}
     </div>
   );
@@ -283,13 +287,15 @@ function DomainCard({
               <div className="mt-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-4">
                 <p className="text-sm text-zinc-600">{domain.fixLock.label}</p>
                 {!isPrint && onFixLockClick && (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="mt-3"
                     onClick={() => onFixLockClick?.()}
-                    className="mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-800"
                   >
-                    درخواست مشاوره برای دریافت راهکار
-                  </button>
+                    {ctaDomainFixLabel}
+                  </Button>
                 )}
               </div>
             ) : (

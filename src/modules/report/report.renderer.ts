@@ -7,7 +7,12 @@ import {
   quickWinTeaserSuffix,
   shouldShowConfidenceNote,
 } from "@/config/model-v1/report-content/tone-templates";
-import { getCtaButtonLabel } from "@/config/model-v1/report-content/cta-templates";
+import {
+  ctaAfterValueCopy,
+  ctaScoreCopy,
+  ctaTopCopy,
+  getCtaButtonLabel,
+} from "@/config/model-v1/report-content/cta-templates";
 import type {
   CapacityMode,
   ReportChart,
@@ -35,6 +40,8 @@ export type ReportBlockId =
   | "survival-banner"
   | "health-gauge"
   | "health-charts"
+  | "cta-top"
+  | "cta-score"
   | "issues"
   | "quick-win"
   | "metrics-gate"
@@ -44,6 +51,7 @@ export type ReportBlockId =
   | "locked-plan"
   | "confidence-note"
   | "cta"
+  | "cta-value"
   | "summary-actions";
 
 export interface SurvivalBannerViewModel {
@@ -125,6 +133,15 @@ export interface CtaViewModel {
   personalization: ReportCta["personalization"];
 }
 
+export type CtaPlacementId = "top" | "score" | "final" | "afterValue";
+
+export interface CtaPlacementViewModel {
+  id: CtaPlacementId;
+  headline: string;
+  buttonLabel: string;
+  variant: "inline" | "prominent";
+}
+
 export interface ReportViewModel {
   medium: RenderMedium;
   variant: ReportVariant;
@@ -142,6 +159,7 @@ export interface ReportViewModel {
   lockedPlan: LockedPlanViewModel;
   confidenceNote: ConfidenceNoteViewModel;
   ctas: CtaViewModel[];
+  ctaPlacements: CtaPlacementViewModel[];
   expertView: ReportSpec["expertView"];
 }
 
@@ -232,29 +250,18 @@ function buildBlockOrder(
       order.push("quick-win");
     }
 
-    if (spec.valueAtStake) {
-      order.push("value-at-stake");
-    } else {
-      order.push("value-stake-teaser");
-    }
-
     order.push("summary-actions");
+
     return order;
   }
 
   const order: ReportBlockId[] = [
     "survival-banner",
+    "cta-top",
     "health-charts",
+    "cta-score",
     "issues",
   ];
-
-  if (!spec.valueAtStake) {
-    order.push("metrics-gate");
-  }
-
-  if (spec.valueAtStake) {
-    order.push("value-at-stake");
-  }
 
   if (buildQuickWinViewModel(spec)) {
     order.push("quick-win");
@@ -276,6 +283,12 @@ function buildBlockOrder(
   }
 
   order.push("cta");
+
+  if (spec.valueAtStake) {
+    order.push("value-at-stake", "cta-value");
+  } else {
+    order.push("metrics-gate");
+  }
 
   return order;
 }
@@ -308,6 +321,56 @@ function selectPrimaryCta(ctas: ReportCta[]): ReportCta | null {
   return (
     consultation.find((cta) => cta.moment === "trust") ?? consultation[0]
   );
+}
+
+function selectUrgencyCta(ctas: ReportCta[]): ReportCta | null {
+  return ctas.find((cta) => cta.moment === "urgency") ?? null;
+}
+
+function buildCtaPlacements(
+  spec: ReportSpec,
+  variant: ReportVariant,
+): CtaPlacementViewModel[] {
+  const buttonLabel = getCtaButtonLabel(spec.capacityMode);
+  const urgencyCta = selectUrgencyCta(spec.ctas);
+  const trustCta = selectPrimaryCta(spec.ctas);
+  const placements: CtaPlacementViewModel[] = [];
+
+  placements.push({
+    id: "top",
+    headline: urgencyCta?.headline ?? ctaTopCopy.headline,
+    buttonLabel,
+    variant: "inline",
+  });
+
+  if (variant === "full") {
+    placements.push({
+      id: "score",
+      headline: ctaScoreCopy.headline,
+      buttonLabel,
+      variant: "inline",
+    });
+  }
+
+  if (trustCta) {
+    placements.push({
+      id: "final",
+      headline: trustCta.headline,
+      buttonLabel,
+      variant: "prominent",
+    });
+  }
+
+  if (spec.valueAtStake) {
+    placements.push({
+      id: "afterValue",
+      headline: ctaAfterValueCopy.headline,
+      buttonLabel,
+      variant: "prominent",
+    });
+  }
+
+  return placements;
 }
 
 function enrichChartData(
@@ -381,6 +444,7 @@ export function renderReport(
   const presentation = presentationFlagsForOptions(medium, variant);
   const bannerContent = getSurvivalBannerContent(spec.survivalBanner.status);
   const primaryCta = selectPrimaryCta(spec.ctas);
+  const ctaPlacements = buildCtaPlacements(spec, variant);
 
   return {
     medium,
@@ -442,6 +506,7 @@ export function renderReport(
           },
         ]
       : [],
+    ctaPlacements,
     expertView: spec.expertView,
   };
 }

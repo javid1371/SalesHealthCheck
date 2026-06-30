@@ -57,11 +57,11 @@ export function BusinessMetricsGate({
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-lg font-semibold text-zinc-900">
-        برآورد پتانسیل بهبود (اختیاری)
+        می‌خواهی بدانی با همین قیف فروش چقدر پول از دست می‌دهی؟
       </h2>
       <p className="mt-2 text-sm leading-7 text-zinc-600">
-        با وارد کردن چند عدد ساده، برآورد ریالی پتانسیل بهبود فروش را
-        محاسبه می‌کنیم. این بخش اختیاری است.
+        ۴ عدد ساده را وارد کن تا تخمین بزنیم چه مقدار فروش بالقوه هر ماه
+        در قیف فعلی از دست می‌رود.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -131,7 +131,7 @@ export function BusinessMetricsGate({
         )}
 
         <Button type="submit" disabled={loading}>
-          {loading ? "در حال محاسبه..." : "محاسبه ارزش در خطر"}
+          {loading ? "در حال محاسبه..." : "محاسبه فروش از دست‌رفته"}
         </Button>
       </form>
     </section>

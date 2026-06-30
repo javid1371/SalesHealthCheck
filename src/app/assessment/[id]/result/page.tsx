@@ -17,12 +17,6 @@ import {
 } from "@/lib/page-messages";
 import type { AssessmentResultResponse } from "@/modules/assessment/assessment.types";
 
-const RESULT_TOC = [
-  { id: "result-summary", label: "خلاصه وضعیت" },
-  { id: "result-priorities", label: "اولویت‌ها" },
-  { id: "result-actions", label: "قدم بعدی" },
-];
-
 function ResultContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -150,8 +144,6 @@ function ResultDashboard({
     <ResultSummaryView
       reportSpec={reportSpec}
       assessmentId={assessmentId}
-      reportId={result.report.id}
-      token={token || undefined}
       reportUrl={reportUrl}
       onConsultationClick={navigateToConsultation}
     />
@@ -162,8 +154,7 @@ export default function ResultPage() {
   return (
     <ReportShell
       title="خلاصه نتیجه"
-      subtitle="وضعیت فروش و اولویت‌های بهبود"
-      toc={RESULT_TOC}
+      subtitle="در این صفحه خلاصه نتیجه را می‌بینید؛ فراموش نکنید در پایین صفحه حتماً روی «مشاهده گزارش کامل» کلیک کنید."
     >
       <Suspense
         fallback={

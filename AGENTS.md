@@ -18,6 +18,7 @@ This is a Next.js 16 (Turbopack) modular monolith with Prisma + PostgreSQL. See 
 - `.env` is gitignored and is NOT recreated by the update script. It persists in the snapshot. If it is ever missing, recreate it with at least: `DATABASE_URL` (above), `AUTH_SESSION_SECRET` (any long random string), and `ADMIN_PASSWORD`. `APP_BASE_URL=http://localhost:3000` is useful too. Without `KAVENEGAR_API_KEY`, OTP codes are NOT sent via SMS — instead the dev code is returned in the OTP send API response and shown in an amber box on the verify page.
 
 ### Running / testing notes
+- Cursor sandbox injects deprecated `npm_config_devdir`; project hook `.cursor/hooks/strip-devdir-env.py` rewrites agent `npm` commands. In a normal terminal, `npm config get devdir` should be `undefined`.
 - `npm run dev` serves on `http://localhost:3000`. The UI is Persian/RTL.
 - `npm run lint` currently reports pre-existing errors (e.g. `no-empty-object-type`, a React `setState`-in-effect rule) and exits non-zero on an unmodified checkout — this is a baseline repo state, not an environment problem.
 - `npm test` (unit) needs no DB; `npm run test:integration` requires Postgres running with migrations+seed applied.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { ctaButtonLabels } from "@/config/model-v1/report-content/cta-templates";
 import { cn } from "@/lib/utils";
 
 interface SummaryActionsProps {
@@ -34,7 +35,7 @@ export function SummaryActions({
         </Link>
         {onConsultationClick && (
           <Button size="lg" variant="secondary" onClick={onConsultationClick}>
-            درخواست مشاوره رایگان
+            {ctaButtonLabels.free}
           </Button>
         )}
       </div>

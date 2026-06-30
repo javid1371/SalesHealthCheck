@@ -44,15 +44,21 @@ describe("renderReport variants", () => {
 
     expect(viewModel.blockOrder).toEqual([
       "survival-banner",
+      "cta-top",
       "health-charts",
+      "cta-score",
       "issues",
-      "metrics-gate",
       "quick-win",
       "domain-breakdown",
       "locked-plan",
       "confidence-note",
       "cta",
+      "metrics-gate",
     ]);
+    expect(viewModel.ctaPlacements.length).toBeGreaterThanOrEqual(3);
+    expect(viewModel.ctaPlacements.find((p) => p.id === "top")).toBeDefined();
+    expect(viewModel.ctaPlacements.find((p) => p.id === "score")).toBeDefined();
+    expect(viewModel.ctaPlacements.find((p) => p.id === "final")).toBeDefined();
     expect(viewModel.ctas).toHaveLength(1);
     expect(viewModel.ctas[0]?.destination).toBe("consultation");
   });
@@ -65,7 +71,6 @@ describe("renderReport variants", () => {
       "health-gauge",
       "issues",
       "quick-win",
-      "value-stake-teaser",
       "summary-actions",
     ]);
     expect(viewModel.presentation.compactIssues).toBe(true);

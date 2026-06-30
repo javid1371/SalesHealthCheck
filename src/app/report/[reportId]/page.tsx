@@ -107,15 +107,15 @@ function ReportBody({
 
   return (
     <>
-      {report.reportSpec && (
-        <Card padding="compact" className="mb-8">
-          <DownloadReportPdf reportId={reportId} token={token || undefined} />
-        </Card>
-      )}
       <DetailedReportSections
         report={report}
         onRequestAnalysis={navigateToCta}
       />
+      {report.reportSpec && (
+        <Card padding="compact" className="mt-8">
+          <DownloadReportPdf reportId={reportId} token={token || undefined} />
+        </Card>
+      )}
     </>
   );
 }

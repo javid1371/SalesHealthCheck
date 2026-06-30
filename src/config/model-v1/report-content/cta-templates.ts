@@ -5,8 +5,8 @@ export type CtaMoment = "urgency" | "trust";
 export type CtaDestination = "consultation" | "ai-purchase";
 
 export const ctaButtonLabels: Record<CapacityMode, string> = {
-  free: "درخواست مشاوره رایگان",
-  full: "درخواست مشاوره رایگان",
+  free: "دریافت مشاوره بهبود قیف فروش",
+  full: "دریافت مشاوره بهبود قیف فروش",
 };
 
 export const ctaDestinationByCapacity: Record<CapacityMode, CtaDestination> = {
@@ -23,17 +23,37 @@ export interface CtaPersonalizationInput {
 export const ctaHeadlineTemplates = {
   urgency: {
     withBinding:
-      "اولویت اصلی شما در {domainName} است — {rootSentence}. برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
+      "اولویت اصلی شما در {domainName} است — {rootSentence}. برای بهبود قیف فروش، برنامه اختصاصی دریافت کنید.",
     default:
-      "برای تبدیل این تحلیل به نقشه اقدام عملی، یک جلسه مشاوره رایگان رزرو کنید.",
+      "برای تبدیل این تحلیل به برنامه بهبود قیف فروش، مشاوره اختصاصی دریافت کنید.",
   },
   trust: {
     withRoots:
-      "ریشه‌های اصلی در {rootNames} شناسایی شد — نقشه اصلاح را با کارشناس بسازید.",
+      "ریشه‌های اصلی در {rootNames} شناسایی شد — نقشه بهبود قیف فروش را با کارشناس بسازید.",
     default:
-      "اولین قدم را دیدید؛ برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
+      "اولین قدم را دیدید؛ برای برنامه بهبود قیف فروش با کارشناس صحبت کنید.",
   },
 } as const;
+
+/** Fallback copy when urgency CTA is unavailable (under survival banner). */
+export const ctaTopCopy = {
+  headline:
+    "برای بهبود وضعیت قیف فروش، مشاوره اختصاصی دریافت کنید.",
+} as const;
+
+/** Copy under health score / charts block. */
+export const ctaScoreCopy = {
+  headline: "می‌خواهم قیف فروشم را از این وضعیت خارج کنم",
+} as const;
+
+/** Copy after value-at-stake calculation. */
+export const ctaAfterValueCopy = {
+  headline:
+    "برای کاهش این فروش از دست‌رفته، برنامه بهبود قیف فروشم را می‌خواهم",
+} as const;
+
+/** Compact CTA inside locked domain fix sections. */
+export const ctaDomainFixLabel = "دریافت راهکار بهبود قیف فروش";
 
 export function getCtaDestination(capacityMode: CapacityMode): CtaDestination {
   return ctaDestinationByCapacity[capacityMode];

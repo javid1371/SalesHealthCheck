@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": ".cursor/hooks/strip-devdir-env.py",
+        "matcher": "Shell"
+      }
+    ]
+  }
+}

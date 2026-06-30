@@ -337,7 +337,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
   "ctas": [
     {
       "destination": "consultation",
-      "headline": "اولویت اصلی شما در سرعت ارتباط اولیه و ثبت سرنخ است — استانداردبودن و سرعت پاسخ اولیه به سرنخ را می‌سنجد.. برای نقشه اقدام اختصاصی با کارشناس صحبت کنید.",
+      "headline": "اولویت اصلی شما در سرعت ارتباط اولیه و ثبت سرنخ است — استانداردبودن و سرعت پاسخ اولیه به سرنخ را می‌سنجد.. برای بهبود قیف فروش، برنامه اختصاصی دریافت کنید.",
       "moment": "urgency",
       "personalization": {
         "bindingConstraint": "سرعت ارتباط اولیه و ثبت سرنخ",
@@ -349,7 +349,7 @@ exports[`composeReport snapshot > matches stable ReportSpec for diagnosis v2 spe
     },
     {
       "destination": "consultation",
-      "headline": "ریشه‌های اصلی در اندازه‌گیری، تحلیل و بهینه‌سازی فروش، شناخت مشتری مناسب شناسایی شد — نقشه اصلاح را با کارشناس بسازید.",
+      "headline": "ریشه‌های اصلی در اندازه‌گیری، تحلیل و بهینه‌سازی فروش، شناخت مشتری مناسب شناسایی شد — نقشه بهبود قیف فروش را با کارشناس بسازید.",
       "moment": "trust",
       "personalization": {
         "bindingConstraint": "سرعت ارتباط اولیه و ثبت سرنخ",
