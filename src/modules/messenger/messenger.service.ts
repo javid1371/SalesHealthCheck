@@ -1223,6 +1223,8 @@ export async function handleMessengerUpdate(
       await handleCancelCommand(client, platform, update.chatId);
       return;
     }
+
+    return;
   }
 
   if (update.type === "contact") {
