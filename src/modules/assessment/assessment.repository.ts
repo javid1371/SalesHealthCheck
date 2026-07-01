@@ -169,6 +169,23 @@ export async function updateAssessmentStatus(
   });
 }
 
+export async function abandonAssessment(assessmentId: string) {
+  return db.assessmentSession.update({
+    where: { id: assessmentId },
+    data: { status: "abandoned" },
+  });
+}
+
+export async function abandonInProgressAssessmentsForUser(userId: string) {
+  return db.assessmentSession.updateMany({
+    where: {
+      userId,
+      status: { in: ["started", "in_progress"] },
+    },
+    data: { status: "abandoned" },
+  });
+}
+
 export async function updateOrganization(
   organizationId: string,
   data: {

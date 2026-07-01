@@ -12,6 +12,8 @@ import {
   startAssessment,
 } from "@/modules/assessment/assessment.service";
 import {
+  abandonAssessment,
+  abandonInProgressAssessmentsForUser,
   countAnswersForAssessment,
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
@@ -21,7 +23,9 @@ import { sendLongText } from "./bot/send-long-text";
 import { resolveUserFromContactPhone } from "./messenger-auth.service";
 import { loadMessengerLabelsByOptionIds } from "./messenger-labels.repository";
 import {
+  appendCancelRow,
   buildBackToMenuRow,
+  buildCancelToMenuRow,
   buildMainMenuRows,
   buildReportSelectionRows,
   isMenuCallback,
@@ -55,6 +59,12 @@ const ACTIVE_TEST_STATES = new Set([
   "awaiting_team_size",
   "awaiting_sales_model",
   "answering_questions",
+]);
+
+const CANCELLABLE_STATES = new Set([
+  ...ACTIVE_TEST_STATES,
+  "awaiting_consultation_message",
+  "selecting_report",
 ]);
 
 function isSalesModel(value: string): value is SalesModel {
@@ -171,8 +181,76 @@ async function sendMainMenu(
 
   return updateConversation(conversation.id, {
     state: "at_main_menu",
-    assessmentId: inProgress?.id ?? conversation.assessmentId,
+    assessmentId: inProgress?.id ?? null,
+    currentDomainIndex: 0,
+    currentQuestionIndex: 0,
+    lastPromptMessageId: null,
+    businessName: null,
+    teamSize: null,
   });
+}
+
+async function abandonConversationAssessment(
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (conversation.assessmentId) {
+    const assessment = await findAssessmentById(conversation.assessmentId);
+    if (
+      assessment &&
+      (assessment.status === "started" || assessment.status === "in_progress")
+    ) {
+      await abandonAssessment(conversation.assessmentId);
+    }
+  }
+}
+
+async function cancelToMainMenu(
+  client: BotClient,
+  conversation: BotConversationRecord,
+  options: { message?: string } = {},
+): Promise<void> {
+  if (!conversation.userId) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "برای استفاده از ربات ابتدا شماره تماس را به اشتراک بگذارید.",
+    });
+    return;
+  }
+
+  await abandonConversationAssessment(conversation);
+
+  const reset = await resetConversation(conversation, { preserveUser: true });
+
+  if (options.message) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: options.message,
+      replyMarkup: { type: "remove" },
+    });
+  }
+
+  await sendMainMenu(client, reset);
+}
+
+async function freshStartToMainMenu(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
+
+  await abandonInProgressAssessmentsForUser(conversation.userId);
+  const reset = await resetConversation(conversation, { preserveUser: true });
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "تست‌های ناتمام لغو شدند.",
+    replyMarkup: { type: "remove" },
+  });
+
+  await sendMainMenu(client, reset);
 }
 
 async function sendTeamSizePrompt(
@@ -184,12 +262,14 @@ async function sendTeamSizePrompt(
     text: "اندازه تیم فروش شما چقدر است؟",
     replyMarkup: {
       type: "inline",
-      rows: TEAM_SIZE_OPTIONS.map((option) => [
-        {
-          text: option.label,
-          callbackData: `${TEAM_SIZE_CALLBACK_PREFIX}${option.value}`,
-        },
-      ]),
+      rows: appendCancelRow(
+        TEAM_SIZE_OPTIONS.map((option) => [
+          {
+            text: option.label,
+            callbackData: `${TEAM_SIZE_CALLBACK_PREFIX}${option.value}`,
+          },
+        ]),
+      ),
     },
   });
 
@@ -208,12 +288,14 @@ async function sendSalesModelPrompt(
     text: "مدل فروش اصلی کسب‌وکار شما چیست؟",
     replyMarkup: {
       type: "inline",
-      rows: SALES_MODEL_OPTIONS.map((option) => [
-        {
-          text: option.label,
-          callbackData: `${SALES_MODEL_CALLBACK_PREFIX}${option.value}`,
-        },
-      ]),
+      rows: appendCancelRow(
+        SALES_MODEL_OPTIONS.map((option) => [
+          {
+            text: option.label,
+            callbackData: `${SALES_MODEL_CALLBACK_PREFIX}${option.value}`,
+          },
+        ]),
+      ),
     },
   });
 
@@ -323,12 +405,14 @@ async function sendCurrentQuestion(
     text: prompt,
     replyMarkup: {
       type: "inline",
-      rows: question.options.map((option) => [
-        {
-          text: optionLabels.get(option.id) ?? option.text,
-          callbackData: option.id,
-        },
-      ]),
+      rows: appendCancelRow(
+        question.options.map((option) => [
+          {
+            text: optionLabels.get(option.id) ?? option.text,
+            callbackData: option.id,
+          },
+        ]),
+      ),
     },
   });
 
@@ -544,8 +628,11 @@ async function startConsultationFlow(
 
   await client.sendMessage({
     chatId: conversation.chatId,
-    text: "پیام خود را برای درخواست مشاوره بنویسید (اختیاری). برای رد کردن، «-» بفرستید.",
-    replyMarkup: { type: "remove" },
+    text: "پیام خود را برای درخواست مشاوره بنویسید (اختیاری). برای رد کردن، «-» بفرستید.\n\nبرای لغو: /cancel",
+    replyMarkup: {
+      type: "inline",
+      rows: buildCancelToMenuRow(),
+    },
   });
 
   await updateConversation(conversation.id, {
@@ -667,6 +754,9 @@ async function handleMenuCallback(
 
   switch (data) {
     case MENU_CALLBACKS.newAssessment:
+      if (conversation.userId) {
+        await abandonInProgressAssessmentsForUser(conversation.userId);
+      }
       await updateConversation(conversation.id, {
         state: "awaiting_business_name",
         businessName: null,
@@ -677,13 +767,26 @@ async function handleMenuCallback(
       });
       await client.sendMessage({
         chatId: conversation.chatId,
-        text: "نام کسب‌وکار یا برند خود را بنویسید:",
-        replyMarkup: { type: "remove" },
+        text: "نام کسب‌وکار یا برند خود را بنویسید:\n\n(برای لغو: /cancel یا دکمه زیر)",
+        replyMarkup: {
+          type: "inline",
+          rows: buildCancelToMenuRow(),
+        },
       });
       return;
 
     case MENU_CALLBACKS.continueAssessment:
       await resumeInProgressAssessment(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.freshStart:
+      await freshStartToMainMenu(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.cancel:
+      await cancelToMainMenu(client, conversation, {
+        message: "عملیات لغو شد.",
+      });
       return;
 
     case MENU_CALLBACKS.reports:
@@ -714,6 +817,63 @@ async function handleMenuCallback(
   }
 }
 
+async function handleResetCommand(
+  client: BotClient,
+  platform: MessengerPlatform,
+  chatId: string,
+  firstName?: string,
+): Promise<void> {
+  const conversation = await findOrCreateConversation(platform, chatId);
+
+  if (conversation.userId) {
+    await abandonInProgressAssessmentsForUser(conversation.userId);
+  }
+
+  await resetConversation(conversation);
+
+  if (firstName) {
+    await updateConversation(conversation.id, {
+      contactFirstName: firstName,
+      state: "awaiting_contact",
+    });
+  } else {
+    await updateConversation(conversation.id, { state: "awaiting_contact" });
+  }
+
+  await client.sendMessage({
+    chatId,
+    text: "حساب کاربری این چت ریست شد. برای ادامه، شماره تماس را دوباره به اشتراک بگذارید.",
+    replyMarkup: { type: "remove" },
+  });
+
+  await sendContactRequest(client, chatId);
+}
+
+async function handleCancelCommand(
+  client: BotClient,
+  platform: MessengerPlatform,
+  chatId: string,
+): Promise<void> {
+  const conversation = await findOrCreateConversation(platform, chatId);
+
+  if (!CANCELLABLE_STATES.has(conversation.state)) {
+    if (conversation.userId) {
+      await sendMainMenu(client, conversation);
+      return;
+    }
+
+    await client.sendMessage({
+      chatId,
+      text: "عملیاتی برای لغو وجود ندارد.",
+    });
+    return;
+  }
+
+  await cancelToMainMenu(client, conversation, {
+    message: "عملیات لغو شد.",
+  });
+}
+
 async function handleStartCommand(
   client: BotClient,
   platform: MessengerPlatform,
@@ -725,7 +885,11 @@ async function handleStartCommand(
   if (ACTIVE_TEST_STATES.has(conversation.state)) {
     await client.sendMessage({
       chatId,
-      text: "یک ارزیابی در جریان دارید. لطفاً مراحل فعلی را ادامه دهید یا پس از اتمام، /start را بفرستید.",
+      text: "یک ارزیابی در جریان دارید. برای لغو و بازگشت به منو از دکمه زیر یا /cancel استفاده کنید.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildCancelToMenuRow(),
+      },
     });
     return;
   }
@@ -816,6 +980,10 @@ async function handleText(
       await client.sendMessage({
         chatId: update.chatId,
         text: "لطفاً نام کسب‌وکار را وارد کنید.",
+        replyMarkup: {
+          type: "inline",
+          rows: buildCancelToMenuRow(),
+        },
       });
       return;
     }
@@ -1038,8 +1206,23 @@ export async function handleMessengerUpdate(
         update.chatId,
         update.firstName,
       );
+      return;
     }
-    return;
+
+    if (update.command === "reset") {
+      await handleResetCommand(
+        client,
+        platform,
+        update.chatId,
+        update.firstName,
+      );
+      return;
+    }
+
+    if (update.command === "cancel") {
+      await handleCancelCommand(client, platform, update.chatId);
+      return;
+    }
   }
 
   if (update.type === "contact") {
