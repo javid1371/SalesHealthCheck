@@ -61,6 +61,9 @@ enum MessengerPlatform {
 enum BotConversationState {
   idle
   awaiting_contact
+  at_main_menu
+  selecting_report
+  awaiting_consultation_message
   awaiting_business_name
   awaiting_team_size
   awaiting_sales_model
@@ -172,11 +175,12 @@ model Question {
 }
 
 model QuestionOption {
-  id           String @id @default(cuid())
-  questionId   String @map("question_id")
-  text         String
-  score        Int
-  displayOrder Int    @map("display_order")
+  id              String  @id @default(cuid())
+  questionId      String  @map("question_id")
+  text            String
+  score           Int
+  displayOrder    Int     @map("display_order")
+  messengerLabel  String? @map("messenger_label") @db.VarChar(64)
 
   question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
   answers  Answer[]

@@ -1,9 +1,9 @@
-import type { HealthLevel } from "@/types/assessment";
-import type { MessengerPlatform, SalesModel } from "@prisma/client";
+import type { AssessmentStatus, MessengerPlatform, SalesModel } from "@prisma/client";
+import { db } from "@/lib/db";
 import { env } from "@/lib/env";
-import { healthLevelLabelFa } from "@/lib/health-level";
 import { SALES_MODEL_OPTIONS } from "@/lib/sales-model";
 import { TEAM_SIZE_OPTIONS } from "@/lib/team-size";
+import { findAssessmentsByUserId } from "@/modules/account/account.repository";
 import {
   finishAssessment,
   getAssessmentQuestions,
@@ -11,9 +11,26 @@ import {
   saveAnswers,
   startAssessment,
 } from "@/modules/assessment/assessment.service";
-import { findAssessmentById } from "@/modules/assessment/assessment.repository";
+import {
+  countAnswersForAssessment,
+  findAssessmentById,
+} from "@/modules/assessment/assessment.repository";
+import { createConsultationRequest } from "@/modules/consultation/consultation.repository";
 import type { BotClient } from "./bot/bot-client.types";
+import { sendLongText } from "./bot/send-long-text";
 import { resolveUserFromContactPhone } from "./messenger-auth.service";
+import { loadMessengerLabelsByOptionIds } from "./messenger-labels.repository";
+import {
+  buildBackToMenuRow,
+  buildMainMenuRows,
+  buildReportSelectionRows,
+  isMenuCallback,
+  isReportCallback,
+  MAIN_MENU_TEXT,
+  MENU_CALLBACKS,
+  parseReportCallback,
+} from "./messenger-menu";
+import { formatAssessmentResultForMessenger } from "./messenger-result.formatter";
 import {
   findOrCreateConversation,
   resetConversation,
@@ -33,12 +50,89 @@ const WELCOME_MESSAGE =
 
 const CONTACT_BUTTON_LABEL = "📱 اشتراک شماره تماس";
 
+const ACTIVE_TEST_STATES = new Set([
+  "awaiting_business_name",
+  "awaiting_team_size",
+  "awaiting_sales_model",
+  "answering_questions",
+]);
+
 function isSalesModel(value: string): value is SalesModel {
   return SALES_MODEL_OPTIONS.some((option) => option.value === value);
 }
 
 function isTeamSize(value: string): boolean {
   return TEAM_SIZE_OPTIONS.some((option) => option.value === value);
+}
+
+function formatAssessmentListLabel(assessment: {
+  id: string;
+  status: AssessmentStatus;
+  createdAt: Date;
+  organization: { businessName: string };
+  overallScore: { percentage: number } | null;
+}): string {
+  const date = new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "short",
+  }).format(assessment.createdAt);
+  const score = assessment.overallScore
+    ? `${Math.round(assessment.overallScore.percentage)}٪`
+    : assessment.status === "completed"
+      ? "—"
+      : "ناتمام";
+
+  const label = `${assessment.organization.businessName} — ${date} — ${score}`;
+  return label.length > 60 ? `${label.slice(0, 59)}…` : label;
+}
+
+async function findInProgressAssessment(userId: string) {
+  const assessments = await findAssessmentsByUserId(userId);
+  return (
+    assessments.find(
+      (assessment) =>
+        assessment.status === "in_progress" || assessment.status === "started",
+    ) ?? null
+  );
+}
+
+async function findLatestCompletedAssessment(userId: string) {
+  const assessments = await findAssessmentsByUserId(userId);
+  return assessments.find((assessment) => assessment.status === "completed") ?? null;
+}
+
+async function computeResumePosition(assessmentId: string): Promise<{
+  domainIndex: number;
+  questionIndex: number;
+}> {
+  const [questions, answeredCount] = await Promise.all([
+    getAssessmentQuestions(assessmentId),
+    countAnswersForAssessment(assessmentId),
+  ]);
+
+  let remaining = answeredCount;
+
+  for (
+    let domainIndex = 0;
+    domainIndex < questions.domains.length;
+    domainIndex += 1
+  ) {
+    const domain = questions.domains[domainIndex]!;
+    for (
+      let questionIndex = 0;
+      questionIndex < domain.questions.length;
+      questionIndex += 1
+    ) {
+      if (remaining === 0) {
+        return { domainIndex, questionIndex };
+      }
+      remaining -= 1;
+    }
+  }
+
+  return {
+    domainIndex: questions.domains.length,
+    questionIndex: 0,
+  };
 }
 
 async function sendContactRequest(
@@ -53,6 +147,31 @@ async function sendContactRequest(
       rows: [[{ text: CONTACT_BUTTON_LABEL, requestContact: true }]],
       oneTimeKeyboard: true,
     },
+  });
+}
+
+async function sendMainMenu(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<BotConversationRecord> {
+  const inProgress = conversation.userId
+    ? await findInProgressAssessment(conversation.userId)
+    : null;
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: MAIN_MENU_TEXT,
+    replyMarkup: {
+      type: "inline",
+      rows: buildMainMenuRows({
+        hasInProgressAssessment: Boolean(inProgress),
+      }),
+    },
+  });
+
+  return updateConversation(conversation.id, {
+    state: "at_main_menu",
+    assessmentId: inProgress?.id ?? conversation.assessmentId,
   });
 }
 
@@ -176,11 +295,27 @@ async function sendCurrentQuestion(
     .reduce((sum, currentDomain) => sum + currentDomain.questions.length, 0);
   const progress = answeredBefore + conversation.currentQuestionIndex + 1;
 
+  const optionLabels = await loadMessengerLabelsByOptionIds(
+    question.options.map((option) => option.id),
+  );
+
+  const optionLines = question.options
+    .map((option) => {
+      const label = optionLabels.get(option.id) ?? option.text;
+      return `${option.score}) ${option.text}\n   ↳ ${label}`;
+    })
+    .join("\n\n");
+
   const prompt = [
     `سوال ${progress} از ${totalQuestions}`,
     `حوزه: ${domain.name}`,
     "",
     question.text,
+    "",
+    "گزینه‌ها:",
+    optionLines,
+    "",
+    "یکی از دکمه‌های زیر را انتخاب کنید:",
   ].join("\n");
 
   const sent = await client.sendMessage({
@@ -190,7 +325,7 @@ async function sendCurrentQuestion(
       type: "inline",
       rows: question.options.map((option) => [
         {
-          text: option.text,
+          text: optionLabels.get(option.id) ?? option.text,
           callbackData: option.id,
         },
       ]),
@@ -232,6 +367,66 @@ async function advanceQuestionIndices(
   });
 }
 
+async function sendAssessmentReportInChat(
+  client: BotClient,
+  conversation: BotConversationRecord,
+  assessmentId: string,
+): Promise<void> {
+  const assessment = await findAssessmentById(assessmentId);
+
+  if (!assessment) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "ارزیابی پیدا نشد.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  if (conversation.userId && assessment.userId !== conversation.userId) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "دسترسی به این گزارش مجاز نیست.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  if (assessment.status !== "completed") {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "این ارزیابی هنوز تکمیل نشده است. می‌توانید از منو «ادامه تست ناتمام» را انتخاب کنید.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  const result = await getAssessmentResult(assessmentId, {
+    token: assessment.resultToken,
+  });
+
+  const parts = formatAssessmentResultForMessenger(result);
+  await sendLongText(client, conversation.chatId, parts);
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "برای بازگشت به منو، دکمه زیر را بزنید.",
+    replyMarkup: {
+      type: "inline",
+      rows: buildBackToMenuRow(),
+    },
+  });
+}
+
 async function completeAssessment(
   client: BotClient,
   conversation: BotConversationRecord,
@@ -245,50 +440,278 @@ async function completeAssessment(
     text: "در حال محاسبه نتیجه ارزیابی...",
   });
 
-  const finished = await finishAssessment(conversation.assessmentId);
-  const assessment = await findAssessmentById(conversation.assessmentId);
+  await finishAssessment(conversation.assessmentId);
+  await sendAssessmentReportInChat(
+    client,
+    conversation,
+    conversation.assessmentId,
+  );
 
-  if (!assessment) {
-    throw new Error("assessment_not_found");
-  }
-
-  const result = await getAssessmentResult(conversation.assessmentId, {
-    token: assessment.resultToken,
+  const updated = await updateConversation(conversation.id, {
+    state: "at_main_menu",
   });
 
-  const bottlenecks = result.bottlenecks
-    .slice(0, 3)
-    .map(
-      (item, index) =>
-        `${index + 1}. ${item.domainName} (اولویت ${item.rank})`,
-    )
-    .join("\n");
+  await sendMainMenu(client, updated);
+}
 
-  const fullReportUrl = `${env.appBaseUrl}${finished.resultUrl}`;
+async function showReportSelection(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
 
-  const summary = [
-    "✅ ارزیابی شما تکمیل شد.",
-    "",
-    `امتیاز کلی: ${Math.round(result.overallScore.percentage)}٪`,
-    `وضعیت: ${healthLevelLabelFa(result.overallScore.healthLevel as HealthLevel)}`,
-    "",
-    bottlenecks ? `گلوگاه‌های اصلی:\n${bottlenecks}` : "",
-    "",
-    `📄 گزارش کامل:\n${fullReportUrl}`,
-    "",
-    "برای شروع ارزیابی جدید، /start را بفرستید.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const assessments = await findAssessmentsByUserId(conversation.userId);
+  const completed = assessments.filter(
+    (assessment) => assessment.status === "completed",
+  );
+
+  if (completed.length === 0) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "هنوز گزارش تکمیل‌شده‌ای ندارید. از «شروع ارزیابی جدید» استفاده کنید.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    await updateConversation(conversation.id, { state: "at_main_menu" });
+    return;
+  }
 
   await client.sendMessage({
     chatId: conversation.chatId,
-    text: summary,
+    text: "کدام گزارش را می‌خواهید ببینید؟",
+    replyMarkup: {
+      type: "inline",
+      rows: buildReportSelectionRows(
+        completed.map((assessment) => ({
+          id: assessment.id,
+          label: formatAssessmentListLabel(assessment),
+        })),
+      ),
+    },
+  });
+
+  await updateConversation(conversation.id, { state: "selecting_report" });
+}
+
+async function sendWebReportLink(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
+
+  const assessment = await findLatestCompletedAssessment(conversation.userId);
+
+  if (!assessment) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "هنوز گزارش تکمیل‌شده‌ای برای نمایش در وب ندارید.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  const url = `${env.appBaseUrl}/assessment/${assessment.id}/result?token=${encodeURIComponent(assessment.resultToken)}`;
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: `🌐 لینک گزارش در وب:\n${url}`,
+    replyMarkup: {
+      type: "inline",
+      rows: buildBackToMenuRow(),
+    },
+  });
+}
+
+async function startConsultationFlow(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "پیام خود را برای درخواست مشاوره بنویسید (اختیاری). برای رد کردن، «-» بفرستید.",
+    replyMarkup: { type: "remove" },
   });
 
   await updateConversation(conversation.id, {
-    state: "completed",
+    state: "awaiting_consultation_message",
   });
+}
+
+async function submitConsultationRequest(
+  client: BotClient,
+  conversation: BotConversationRecord,
+  messageText: string,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: conversation.userId },
+    select: { phone: true },
+  });
+
+  const latestCompleted = await findLatestCompletedAssessment(conversation.userId);
+  let reportId: string | undefined;
+
+  if (latestCompleted) {
+    const assessmentWithReport = await findAssessmentById(latestCompleted.id);
+    reportId = assessmentWithReport?.report?.id;
+  }
+
+  const message =
+    messageText.trim() === "-" || !messageText.trim()
+      ? undefined
+      : messageText.trim();
+
+  await createConsultationRequest({
+    name: conversation.contactFirstName?.trim() || "کاربر",
+    phone: user?.phone ?? undefined,
+    message,
+    assessmentSessionId: latestCompleted?.id,
+    reportId,
+  });
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "✅ درخواست مشاوره شما ثبت شد. به زودی با شما تماس می‌گیریم.",
+  });
+
+  const updated = await updateConversation(conversation.id, {
+    state: "at_main_menu",
+  });
+
+  await sendMainMenu(client, updated);
+}
+
+async function resumeInProgressAssessment(
+  client: BotClient,
+  conversation: BotConversationRecord,
+): Promise<void> {
+  if (!conversation.userId) {
+    await sendContactRequest(client, conversation.chatId);
+    return;
+  }
+
+  const inProgress = await findInProgressAssessment(conversation.userId);
+
+  if (!inProgress) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "تست ناتمامی پیدا نشد.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  const position = await computeResumePosition(inProgress.id);
+
+  const updated = await updateConversation(conversation.id, {
+    assessmentId: inProgress.id,
+    state: "answering_questions",
+    currentDomainIndex: position.domainIndex,
+    currentQuestionIndex: position.questionIndex,
+    lastPromptMessageId: null,
+  });
+
+  const questions = await getAssessmentQuestions(inProgress.id);
+  if (position.domainIndex >= questions.domains.length) {
+    await completeAssessment(client, updated);
+    return;
+  }
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "ادامه ارزیابی از همان‌جایی که متوقف شده بود.",
+    replyMarkup: { type: "remove" },
+  });
+
+  await sendCurrentQuestion(client, updated);
+}
+
+async function handleMenuCallback(
+  client: BotClient,
+  conversation: BotConversationRecord,
+  data: string,
+  callbackQueryId: string,
+  messageId?: string,
+): Promise<void> {
+  await client.answerCallbackQuery({ callbackQueryId });
+
+  if (messageId) {
+    await client.editMessageReplyMarkup({
+      chatId: conversation.chatId,
+      messageId,
+    });
+  }
+
+  switch (data) {
+    case MENU_CALLBACKS.newAssessment:
+      await updateConversation(conversation.id, {
+        state: "awaiting_business_name",
+        businessName: null,
+        teamSize: null,
+        assessmentId: null,
+        currentDomainIndex: 0,
+        currentQuestionIndex: 0,
+      });
+      await client.sendMessage({
+        chatId: conversation.chatId,
+        text: "نام کسب‌وکار یا برند خود را بنویسید:",
+        replyMarkup: { type: "remove" },
+      });
+      return;
+
+    case MENU_CALLBACKS.continueAssessment:
+      await resumeInProgressAssessment(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.reports:
+      await showReportSelection(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.consult:
+      await startConsultationFlow(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.web:
+      await sendWebReportLink(client, conversation);
+      return;
+
+    case MENU_CALLBACKS.back: {
+      const updated = await updateConversation(conversation.id, {
+        state: "at_main_menu",
+      });
+      await sendMainMenu(client, updated);
+      return;
+    }
+
+    default:
+      await client.sendMessage({
+        chatId: conversation.chatId,
+        text: "گزینه نامعتبر است.",
+      });
+  }
 }
 
 async function handleStartCommand(
@@ -299,7 +722,7 @@ async function handleStartCommand(
 ): Promise<void> {
   const conversation = await findOrCreateConversation(platform, chatId);
 
-  if (conversation.state !== "idle" && conversation.state !== "completed") {
+  if (ACTIVE_TEST_STATES.has(conversation.state)) {
     await client.sendMessage({
       chatId,
       text: "یک ارزیابی در جریان دارید. لطفاً مراحل فعلی را ادامه دهید یا پس از اتمام، /start را بفرستید.",
@@ -307,14 +730,26 @@ async function handleStartCommand(
     return;
   }
 
-  const reset = await resetConversation(conversation);
+  if (conversation.userId) {
+    if (firstName) {
+      await updateConversation(conversation.id, {
+        contactFirstName: firstName,
+      });
+    }
+
+    const reset = await resetConversation(conversation, { preserveUser: true });
+    await sendMainMenu(client, reset);
+    return;
+  }
+
+  await resetConversation(conversation);
   if (firstName) {
-    await updateConversation(reset.id, {
+    await updateConversation(conversation.id, {
       contactFirstName: firstName,
       state: "awaiting_contact",
     });
   } else {
-    await updateConversation(reset.id, { state: "awaiting_contact" });
+    await updateConversation(conversation.id, { state: "awaiting_contact" });
   }
 
   await sendContactRequest(client, chatId);
@@ -329,11 +764,12 @@ async function handleContact(
 
   if (
     conversation.state !== "awaiting_contact" &&
-    conversation.state !== "idle"
+    conversation.state !== "idle" &&
+    conversation.userId
   ) {
     await client.sendMessage({
       chatId: update.chatId,
-      text: "شماره تماس قبلاً ثبت شده است. لطفاً مراحل بعدی را ادامه دهید.",
+      text: "شماره تماس قبلاً ثبت شده است. لطفاً از منو استفاده کنید.",
     });
     return;
   }
@@ -341,17 +777,18 @@ async function handleContact(
   try {
     const { userId } = await resolveUserFromContactPhone(update.phone);
 
-    await updateConversation(conversation.id, {
+    const updated = await updateConversation(conversation.id, {
       userId,
       contactFirstName: update.firstName ?? conversation.contactFirstName,
-      state: "awaiting_business_name",
     });
 
     await client.sendMessage({
       chatId: update.chatId,
-      text: "نام کسب‌وکار یا برند خود را بنویسید:",
+      text: "شماره تماس تأیید شد.",
       replyMarkup: { type: "remove" },
     });
+
+    await sendMainMenu(client, updated);
   } catch {
     await client.sendMessage({
       chatId: update.chatId,
@@ -367,6 +804,11 @@ async function handleText(
   update: Extract<MessengerUpdate, { type: "text" }>,
 ): Promise<void> {
   const conversation = await findOrCreateConversation(platform, update.chatId);
+
+  if (conversation.state === "awaiting_consultation_message") {
+    await submitConsultationRequest(client, conversation, update.text);
+    return;
+  }
 
   if (conversation.state === "awaiting_business_name") {
     const businessName = update.text.trim();
@@ -387,7 +829,16 @@ async function handleText(
     return;
   }
 
-  if (conversation.state === "idle" || conversation.state === "completed") {
+  if (
+    conversation.state === "idle" ||
+    conversation.state === "completed" ||
+    conversation.state === "at_main_menu"
+  ) {
+    if (conversation.userId) {
+      await sendMainMenu(client, conversation);
+      return;
+    }
+
     await handleStartCommand(
       client,
       platform,
@@ -409,6 +860,41 @@ async function handleCallback(
   update: Extract<MessengerUpdate, { type: "callback" }>,
 ): Promise<void> {
   const { data, callbackQueryId, messageId } = update;
+
+  if (isMenuCallback(data)) {
+    await handleMenuCallback(
+      client,
+      conversation,
+      data,
+      callbackQueryId,
+      messageId,
+    );
+    return;
+  }
+
+  if (isReportCallback(data)) {
+    const assessmentId = parseReportCallback(data);
+    await client.answerCallbackQuery({ callbackQueryId });
+
+    if (messageId) {
+      await client.editMessageReplyMarkup({
+        chatId: conversation.chatId,
+        messageId,
+      });
+    }
+
+    if (!assessmentId) {
+      await client.sendMessage({
+        chatId: conversation.chatId,
+        text: "گزارش نامعتبر است.",
+      });
+      return;
+    }
+
+    await sendAssessmentReportInChat(client, conversation, assessmentId);
+    await updateConversation(conversation.id, { state: "at_main_menu" });
+    return;
+  }
 
   if (data.startsWith(TEAM_SIZE_CALLBACK_PREFIX)) {
     if (conversation.state !== "awaiting_team_size") {
@@ -472,13 +958,11 @@ async function handleCallback(
       });
     }
 
-    const started = await startAssessmentFromConversation(
+    await startAssessmentFromConversation(
       client,
       conversation,
       salesModelValue,
     );
-
-    void started;
     return;
   }
 

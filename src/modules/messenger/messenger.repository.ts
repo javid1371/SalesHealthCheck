@@ -53,15 +53,18 @@ export async function updateConversation(
 
 export async function resetConversation(
   conversation: BotConversationRecord,
+  options: { preserveUser?: boolean } = {},
 ): Promise<BotConversationRecord> {
   return updateConversation(conversation.id, {
-    userId: null,
+    userId: options.preserveUser ? conversation.userId : null,
     assessmentId: null,
     state: "idle",
     currentDomainIndex: 0,
     currentQuestionIndex: 0,
     lastPromptMessageId: null,
-    contactFirstName: null,
+    contactFirstName: options.preserveUser
+      ? conversation.contactFirstName
+      : null,
     businessName: null,
     teamSize: null,
   });

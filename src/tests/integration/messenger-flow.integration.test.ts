@@ -1,15 +1,15 @@
 /**
- * Messenger channel integration — contact auth + assessment lifecycle via service layer.
+ * Messenger channel integration — contact auth + menu + assessment lifecycle.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import type { BotClient } from "@/modules/messenger/bot/bot-client.types";
 import { resolveUserFromContactPhone } from "@/modules/messenger/messenger-auth.service";
 import { handleMessengerUpdate } from "@/modules/messenger/messenger.service";
+import { MAIN_MENU_TEXT } from "@/modules/messenger/messenger-menu";
 import {
   getAssessmentQuestions,
 } from "@/modules/assessment/assessment.service";
-import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question-bank.types";
 
 const RUN_ID = Date.now();
 
@@ -29,7 +29,7 @@ function createFakeClient(): BotClient & {
   };
 }
 
-function buildAllAnswers(questions: QuestionsForAssessmentDto) {
+function buildAllAnswers(questions: Awaited<ReturnType<typeof getAssessmentQuestions>>) {
   const answers: { questionId: string; selectedOptionId: string }[] = [];
   for (const domain of questions.domains) {
     for (const question of domain.questions) {
@@ -58,7 +58,7 @@ describe("messenger flow (integration)", () => {
     expect(user?.phoneVerifiedAt).not.toBeNull();
   });
 
-  it("completes assessment lifecycle through messenger handlers", async () => {
+  it("shows main menu after contact and completes assessment with in-chat report", async () => {
     const chatId = `integration-chat-${RUN_ID}`;
     const phone = `0915${String(RUN_ID).slice(-7)}`;
     const client = createFakeClient();
@@ -75,6 +75,22 @@ describe("messenger flow (integration)", () => {
       "telegram",
     );
 
+    expect(client.messages.some((message) => message.text.includes(MAIN_MENU_TEXT))).toBe(
+      true,
+    );
+
+    await handleMessengerUpdate(
+      {
+        type: "callback",
+        chatId,
+        callbackQueryId: "cb-menu-new",
+        data: "menu:new",
+        messageId: "1",
+      },
+      client,
+      "telegram",
+    );
+
     await handleMessengerUpdate(
       { type: "text", chatId, text: "Messenger Test Co", firstName: "Tester" },
       client,
@@ -87,7 +103,7 @@ describe("messenger flow (integration)", () => {
         chatId,
         callbackQueryId: "cb-team",
         data: "team:1-5",
-        messageId: "1",
+        messageId: "2",
       },
       client,
       "telegram",
@@ -99,7 +115,7 @@ describe("messenger flow (integration)", () => {
         chatId,
         callbackQueryId: "cb-model",
         data: "model:online",
-        messageId: "2",
+        messageId: "3",
       },
       client,
       "telegram",
@@ -138,11 +154,67 @@ describe("messenger flow (integration)", () => {
       },
     });
 
-    expect(updatedConversation?.state).toBe("completed");
+    expect(updatedConversation?.state).toBe("at_main_menu");
+    expect(
+      client.messages.some((message) => message.text.includes("گزارش ارزیابی")),
+    ).toBe(true);
+    expect(
+      client.messages.some((message) => message.text.includes("گزارش کامل:")),
+    ).toBe(false);
+  });
+
+  it("submits consultation request from menu flow", async () => {
+    const chatId = `integration-consult-${RUN_ID}`;
+    const phone = `0916${String(RUN_ID).slice(-7)}`;
+    const client = createFakeClient();
+
+    await handleMessengerUpdate(
+      { type: "command", chatId, command: "start", firstName: "Consult" },
+      client,
+      "telegram",
+    );
+
+    await handleMessengerUpdate(
+      { type: "contact", chatId, phone, firstName: "Consult" },
+      client,
+      "telegram",
+    );
+
+    await handleMessengerUpdate(
+      {
+        type: "callback",
+        chatId,
+        callbackQueryId: "cb-consult",
+        data: "menu:consult",
+        messageId: "20",
+      },
+      client,
+      "telegram",
+    );
+
+    await handleMessengerUpdate(
+      {
+        type: "text",
+        chatId,
+        text: "لطفاً تماس بگیرید",
+        firstName: "Consult",
+      },
+      client,
+      "telegram",
+    );
+
     expect(
       client.messages.some((message) =>
-        message.text.includes("ارزیابی شما تکمیل شد"),
+        message.text.includes("درخواست مشاوره شما ثبت شد"),
       ),
     ).toBe(true);
+
+    const conversation = await db.botConversation.findUnique({
+      where: {
+        platform_chatId: { platform: "telegram", chatId },
+      },
+    });
+
+    expect(conversation?.state).toBe("at_main_menu");
   });
 });

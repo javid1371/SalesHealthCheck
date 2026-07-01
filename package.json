@@ -18,6 +18,8 @@
     "db:studio": "prisma studio",
     "sync:report-content": "tsx scripts/sync-report-content.ts",
     "bot:webhooks": "tsx scripts/set-bot-webhooks.ts",
+    "bot:labels:generate": "tsx scripts/generate-messenger-labels-csv.ts",
+    "bot:labels:backfill": "tsx scripts/backfill-messenger-labels.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

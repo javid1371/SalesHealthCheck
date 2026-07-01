@@ -55,7 +55,7 @@ describe("handleMessengerUpdate (integration state machine)", () => {
     });
   });
 
-  it("moves from /start to business name after contact share", async () => {
+  it("moves from /start to main menu after contact share", async () => {
     const client = createFakeClient();
 
     await handleMessengerUpdate(
@@ -92,7 +92,7 @@ describe("handleMessengerUpdate (integration state machine)", () => {
       "telegram",
     );
 
-    expect(client.messages.at(-1)?.text).toContain("نام کسب‌وکار");
+    expect(client.messages.at(-1)?.text).toContain("منوی اصلی");
   });
 
   it("starts assessment after sales model selection callback", async () => {
