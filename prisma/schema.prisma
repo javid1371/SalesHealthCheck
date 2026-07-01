@@ -53,6 +53,21 @@ enum ActionPlanTimeframe {
   thirty_days
 }
 
+enum MessengerPlatform {
+  telegram
+  bale
+}
+
+enum BotConversationState {
+  idle
+  awaiting_contact
+  awaiting_business_name
+  awaiting_team_size
+  awaiting_sales_model
+  answering_questions
+  completed
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String?
@@ -376,4 +391,24 @@ model OtpCode {
 
   @@index([phone])
   @@map("otp_codes")
+}
+
+model BotConversation {
+  id                   String               @id @default(cuid())
+  platform             MessengerPlatform
+  chatId               String               @map("chat_id")
+  userId               String?              @map("user_id")
+  assessmentId         String?              @map("assessment_id")
+  state                BotConversationState @default(idle)
+  currentDomainIndex   Int                  @default(0) @map("current_domain_index")
+  currentQuestionIndex Int                  @default(0) @map("current_question_index")
+  lastPromptMessageId  String?              @map("last_prompt_message_id")
+  contactFirstName     String?              @map("contact_first_name")
+  businessName         String?              @map("business_name")
+  teamSize             String?              @map("team_size")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+
+  @@unique([platform, chatId])
+  @@map("bot_conversations")
 }

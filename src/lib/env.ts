@@ -90,4 +90,20 @@ export const env = {
   get otpMaxAttempts(): number {
     return parsePositiveInt(process.env.OTP_MAX_ATTEMPTS, 3);
   },
+  /** Telegram bot token; unset uses dev logger client. */
+  get telegramBotToken(): string | undefined {
+    return process.env.TELEGRAM_BOT_TOKEN;
+  },
+  /** Secret token for Telegram webhook validation header. */
+  get telegramWebhookSecret(): string | undefined {
+    return process.env.TELEGRAM_WEBHOOK_SECRET;
+  },
+  /** Bale bot token; unset uses dev logger client. */
+  get baleBotToken(): string | undefined {
+    return process.env.BALE_BOT_TOKEN;
+  },
+  /** Secret token for Bale webhook validation. */
+  get baleWebhookSecret(): string | undefined {
+    return process.env.BALE_WEBHOOK_SECRET;
+  },
 } as const;
