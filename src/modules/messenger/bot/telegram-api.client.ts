@@ -83,7 +83,7 @@ function createTelegramCompatibleClient(
     }
     formData.append(
       fileField,
-      new Blob([file], { type: mimeType }),
+      new Blob([new Uint8Array(file)], { type: mimeType }),
       filename,
     );
 

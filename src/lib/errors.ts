@@ -29,7 +29,10 @@ export type AppErrorCode =
   | "diagnosis_failed"
   | "report_generation_failed"
   | "pdf_generation_disabled"
-  | "pdf_generation_failed";
+  | "pdf_generation_failed"
+  | "chart_not_found"
+  | "chart_generation_failed"
+  | "report_spec_unavailable";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

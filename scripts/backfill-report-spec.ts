@@ -2,14 +2,14 @@
  * Backfills reports.report_spec for legacy assessments (report_spec IS NULL).
  * Run: tsx scripts/backfill-report-spec.ts
  */
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { ensureReportSpec } from "@/modules/report/report-spec.service";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const reports = await prisma.report.findMany({
-    where: { reportSpec: { equals: null } },
+    where: { reportSpec: { equals: Prisma.DbNull } },
     select: { id: true, assessmentSessionId: true },
     orderBy: { createdAt: "asc" },
   });
