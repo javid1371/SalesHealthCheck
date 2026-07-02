@@ -2,6 +2,7 @@ import type { InlineButton } from "./bot/bot-client.types";
 
 export const MENU_CALLBACK_PREFIX = "menu:";
 export const REPORT_CALLBACK_PREFIX = "report:";
+export const PDF_CALLBACK_PREFIX = "pdf:";
 
 export const MENU_CALLBACKS = {
   newAssessment: `${MENU_CALLBACK_PREFIX}new`,
@@ -73,6 +74,26 @@ export function buildBackToMenuRow(): InlineButton[][] {
   return [[{ text: "↩️ بازگشت به منو", callbackData: MENU_CALLBACKS.back }]];
 }
 
+export function buildReportActionsRows(
+  assessmentId: string,
+  options: { pdfEnabled: boolean },
+): InlineButton[][] {
+  const rows: InlineButton[][] = [];
+
+  if (options.pdfEnabled) {
+    rows.push([
+      {
+        text: "📁 دریافت گزارش کامل (PDF)",
+        callbackData: `${PDF_CALLBACK_PREFIX}${assessmentId}`,
+      },
+    ]);
+  }
+
+  rows.push(...buildBackToMenuRow());
+
+  return rows;
+}
+
 export function buildCancelToMenuRow(): InlineButton[][] {
   return [[{ text: "❌ لغو و بازگشت به منو", callbackData: MENU_CALLBACKS.cancel }]];
 }
@@ -95,5 +116,18 @@ export function parseReportCallback(data: string): string | null {
   }
 
   const assessmentId = data.slice(REPORT_CALLBACK_PREFIX.length).trim();
+  return assessmentId || null;
+}
+
+export function isPdfCallback(data: string): boolean {
+  return data.startsWith(PDF_CALLBACK_PREFIX);
+}
+
+export function parsePdfCallback(data: string): string | null {
+  if (!isPdfCallback(data)) {
+    return null;
+  }
+
+  const assessmentId = data.slice(PDF_CALLBACK_PREFIX.length).trim();
   return assessmentId || null;
 }

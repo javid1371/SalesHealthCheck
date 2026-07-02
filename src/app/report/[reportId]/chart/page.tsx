@@ -1,0 +1,102 @@
+import { notFound } from "next/navigation";
+import { ReportChartView } from "@/components/report/ReportChartView";
+import { isAppError } from "@/lib/errors";
+import { readAdminSession, readSalesExpertSession, readUserSession } from "@/lib/session";
+import { getReport } from "@/modules/assessment/assessment.service";
+import type { ReportResponse } from "@/modules/assessment/assessment.types";
+
+interface ReportChartPageProps {
+  params: Promise<{ reportId: string }>;
+  searchParams: Promise<{ token?: string }>;
+}
+
+type ChartPageResult =
+  | { status: "success"; report: ReportResponse }
+  | { status: "not_found" }
+  | { status: "denied" };
+
+async function loadChartReport(
+  reportId: string,
+  access: {
+    token?: string;
+    userSession: Awaited<ReturnType<typeof readUserSession>>;
+    adminSession: Awaited<ReturnType<typeof readAdminSession>>;
+    salesExpertSession: Awaited<ReturnType<typeof readSalesExpertSession>>;
+  },
+): Promise<ChartPageResult> {
+  try {
+    const report = await getReport(reportId, {
+      token: access.token,
+      userSession: access.userSession,
+      adminSession: access.adminSession,
+      salesExpertSession: access.salesExpertSession,
+    });
+
+    if (!report.reportSpec) {
+      return { status: "not_found" };
+    }
+
+    return { status: "success", report };
+  } catch (error) {
+    if (isAppError(error)) {
+      if (error.status === 404) {
+        return { status: "not_found" };
+      }
+      return { status: "denied" };
+    }
+    throw error;
+  }
+}
+
+export default async function ReportChartPage({
+  params,
+  searchParams,
+}: ReportChartPageProps) {
+  const { reportId } = await params;
+  const { token } = await searchParams;
+  const [userSession, adminSession, salesExpertSession] = await Promise.all([
+    readUserSession(),
+    readAdminSession(),
+    readSalesExpertSession(),
+  ]);
+
+  const hasAccessCredential =
+    !!token || !!userSession || !!adminSession || !!salesExpertSession;
+  if (!hasAccessCredential) {
+    return (
+      <ChartAccessError message="برای مشاهده نمودار، توکن دسترسی در آدرس لازم است." />
+    );
+  }
+
+  const result = await loadChartReport(reportId, {
+    token,
+    userSession,
+    adminSession,
+    salesExpertSession,
+  });
+
+  if (result.status === "not_found") {
+    notFound();
+  }
+
+  if (result.status === "denied") {
+    return <ChartAccessError message="دسترسی به این گزارش مجاز نیست." />;
+  }
+
+  const { report } = result;
+
+  return (
+    <ReportChartView
+      reportSpec={report.reportSpec!}
+      businessName={report.businessName}
+    />
+  );
+}
+
+function ChartAccessError({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center p-8 text-center">
+      <p className="text-sm text-zinc-600">{message}</p>
+    </div>
+  );
+}

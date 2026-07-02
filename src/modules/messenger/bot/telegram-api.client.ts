@@ -69,6 +69,44 @@ function createTelegramCompatibleClient(
     return payload.result;
   }
 
+  async function callApiMultipart<T>(
+    method: string,
+    fields: Record<string, string>,
+    fileField: string,
+    file: Buffer,
+    filename: string,
+    mimeType: string,
+  ): Promise<T> {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, value);
+    }
+    formData.append(
+      fileField,
+      new Blob([file], { type: mimeType }),
+      filename,
+    );
+
+    const response = await fetch(`${baseUrl}/${method}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json()) as TelegramApiResponse<T>;
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(
+        `${platform} API ${method} failed: ${payload.description ?? response.statusText}`,
+      );
+    }
+
+    if (payload.result === undefined) {
+      throw new Error(`${platform} API ${method} returned no result`);
+    }
+
+    return payload.result;
+  }
+
   return {
     async sendMessage({ chatId, text, replyMarkup }) {
       const result = await callApi<TelegramMessage>("sendMessage", {
@@ -94,6 +132,56 @@ function createTelegramCompatibleClient(
         message_id: Number(messageId),
         reply_markup: { inline_keyboard: [] },
       });
+    },
+
+    async sendPhoto({ chatId, photo, filename = "chart.png", caption, replyMarkup }) {
+      const fields: Record<string, string> = { chat_id: chatId };
+      if (caption) {
+        fields.caption = caption;
+      }
+      const markup = buildReplyMarkup(replyMarkup);
+      if (markup) {
+        fields.reply_markup = JSON.stringify(markup);
+      }
+
+      const result = await callApiMultipart<TelegramMessage>(
+        "sendPhoto",
+        fields,
+        "photo",
+        photo,
+        filename,
+        "image/png",
+      );
+
+      return { messageId: String(result.message_id) };
+    },
+
+    async sendDocument({
+      chatId,
+      document,
+      filename,
+      caption,
+      replyMarkup,
+    }) {
+      const fields: Record<string, string> = { chat_id: chatId };
+      if (caption) {
+        fields.caption = caption;
+      }
+      const markup = buildReplyMarkup(replyMarkup);
+      if (markup) {
+        fields.reply_markup = JSON.stringify(markup);
+      }
+
+      const result = await callApiMultipart<TelegramMessage>(
+        "sendDocument",
+        fields,
+        "document",
+        document,
+        filename,
+        "application/pdf",
+      );
+
+      return { messageId: String(result.message_id) };
     },
   };
 }

@@ -26,6 +26,12 @@ function createFakeClient(): BotClient & {
     },
     async answerCallbackQuery() {},
     async editMessageReplyMarkup() {},
+    async sendPhoto() {
+      return { messageId: "photo" };
+    },
+    async sendDocument() {
+      return { messageId: "document" };
+    },
   };
 }
 

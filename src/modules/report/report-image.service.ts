@@ -9,22 +9,22 @@ import {
   PRINT_READY_SELECTOR,
 } from "./playwright-browser";
 
-export { resetBrowserForTests } from "./playwright-browser";
+const CHART_CAPTURE_SELECTOR = "#report-chart-capture";
 
-function buildPrintUrl(reportId: string, token: string): string {
+function buildChartUrl(reportId: string, token: string): string {
   const base = env.appBaseUrl.replace(/\/$/, "");
   const query = new URLSearchParams({ token });
-  return `${base}/report/${reportId}/print?${query.toString()}`;
+  return `${base}/report/${reportId}/chart?${query.toString()}`;
 }
 
-export async function generateReportPdf(
+export async function generateReportChartImage(
   reportId: string,
   access: ResultAccessInput = {},
 ): Promise<Buffer> {
   if (!env.pdfGenerationEnabled) {
     throw new AppError(
       "pdf_generation_disabled",
-      "PDF export is not enabled on this server",
+      "Chart image export is not enabled on this server",
       503,
     );
   }
@@ -47,19 +47,31 @@ export async function generateReportPdf(
   if (!report.reportSpec) {
     throw new AppError(
       "report_not_found",
-      "Report spec not available for PDF export",
+      "Report spec not available for chart export",
       404,
       { reportId },
     );
   }
 
-  let printToken = access.token;
-  if (!printToken) {
-    const storedReport = await findReportById(reportId);
-    printToken = storedReport?.assessmentSession.resultToken;
+  const hasRadarChart = report.reportSpec.charts.some(
+    (chart) => chart.kind === "radar",
+  );
+  if (!hasRadarChart) {
+    throw new AppError(
+      "chart_not_found",
+      "Radar chart not available for this report",
+      404,
+      { reportId },
+    );
   }
 
-  if (!printToken) {
+  let chartToken = access.token;
+  if (!chartToken) {
+    const storedReport = await findReportById(reportId);
+    chartToken = storedReport?.assessmentSession.resultToken;
+  }
+
+  if (!chartToken) {
     throw new AppError(
       "assessment_access_denied",
       "Access token is required",
@@ -67,14 +79,16 @@ export async function generateReportPdf(
     );
   }
 
-  const printUrl = buildPrintUrl(reportId, printToken);
+  const chartUrl = buildChartUrl(reportId, chartToken);
 
   try {
     const browser = await getBrowser();
-    const page = await browser.newPage();
+    const page = await browser.newPage({
+      viewport: { width: 800, height: 800 },
+    });
 
     try {
-      await page.goto(printUrl, {
+      await page.goto(chartUrl, {
         waitUntil: "networkidle",
         timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
       });
@@ -83,13 +97,15 @@ export async function generateReportPdf(
         timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
       });
 
-      const pdf = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "12mm", right: "15mm", bottom: "12mm", left: "15mm" },
+      const chartElement = page.locator(CHART_CAPTURE_SELECTOR);
+      await chartElement.waitFor({
+        state: "visible",
+        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
       });
 
-      return Buffer.from(pdf);
+      const screenshot = await chartElement.screenshot({ type: "png" });
+
+      return Buffer.from(screenshot);
     } finally {
       await page.close();
     }
@@ -98,11 +114,11 @@ export async function generateReportPdf(
       throw error;
     }
 
-    console.error("PDF generation failed:", error);
+    console.error("Chart image generation failed:", error);
 
     throw new AppError(
-      "pdf_generation_failed",
-      "Failed to generate PDF report",
+      "chart_generation_failed",
+      "Failed to generate chart image",
       500,
       { reportId },
     );

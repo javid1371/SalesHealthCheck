@@ -20,5 +20,19 @@ export function createDevBotClient(platform: string): BotClient {
         `[dev:${platform}] editMessageReplyMarkup chat=${chatId} message=${messageId}`,
       );
     },
+
+    async sendPhoto({ chatId, photo, filename, caption }) {
+      console.log(
+        `[dev:${platform}] sendPhoto chat=${chatId} bytes=${photo.length} filename=${filename ?? "chart.png"} caption=${caption ?? ""}`,
+      );
+      return { messageId: String(Date.now()) };
+    },
+
+    async sendDocument({ chatId, document, filename, caption }) {
+      console.log(
+        `[dev:${platform}] sendDocument chat=${chatId} bytes=${document.length} filename=${filename} caption=${caption ?? ""}`,
+      );
+      return { messageId: String(Date.now()) };
+    },
   };
 }

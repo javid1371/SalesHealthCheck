@@ -18,6 +18,8 @@ import {
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
 import { createConsultationRequest } from "@/modules/consultation/consultation.repository";
+import { generateReportChartImage } from "@/modules/report/report-image.service";
+import { generateReportPdf } from "@/modules/report/report-pdf.service";
 import type { BotClient } from "./bot/bot-client.types";
 import { sendLongText } from "./bot/send-long-text";
 import { resolveUserFromContactPhone } from "./messenger-auth.service";
@@ -27,11 +29,14 @@ import {
   buildBackToMenuRow,
   buildCancelToMenuRow,
   buildMainMenuRows,
+  buildReportActionsRows,
   buildReportSelectionRows,
   isMenuCallback,
+  isPdfCallback,
   isReportCallback,
   MAIN_MENU_TEXT,
   MENU_CALLBACKS,
+  parsePdfCallback,
   parseReportCallback,
 } from "./messenger-menu";
 import { formatAssessmentResultForMessenger } from "./messenger-result.formatter";
@@ -489,14 +494,130 @@ async function sendAssessmentReportInChat(
   const parts = formatAssessmentResultForMessenger(result);
   await sendLongText(client, conversation.chatId, parts);
 
+  if (
+    env.pdfGenerationEnabled &&
+    assessment.report?.id
+  ) {
+    try {
+      const chartImage = await generateReportChartImage(assessment.report.id, {
+        token: assessment.resultToken,
+      });
+      await client.sendPhoto({
+        chatId: conversation.chatId,
+        photo: chartImage,
+        filename: "domain-radar-chart.png",
+        caption: "نقشه ۱۶ دامنه فروش",
+      });
+    } catch (error) {
+      console.error("Failed to send chart image in messenger:", error);
+    }
+  }
+
   await client.sendMessage({
     chatId: conversation.chatId,
-    text: "برای بازگشت به منو، دکمه زیر را بزنید.",
+    text: "برای اقدام بعدی یکی از گزینه‌های زیر را انتخاب کنید.",
     replyMarkup: {
       type: "inline",
-      rows: buildBackToMenuRow(),
+      rows: buildReportActionsRows(assessmentId, {
+        pdfEnabled: env.pdfGenerationEnabled,
+      }),
     },
   });
+}
+
+async function sendAssessmentPdfInChat(
+  client: BotClient,
+  conversation: BotConversationRecord,
+  assessmentId: string,
+): Promise<void> {
+  const assessment = await findAssessmentById(assessmentId);
+
+  if (!assessment) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "ارزیابی پیدا نشد.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  if (conversation.userId && assessment.userId !== conversation.userId) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "دسترسی به این گزارش مجاز نیست.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  if (assessment.status !== "completed") {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "این ارزیابی هنوز تکمیل نشده است.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildBackToMenuRow(),
+      },
+    });
+    return;
+  }
+
+  if (!assessment.report?.id) {
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "گزارش PDF برای این ارزیابی در دسترس نیست.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildReportActionsRows(assessmentId, {
+          pdfEnabled: env.pdfGenerationEnabled,
+        }),
+      },
+    });
+    return;
+  }
+
+  await client.sendMessage({
+    chatId: conversation.chatId,
+    text: "در حال آماده‌سازی فایل PDF...",
+  });
+
+  try {
+    const pdfBuffer = await generateReportPdf(assessment.report.id, {
+      token: assessment.resultToken,
+    });
+
+    await client.sendDocument({
+      chatId: conversation.chatId,
+      document: pdfBuffer,
+      filename: "sales-health-report.pdf",
+      caption: "گزارش کامل ارزیابی سلامت فروش",
+      replyMarkup: {
+        type: "inline",
+        rows: buildReportActionsRows(assessmentId, {
+          pdfEnabled: env.pdfGenerationEnabled,
+        }),
+      },
+    });
+  } catch (error) {
+    console.error("Failed to send PDF in messenger:", error);
+
+    await client.sendMessage({
+      chatId: conversation.chatId,
+      text: "تولید PDF ناموفق بود. لطفاً دوباره تلاش کنید.",
+      replyMarkup: {
+        type: "inline",
+        rows: buildReportActionsRows(assessmentId, {
+          pdfEnabled: env.pdfGenerationEnabled,
+        }),
+      },
+    });
+  }
 }
 
 async function completeAssessment(
@@ -1048,6 +1169,30 @@ async function handleCallback(
     }
 
     await sendAssessmentReportInChat(client, conversation, assessmentId);
+    await updateConversation(conversation.id, { state: "at_main_menu" });
+    return;
+  }
+
+  if (isPdfCallback(data)) {
+    const assessmentId = parsePdfCallback(data);
+    await client.answerCallbackQuery({ callbackQueryId });
+
+    if (messageId) {
+      await client.editMessageReplyMarkup({
+        chatId: conversation.chatId,
+        messageId,
+      });
+    }
+
+    if (!assessmentId) {
+      await client.sendMessage({
+        chatId: conversation.chatId,
+        text: "درخواست PDF نامعتبر است.",
+      });
+      return;
+    }
+
+    await sendAssessmentPdfInChat(client, conversation, assessmentId);
     await updateConversation(conversation.id, { state: "at_main_menu" });
     return;
   }

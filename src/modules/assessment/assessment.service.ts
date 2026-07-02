@@ -19,7 +19,12 @@ import {
   toScoringDomainInputs,
   toScoringLayerInputs,
 } from "@/modules/question-bank/question-bank.repository";
-import { buildFullReport, buildReportSpec, type ComposerAnswerInput } from "@/modules/report/report.builder";
+import { buildFullReport, type ComposerAnswerInput } from "@/modules/report/report.builder";
+import {
+  ensureReportSpec,
+  parseReportSpec,
+  recomposeReportSpec,
+} from "@/modules/report/report-spec.service";
 import { computeValueAtStake } from "@/modules/report/value-at-stake.engine";
 import {
   calculateDomainScores,
@@ -108,49 +113,6 @@ function toValueAtStakeInput(session: {
     L: session.monthlyLeads,
     RP: session.repeatPurchaseRate ?? undefined,
   };
-}
-
-function parseReportSpec(value: unknown): ReportSpec | null {
-  if (!value || typeof value !== "object") return null;
-  return value as ReportSpec;
-}
-
-async function recomposeReportSpec(
-  assessmentId: string,
-  structuredDiagnosis: StructuredDiagnosis,
-  modelVersionId: string,
-): Promise<ReportSpec | null> {
-  const [domains, answers, assessment] = await Promise.all([
-    loadDomainsWithQuestions(modelVersionId),
-    getAnswersWithDetails(assessmentId),
-    findAssessmentById(assessmentId),
-  ]);
-
-  if (!assessment) return null;
-
-  const domainNames = new Map(domains.map((d) => [d.slug, d.name]));
-  const valueAtStakeInput = toValueAtStakeInput(assessment);
-  const valueAtStake = valueAtStakeInput
-    ? computeValueAtStake(structuredDiagnosis, valueAtStakeInput)
-    : null;
-
-  return buildReportSpec({
-    overallScore: {
-      rawScore: 0,
-      maxScore: 0,
-      percentage: structuredDiagnosis.healthWeighted * 100,
-      healthLevel: "weak",
-    },
-    domainScores: [],
-    layerScores: [],
-    bottlenecks: [],
-    domainNames,
-    layerNames: new Map(),
-    structuredDiagnosis,
-    answers: toComposerAnswers(answers),
-    valueAtStake,
-    capacityMode: env.capacityMode,
-  });
 }
 
 function assertAssessmentNotCompleted(status: string) {
@@ -801,10 +763,21 @@ export async function getReport(
     structuredReport: toPublicStructuredReport(
       report.structuredReport as unknown as StructuredReport,
     ),
-    reportSpec: parseReportSpec(report.reportSpec),
+    reportSpec: await resolveReportSpec(reportId, report.reportSpec),
     aiGeneratedText: report.aiGeneratedText,
     createdAt: report.createdAt.toISOString(),
   };
+}
+
+async function resolveReportSpec(
+  reportId: string,
+  rawReportSpec: unknown,
+): Promise<ReportSpec | null> {
+  let reportSpec = parseReportSpec(rawReportSpec);
+  if (!reportSpec?.charts?.some((chart) => chart.kind === "radar")) {
+    reportSpec = await ensureReportSpec(reportId);
+  }
+  return reportSpec;
 }
 
 export async function getExpertView(

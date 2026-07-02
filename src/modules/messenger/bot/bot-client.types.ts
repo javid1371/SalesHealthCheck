@@ -38,4 +38,20 @@ export interface BotClient {
     chatId: string;
     messageId: string;
   }): Promise<void>;
+
+  sendPhoto(params: {
+    chatId: string;
+    photo: Buffer;
+    filename?: string;
+    caption?: string;
+    replyMarkup?: ReplyMarkup;
+  }): Promise<{ messageId: string }>;
+
+  sendDocument(params: {
+    chatId: string;
+    document: Buffer;
+    filename: string;
+    caption?: string;
+    replyMarkup?: ReplyMarkup;
+  }): Promise<{ messageId: string }>;
 }
