@@ -1,6 +1,9 @@
 /**
  * Generates option-labels.v1.csv from questions-v1-full.csv.
  * Run: tsx scripts/generate-messenger-labels-csv.ts
+ *
+ * Button labels: full option text when it fits (≤64 chars), otherwise the
+ * short interpretation sentence (without score/level prefix).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -12,6 +15,8 @@ const CSV_PATH = join(
   process.cwd(),
   "src/config/model-v1/question-bank/data/questions-v1-full.csv",
 );
+
+const OPTION_COLUMN_BY_SCORE = ["گزینه ۰", "گزینه ۱", "گزینه ۲", "گزینه ۳"] as const;
 
 const domainSlugByNumber = new Map(
   [...domainsV1]
@@ -54,28 +59,26 @@ function truncateLabel(text: string): string {
   if (trimmed.length <= MAX_LABEL_LENGTH) {
     return trimmed;
   }
-  return `${trimmed.slice(0, MAX_LABEL_LENGTH - 1)}…`;
+
+  const slice = trimmed.slice(0, MAX_LABEL_LENGTH - 1);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > MAX_LABEL_LENGTH * 0.5 ? slice.slice(0, lastSpace) : slice;
+
+  return `${cut.trim()}…`;
 }
 
-function buildMessengerLabel(
-  score: number,
-  label: string,
-  description: string,
-): string {
-  const prefix = `${score} ${label}`;
-  const separator = ": ";
-  const available = MAX_LABEL_LENGTH - prefix.length - separator.length;
-
-  if (available <= 8) {
-    return truncateLabel(prefix);
+function buildMessengerLabel(optionText: string, summaryText: string): string {
+  const option = optionText.trim();
+  if (option.length > 0 && option.length <= MAX_LABEL_LENGTH) {
+    return option;
   }
 
-  const shortDescription =
-    description.length > available
-      ? `${description.slice(0, available - 1)}…`
-      : description;
+  const summary = summaryText.trim();
+  if (summary.length > 0) {
+    return truncateLabel(summary);
+  }
 
-  return truncateLabel(`${prefix}${separator}${shortDescription}`);
+  return truncateLabel(option);
 }
 
 function escapeCsv(value: string): string {
@@ -92,11 +95,15 @@ function main() {
   const questionScoreIndex = header.indexOf("تفسیر امتیاز (سؤال)");
   const domainNumberIndex = header.indexOf("شماره دامنه");
   const questionNumberIndex = header.indexOf("شماره سؤال");
+  const optionColumnIndex = new Map(
+    OPTION_COLUMN_BY_SCORE.map((column) => [column, header.indexOf(column)]),
+  );
 
   if (
     questionScoreIndex === -1 ||
     domainNumberIndex === -1 ||
-    questionNumberIndex === -1
+    questionNumberIndex === -1 ||
+    [...optionColumnIndex.values()].some((index) => index === -1)
   ) {
     throw new Error("CSV header columns not found");
   }
@@ -120,9 +127,11 @@ function main() {
     );
 
     for (const interpretation of interpretations) {
+      const optionColumn = OPTION_COLUMN_BY_SCORE[interpretation.score];
+      const optionText =
+        columns[optionColumnIndex.get(optionColumn)!] ?? "";
       const messengerLabel = buildMessengerLabel(
-        interpretation.score,
-        interpretation.label,
+        optionText,
         interpretation.description,
       );
 

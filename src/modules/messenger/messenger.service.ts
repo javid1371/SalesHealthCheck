@@ -381,23 +381,11 @@ async function sendCurrentQuestion(
     question.options.map((option) => option.id),
   );
 
-  const optionLines = question.options
-    .map((option) => {
-      const label = optionLabels.get(option.id) ?? option.text;
-      return `${option.score}) ${option.text}\n   ↳ ${label}`;
-    })
-    .join("\n\n");
-
   const prompt = [
     `سوال ${progress} از ${totalQuestions}`,
     `حوزه: ${domain.name}`,
     "",
     question.text,
-    "",
-    "گزینه‌ها:",
-    optionLines,
-    "",
-    "یکی از دکمه‌های زیر را انتخاب کنید:",
   ].join("\n");
 
   const sent = await client.sendMessage({
