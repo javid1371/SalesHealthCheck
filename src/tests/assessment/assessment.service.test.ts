@@ -44,6 +44,7 @@ import {
   createOrganization,
   createUser,
   findAssessmentById,
+  findAssessmentForResult,
   findUserById,
   getAnswersWithDetails,
   persistAssessmentResults,
@@ -432,6 +433,37 @@ describe("updateBusinessMetrics", () => {
     repeatPurchaseRate: null,
   };
 
+  const completedAssessmentForResult = {
+    ...completedAssessment,
+    domainScores: [
+      {
+        domainId: "domain-1",
+        rawScore: 8,
+        maxScore: 15,
+        percentage: 53,
+        healthLevel: "medium",
+        domain: { slug: "persona", name: "Persona", displayOrder: 1, layer: { name: "Layer 1" } },
+      },
+    ],
+    layerScores: [
+      {
+        layerId: "layer-1",
+        rawScore: 10,
+        maxScore: 20,
+        percentage: 50,
+        healthLevel: "medium",
+        layer: { slug: "layer-1", name: "Layer 1" },
+      },
+    ],
+    bottlenecks: [],
+    overallScore: {
+      rawScore: 80,
+      maxScore: 160,
+      percentage: 50,
+      healthLevel: "medium",
+    },
+  };
+
   it("rejects when assessment is not completed", async () => {
     vi.mocked(findAssessmentById).mockResolvedValue(mockAssessment as never);
 
@@ -459,7 +491,17 @@ describe("updateBusinessMetrics", () => {
         monthlyLeads: 100,
         repeatPurchaseRate: null,
       } as never);
+    vi.mocked(findAssessmentForResult).mockResolvedValue({
+      ...completedAssessmentForResult,
+      monthlyRevenue: 1_000_000,
+      averageOrderValue: 10_000,
+      monthlyLeads: 100,
+      repeatPurchaseRate: null,
+    } as never);
     vi.mocked(loadDomainsWithQuestions).mockResolvedValue(mockDomains as never);
+    vi.mocked(loadLayers).mockResolvedValue([
+      { id: "layer-1", slug: "layer-1", name: "Layer 1", displayOrder: 1 },
+    ] as never);
     vi.mocked(getAnswersWithDetails).mockResolvedValue(mockAnswers as never);
     vi.mocked(updateAssessmentBusinessMetrics).mockResolvedValue({} as never);
     vi.mocked(updateReportSpec).mockResolvedValue({ id: "report-1" } as never);
