@@ -89,8 +89,9 @@ services:
     image: ${APP_IMAGE:-ghcr.io/javid1371/sales-health-check:latest}
     pull_policy: always
     restart: unless-stopped
-    command: ["npx", "tsx", "scripts/sms-funnel-worker.ts"]
+    command: ["/prisma-tools/node_modules/.bin/tsx", "scripts/sms-funnel-worker.ts"]
     environment:
+      HOME: /app
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
