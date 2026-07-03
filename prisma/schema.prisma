@@ -375,6 +375,7 @@ model ConsultationRequest {
   assignedToId        String?    @map("assigned_to_id")
   nextFollowUpAt      DateTime?  @map("next_follow_up_at")
   createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
 
   assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
   report            Report?            @relation(fields: [reportId], references: [id], onDelete: SetNull)

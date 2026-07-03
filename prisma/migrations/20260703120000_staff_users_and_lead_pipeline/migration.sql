@@ -33,7 +33,8 @@ CREATE TABLE "consultation_notes" (
 -- AlterTable
 ALTER TABLE "consultation_requests" ADD COLUMN "status" "LeadStatus" NOT NULL DEFAULT 'new',
 ADD COLUMN "assigned_to_id" TEXT,
-ADD COLUMN "next_follow_up_at" TIMESTAMP(3);
+ADD COLUMN "next_follow_up_at" TIMESTAMP(3),
+ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
 -- CreateIndex
 CREATE UNIQUE INDEX "staff_users_phone_key" ON "staff_users"("phone");
