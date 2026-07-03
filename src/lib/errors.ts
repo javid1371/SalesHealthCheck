@@ -3,6 +3,7 @@ export type AppErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "UNAUTHORIZED"
+  | "FORBIDDEN"
   | "INTERNAL_ERROR"
   | "ASSESSMENT_INCOMPLETE"
   | "INVALID_OPTION"

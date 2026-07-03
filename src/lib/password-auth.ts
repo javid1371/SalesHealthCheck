@@ -1,4 +1,6 @@
-import { scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+
+const SCRYPT_HASH_BYTES = 64;
 
 function timingSafeStringEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a);
@@ -23,6 +25,12 @@ function verifyScryptPassword(password: string, stored: string): boolean {
 
   const derived = scryptSync(password, salt, expectedHash.length);
   return timingSafeEqual(derived, expectedHash);
+}
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(password, salt, SCRYPT_HASH_BYTES);
+  return `scrypt:${salt.toString("base64")}:${hash.toString("base64")}`;
 }
 
 export function verifyConfiguredPassword(

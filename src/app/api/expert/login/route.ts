@@ -1,12 +1,15 @@
 import { handleApiRequest } from "@/lib/api-handler";
 import { createSalesExpertSession } from "@/lib/session";
-import { verifySalesExpertPassword } from "@/modules/consultation/consultation.service";
+import { authenticateStaff } from "@/modules/staff/staff.service";
 
 export async function POST(request: Request) {
   const body = await request.json();
   return handleApiRequest(async () => {
-    verifySalesExpertPassword(body);
-    await createSalesExpertSession();
+    const staff = await authenticateStaff("sales_expert", body);
+    await createSalesExpertSession({
+      staffUserId: staff.staffUserId,
+      name: staff.name,
+    });
     return { ok: true };
   });
 }

@@ -5,8 +5,19 @@ import { verifyConfiguredPassword } from "@/lib/password-auth";
 import type { AdminSession } from "@/lib/session";
 import {
   countAssessmentsForAdmin,
+  countAssessmentsByDateRange,
+  countAssessmentsByStatus,
+  countAllAssessments,
+  countAllConsultationRequests,
+  countConsultationsByStatus,
+  countCriticalCompletedConsultations,
   findAssessmentForAdmin,
   findAssessmentsForAdmin,
+  findActiveSalesExperts,
+  groupLeadsByAssignee,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
 } from "./admin.repository";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import type {
@@ -14,6 +25,8 @@ import type {
   AdminAssessmentFilter,
   AdminAssessmentListItem,
   AdminAssessmentsResponse,
+  AdminDashboardData,
+  AdminExpertPerformanceRow,
 } from "./admin.types";
 import { validateAdminLoginRequest } from "./admin.validators";
 
@@ -163,5 +176,129 @@ export async function getAssessmentForAdmin(
       reportId && assessment.status === "completed"
         ? `/report/${reportId}?assessmentId=${assessment.id}`
         : null,
+  };
+}
+
+function percent(part: number, total: number): number {
+  if (total === 0) {
+    return 0;
+  }
+  return Math.round((part / total) * 100);
+}
+
+export async function getAdminDashboard(): Promise<AdminDashboardData> {
+  const today = startOfDay();
+  const weekStart = startOfWeek();
+  const monthStart = startOfMonth();
+
+  const [
+    assessmentsToday,
+    assessmentsThisWeek,
+    assessmentsThisMonth,
+    startedCount,
+    completedCount,
+    consultationCount,
+    criticalLeads,
+    newConsultations,
+    leadGroups,
+    salesExperts,
+  ] = await Promise.all([
+    countAssessmentsByDateRange(today),
+    countAssessmentsByDateRange(weekStart),
+    countAssessmentsByDateRange(monthStart),
+    countAllAssessments(),
+    countAssessmentsByStatus("completed"),
+    countAllConsultationRequests(),
+    countCriticalCompletedConsultations(),
+    countConsultationsByStatus("new"),
+    groupLeadsByAssignee(),
+    findActiveSalesExperts(),
+  ]);
+
+  const expertStats = new Map<
+    string,
+    { assigned: number; closedWon: number; closedLost: number; open: number }
+  >();
+
+  for (const expert of salesExperts) {
+    expertStats.set(expert.id, {
+      assigned: 0,
+      closedWon: 0,
+      closedLost: 0,
+      open: 0,
+    });
+  }
+
+  for (const row of leadGroups) {
+    if (!row.assignedToId) {
+      continue;
+    }
+
+    const stats = expertStats.get(row.assignedToId) ?? {
+      assigned: 0,
+      closedWon: 0,
+      closedLost: 0,
+      open: 0,
+    };
+
+    stats.assigned += row._count.id;
+
+    if (row.status === "closed_won") {
+      stats.closedWon += row._count.id;
+    } else if (row.status === "closed_lost") {
+      stats.closedLost += row._count.id;
+    } else {
+      stats.open += row._count.id;
+    }
+
+    expertStats.set(row.assignedToId, stats);
+  }
+
+  const expertPerformance: AdminExpertPerformanceRow[] = salesExperts.map(
+    (expert) => {
+      const stats = expertStats.get(expert.id) ?? {
+        assigned: 0,
+        closedWon: 0,
+        closedLost: 0,
+        open: 0,
+      };
+
+      return {
+        staffUserId: expert.id,
+        name: expert.name,
+        ...stats,
+      };
+    },
+  );
+
+  for (const [staffUserId, stats] of expertStats.entries()) {
+    if (salesExperts.some((expert) => expert.id === staffUserId)) {
+      continue;
+    }
+
+    expertPerformance.push({
+      staffUserId,
+      name: "کارشناس (غیرفعال)",
+      ...stats,
+    });
+  }
+
+  return {
+    kpis: {
+      assessmentsToday,
+      assessmentsThisWeek,
+      assessmentsThisMonth,
+      completionRate: percent(completedCount, startedCount),
+      criticalLeads,
+      newConsultations,
+    },
+    funnel: {
+      started: startedCount,
+      completed: completedCount,
+      consultations: consultationCount,
+      completedRate: percent(completedCount, startedCount),
+      consultationRate: percent(consultationCount, completedCount),
+    },
+    expertPerformance,
   };
 }

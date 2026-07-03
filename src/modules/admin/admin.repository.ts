@@ -1,6 +1,24 @@
-import type { Prisma } from "@prisma/client";
+import type { AssessmentStatus, LeadStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { AdminAssessmentFilter } from "./admin.types";
+
+function startOfDay(date = new Date()): Date {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function startOfWeek(date = new Date()): Date {
+  const result = startOfDay(date);
+  result.setDate(result.getDate() - 6);
+  return result;
+}
+
+function startOfMonth(date = new Date()): Date {
+  const result = startOfDay(date);
+  result.setDate(1);
+  return result;
+}
 
 function buildAssessmentWhere(
   filter: AdminAssessmentFilter,
@@ -76,3 +94,68 @@ export async function findAssessmentForAdmin(assessmentId: string) {
     },
   });
 }
+
+export async function countAssessmentsByDateRange(
+  from: Date,
+  to?: Date,
+): Promise<number> {
+  return db.assessmentSession.count({
+    where: {
+      startedAt: {
+        gte: from,
+        ...(to ? { lte: to } : {}),
+      },
+    },
+  });
+}
+
+export async function countAssessmentsByStatus(
+  status: AssessmentStatus,
+): Promise<number> {
+  return db.assessmentSession.count({ where: { status } });
+}
+
+export async function countAllAssessments(): Promise<number> {
+  return db.assessmentSession.count();
+}
+
+export async function countAllConsultationRequests(): Promise<number> {
+  return db.consultationRequest.count();
+}
+
+export async function countConsultationsByStatus(
+  status: LeadStatus,
+): Promise<number> {
+  return db.consultationRequest.count({ where: { status } });
+}
+
+export async function countCriticalCompletedConsultations(): Promise<number> {
+  return db.consultationRequest.count({
+    where: {
+      assessmentSession: {
+        status: "completed",
+        overallScore: {
+          healthLevel: { in: ["critical", "weak"] },
+        },
+      },
+    },
+  });
+}
+
+export async function groupLeadsByAssignee() {
+  return db.consultationRequest.groupBy({
+    by: ["assignedToId", "status"],
+    _count: { id: true },
+    where: { assignedToId: { not: null } },
+  });
+}
+
+export async function findActiveSalesExperts() {
+  return db.staffUser.findMany({
+    where: { role: "sales_expert", isActive: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export { startOfDay, startOfWeek, startOfMonth };

@@ -59,3 +59,35 @@ export interface AdminAssessmentDetail {
   resultUrl: string | null;
   reportUrl: string | null;
 }
+
+export interface AdminDashboardKpis {
+  assessmentsToday: number;
+  assessmentsThisWeek: number;
+  assessmentsThisMonth: number;
+  completionRate: number;
+  criticalLeads: number;
+  newConsultations: number;
+}
+
+export interface AdminDashboardFunnel {
+  started: number;
+  completed: number;
+  consultations: number;
+  completedRate: number;
+  consultationRate: number;
+}
+
+export interface AdminExpertPerformanceRow {
+  staffUserId: string;
+  name: string;
+  assigned: number;
+  closedWon: number;
+  closedLost: number;
+  open: number;
+}
+
+export interface AdminDashboardData {
+  kpis: AdminDashboardKpis;
+  funnel: AdminDashboardFunnel;
+  expertPerformance: AdminExpertPerformanceRow[];
+}

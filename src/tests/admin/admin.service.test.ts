@@ -16,16 +16,40 @@ vi.mock("@/lib/env", () => ({
   env: envMock,
 }));
 
-vi.mock("@/modules/admin/admin.repository", () => ({
-  countAssessmentsForAdmin: vi.fn(),
-  findAssessmentsForAdmin: vi.fn(),
-  findAssessmentForAdmin: vi.fn(),
-}));
+vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/modules/admin/admin.repository")>();
+  return {
+    ...actual,
+    countAssessmentsForAdmin: vi.fn(),
+    findAssessmentsForAdmin: vi.fn(),
+    findAssessmentForAdmin: vi.fn(),
+    countAssessmentsByDateRange: vi.fn(),
+    countAssessmentsByStatus: vi.fn(),
+    countAllAssessments: vi.fn(),
+    countAllConsultationRequests: vi.fn(),
+    countConsultationsByStatus: vi.fn(),
+    countCriticalCompletedConsultations: vi.fn(),
+    groupLeadsByAssignee: vi.fn(),
+    findActiveSalesExperts: vi.fn(),
+  };
+});
 
 import {
+  getAdminDashboard,
   requireAdminSession,
   verifyAdminPassword,
 } from "@/modules/admin/admin.service";
+import {
+  countAssessmentsByDateRange,
+  countAssessmentsByStatus,
+  countAllAssessments,
+  countAllConsultationRequests,
+  countConsultationsByStatus,
+  countCriticalCompletedConsultations,
+  findActiveSalesExperts,
+  groupLeadsByAssignee,
+} from "@/modules/admin/admin.repository";
 
 describe("verifyAdminPassword", () => {
   beforeEach(() => {
@@ -62,6 +86,16 @@ describe("requireAdminSession", () => {
   it("passes when admin session is present", () => {
     expect(() =>
       requireAdminSession({ role: "admin" }),
+    ).not.toThrow();
+  });
+
+  it("passes with extended admin session fields", () => {
+    expect(() =>
+      requireAdminSession({
+        role: "admin",
+        staffUserId: "admin-1",
+        name: "Admin User",
+      }),
     ).not.toThrow();
   });
 
@@ -103,5 +137,51 @@ describe("verifyAdminPassword when not configured", () => {
         status: 500,
       });
     }
+  });
+});
+
+describe("getAdminDashboard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(countAssessmentsByDateRange).mockResolvedValue(10);
+    vi.mocked(countAllAssessments).mockResolvedValue(100);
+    vi.mocked(countAssessmentsByStatus).mockResolvedValue(60);
+    vi.mocked(countAllConsultationRequests).mockResolvedValue(20);
+    vi.mocked(countCriticalCompletedConsultations).mockResolvedValue(5);
+    vi.mocked(countConsultationsByStatus).mockResolvedValue(8);
+    vi.mocked(findActiveSalesExperts).mockResolvedValue([
+      { id: "expert-1", name: "Expert One" },
+    ]);
+    vi.mocked(groupLeadsByAssignee).mockResolvedValue([
+      {
+        assignedToId: "expert-1",
+        status: "new",
+        _count: { id: 3 },
+      },
+      {
+        assignedToId: "expert-1",
+        status: "closed_won",
+        _count: { id: 2 },
+      },
+    ] as never);
+  });
+
+  it("aggregates KPIs, funnel, and expert performance", async () => {
+    const dashboard = await getAdminDashboard();
+
+    expect(dashboard.kpis.completionRate).toBe(60);
+    expect(dashboard.kpis.newConsultations).toBe(8);
+    expect(dashboard.funnel.started).toBe(100);
+    expect(dashboard.funnel.consultations).toBe(20);
+    expect(dashboard.expertPerformance).toEqual([
+      {
+        staffUserId: "expert-1",
+        name: "Expert One",
+        assigned: 5,
+        open: 3,
+        closedWon: 2,
+        closedLost: 0,
+      },
+    ]);
   });
 });

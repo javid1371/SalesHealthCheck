@@ -5,13 +5,12 @@ import { HealthBadge } from "@/components/report/HealthBadge";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { LinkButton } from "@/components/ui/LinkButton";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import { readAdminSession } from "@/lib/session";
 import { listAssessments } from "@/modules/admin/admin.service";
 import { validateAdminAssessmentFilter } from "@/modules/admin/admin.validators";
+import { AdminNav } from "../AdminNav";
 import { AdminAssessmentFilters } from "./AdminAssessmentFilters";
-import { AdminLogoutButton } from "./AdminLogoutButton";
 
 interface AdminAssessmentsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -52,16 +51,11 @@ export default async function AdminAssessmentsPage({
       title="پنل ادمین — ارزیابی‌ها"
       subtitle="جستجو و مشاهدهٔ ارزیابی‌های ثبت‌شده."
       showBack
-      backHref="/"
+      backHref="/admin/dashboard"
       maxWidth="5xl"
       footer="minimal"
     >
-      <div className="mb-6 flex justify-end gap-3">
-        <LinkButton href="/expert/consultations" variant="secondary" size="sm">
-          درخواست‌های مشاوره
-        </LinkButton>
-        <AdminLogoutButton />
-      </div>
+      <AdminNav />
 
       <Suspense fallback={<LoadingSpinner message="در حال بارگذاری فیلترها…" />}>
         <AdminAssessmentFilters />

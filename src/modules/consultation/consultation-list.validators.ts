@@ -1,5 +1,6 @@
 import { AppError } from "@/lib/errors";
 import { normalizePhone } from "@/modules/auth/auth.validators";
+import type { LeadStatus } from "@prisma/client";
 import type {
   ConsultationListFilter,
   SalesExpertLoginInput,
@@ -7,6 +8,14 @@ import type {
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
+const LEAD_STATUSES: LeadStatus[] = [
+  "new",
+  "contacted",
+  "meeting_scheduled",
+  "closed_won",
+  "closed_lost",
+  "unreachable",
+];
 
 function parseOptionalDate(value: string | null): Date | undefined {
   if (!value) {
@@ -53,11 +62,28 @@ export function validateConsultationListFilter(
     createdTo.setHours(23, 59, 59, 999);
   }
 
+  let status: LeadStatus | undefined;
+  const statusRaw = searchParams.get("status")?.trim();
+  if (statusRaw) {
+    if (!LEAD_STATUSES.includes(statusRaw as LeadStatus)) {
+      throw new AppError("VALIDATION_ERROR", "Invalid status filter", 400);
+    }
+    status = statusRaw as LeadStatus;
+  }
+
+  const assignedToId = searchParams.get("assignedToId")?.trim() || undefined;
+  const onlyUnassigned = searchParams.get("onlyUnassigned") === "true";
+  const onlyMine = searchParams.get("onlyMine") === "true";
+
   return {
     phone,
     businessName,
     createdFrom,
     createdTo,
+    status,
+    assignedToId,
+    onlyUnassigned,
+    onlyMine,
     page,
     pageSize,
   };

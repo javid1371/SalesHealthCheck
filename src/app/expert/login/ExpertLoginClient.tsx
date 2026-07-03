@@ -13,6 +13,7 @@ import { salesExpertLoginRequest } from "@/lib/expert-client";
 
 export function ExpertLoginClient() {
   const router = useRouter();
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +24,8 @@ export function ExpertLoginClient() {
     setError(null);
 
     try {
-      await salesExpertLoginRequest(password);
-      router.push("/expert/consultations");
+      await salesExpertLoginRequest(phone.trim(), password);
+      router.push("/expert/dashboard");
       router.refresh();
     } catch (err) {
       setError(
@@ -39,7 +40,7 @@ export function ExpertLoginClient() {
   return (
     <PageLayout
       title="ورود کارشناس فروش"
-      subtitle="برای مشاهده درخواست‌های مشاوره، رمز عبور کارشناس را وارد کنید."
+      subtitle="برای مشاهده درخواست‌های مشاوره، شماره موبایل و رمز عبور خود را وارد کنید."
       showBack
       backHref="/"
       maxWidth="md"
@@ -47,6 +48,21 @@ export function ExpertLoginClient() {
     >
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
+          <FieldLabel label="شماره موبایل" htmlFor="expert-phone" required>
+            <Input
+              id="expert-phone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="numeric"
+              placeholder="09123456789"
+              dir="ltr"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              required
+              disabled={loading}
+            />
+          </FieldLabel>
+
           <FieldLabel label="رمز عبور" htmlFor="expert-password" required>
             <Input
               id="expert-password"

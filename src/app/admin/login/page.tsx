@@ -5,7 +5,7 @@ import { AdminLoginClient } from "./AdminLoginClient";
 export default async function AdminLoginPage() {
   const session = await readAdminSession();
   if (session) {
-    redirect("/admin/assessments");
+    redirect("/admin/dashboard");
   }
 
   return <AdminLoginClient />;

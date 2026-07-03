@@ -16,10 +16,14 @@ export type UserSession = {
 
 export type AdminSession = {
   role: "admin";
+  staffUserId?: string;
+  name?: string;
 };
 
 export type SalesExpertSession = {
   role: "sales_expert";
+  staffUserId?: string;
+  name?: string;
 };
 
 type UserSessionPayload = {
@@ -30,11 +34,15 @@ type UserSessionPayload = {
 type AdminSessionPayload = {
   role: "admin";
   exp: number;
+  staffUserId?: string;
+  name?: string;
 };
 
 type SalesExpertSessionPayload = {
   role: "sales_expert";
   exp: number;
+  staffUserId?: string;
+  name?: string;
 };
 
 type SessionScope = "user" | "admin" | "sales_expert" | "all";
@@ -121,18 +129,28 @@ function encodeUserSession(userId: string, ttlSeconds: number): string {
   return signPayload(payload);
 }
 
-function encodeAdminSession(ttlSeconds: number): string {
+function encodeAdminSession(
+  ttlSeconds: number,
+  staff?: { staffUserId?: string; name?: string },
+): string {
   const payload: AdminSessionPayload = {
     role: "admin",
     exp: nowSeconds() + ttlSeconds,
+    ...(staff?.staffUserId ? { staffUserId: staff.staffUserId } : {}),
+    ...(staff?.name ? { name: staff.name } : {}),
   };
   return signPayload(payload);
 }
 
-function encodeSalesExpertSession(ttlSeconds: number): string {
+function encodeSalesExpertSession(
+  ttlSeconds: number,
+  staff?: { staffUserId?: string; name?: string },
+): string {
   const payload: SalesExpertSessionPayload = {
     role: "sales_expert",
     exp: nowSeconds() + ttlSeconds,
+    ...(staff?.staffUserId ? { staffUserId: staff.staffUserId } : {}),
+    ...(staff?.name ? { name: staff.name } : {}),
   };
   return signPayload(payload);
 }
@@ -160,7 +178,15 @@ export function parseAdminSessionCookie(
   if (!payload || payload.role !== "admin") {
     return null;
   }
-  return { role: "admin" };
+  return {
+    role: "admin",
+    ...(typeof payload.staffUserId === "string" && payload.staffUserId.length > 0
+      ? { staffUserId: payload.staffUserId }
+      : {}),
+    ...(typeof payload.name === "string" && payload.name.length > 0
+      ? { name: payload.name }
+      : {}),
+  };
 }
 
 /** Parse a signed sales expert session cookie value. */
@@ -171,7 +197,15 @@ export function parseSalesExpertSessionCookie(
   if (!payload || payload.role !== "sales_expert") {
     return null;
   }
-  return { role: "sales_expert" };
+  return {
+    role: "sales_expert",
+    ...(typeof payload.staffUserId === "string" && payload.staffUserId.length > 0
+      ? { staffUserId: payload.staffUserId }
+      : {}),
+    ...(typeof payload.name === "string" && payload.name.length > 0
+      ? { name: payload.name }
+      : {}),
+  };
 }
 
 export async function createUserSession(
@@ -191,13 +225,24 @@ export async function readUserSession(): Promise<UserSession | null> {
 }
 
 export async function createAdminSession(
-  options?: { ttlSeconds?: number },
+  options?: {
+    ttlSeconds?: number;
+    staffUserId?: string;
+    name?: string;
+  },
 ): Promise<AdminSession> {
   const ttlSeconds = options?.ttlSeconds ?? DEFAULT_ADMIN_TTL_SECONDS;
-  const value = encodeAdminSession(ttlSeconds);
+  const value = encodeAdminSession(ttlSeconds, {
+    staffUserId: options?.staffUserId,
+    name: options?.name,
+  });
   const cookieStore = await cookies();
   cookieStore.set(ADMIN_SESSION_COOKIE, value, cookieOptions(ttlSeconds));
-  return { role: "admin" };
+  return {
+    role: "admin",
+    ...(options?.staffUserId ? { staffUserId: options.staffUserId } : {}),
+    ...(options?.name ? { name: options.name } : {}),
+  };
 }
 
 export async function readAdminSession(): Promise<AdminSession | null> {
@@ -208,18 +253,29 @@ export async function readAdminSession(): Promise<AdminSession | null> {
 }
 
 export async function createSalesExpertSession(
-  options?: { ttlSeconds?: number },
+  options?: {
+    ttlSeconds?: number;
+    staffUserId?: string;
+    name?: string;
+  },
 ): Promise<SalesExpertSession> {
   const ttlSeconds =
     options?.ttlSeconds ?? DEFAULT_SALES_EXPERT_TTL_SECONDS;
-  const value = encodeSalesExpertSession(ttlSeconds);
+  const value = encodeSalesExpertSession(ttlSeconds, {
+    staffUserId: options?.staffUserId,
+    name: options?.name,
+  });
   const cookieStore = await cookies();
   cookieStore.set(
     SALES_EXPERT_SESSION_COOKIE,
     value,
     cookieOptions(ttlSeconds),
   );
-  return { role: "sales_expert" };
+  return {
+    role: "sales_expert",
+    ...(options?.staffUserId ? { staffUserId: options.staffUserId } : {}),
+    ...(options?.name ? { name: options.name } : {}),
+  };
 }
 
 export async function readSalesExpertSession(): Promise<SalesExpertSession | null> {

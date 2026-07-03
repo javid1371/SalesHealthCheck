@@ -13,6 +13,7 @@ import { ApiClientError } from "@/lib/api-client";
 
 export function AdminLoginClient() {
   const router = useRouter();
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,8 +24,8 @@ export function AdminLoginClient() {
     setError(null);
 
     try {
-      await adminLoginRequest(password);
-      router.push("/admin/assessments");
+      await adminLoginRequest(phone.trim(), password);
+      router.push("/admin/dashboard");
       router.refresh();
     } catch (err) {
       setError(
@@ -39,7 +40,7 @@ export function AdminLoginClient() {
   return (
     <PageLayout
       title="ورود ادمین"
-      subtitle="برای مشاهده و مدیریت ارزیابی‌ها، رمز عبور ادمین را وارد کنید."
+      subtitle="برای مشاهده و مدیریت ارزیابی‌ها، شماره موبایل و رمز عبور خود را وارد کنید."
       showBack
       backHref="/"
       maxWidth="md"
@@ -47,6 +48,21 @@ export function AdminLoginClient() {
     >
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
+          <FieldLabel label="شماره موبایل" htmlFor="admin-phone" required>
+            <Input
+              id="admin-phone"
+              type="tel"
+              autoComplete="tel"
+              inputMode="numeric"
+              placeholder="09123456789"
+              dir="ltr"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              required
+              disabled={loading}
+            />
+          </FieldLabel>
+
           <FieldLabel label="رمز عبور" htmlFor="admin-password" required>
             <Input
               id="admin-password"

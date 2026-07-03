@@ -24,9 +24,12 @@ cp .env.example .env
 Set at minimum for local auth (OTP + sessions):
 
 - `AUTH_SESSION_SECRET` — long random string for signed session cookies
-- `ADMIN_PASSWORD` — admin panel login (or `ADMIN_PASSWORD_HASH` in production)
+- `ADMIN_BOOTSTRAP_PHONE` — mobile for the first admin account (Iranian format `09XXXXXXXXX`)
+- `ADMIN_BOOTSTRAP_PASSWORD` — initial admin password (falls back to `ADMIN_PASSWORD` if unset)
 
 Without `KAVENEGAR_API_KEY`, OTP codes are logged to the server console in dev.
+
+**Staff panel login** (`/admin/login`, `/expert/login`) uses **phone + password** against `StaffUser` records in the database. Legacy env passwords (`ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH`, `SALES_EXPERT_PASSWORD` / `SALES_EXPERT_PASSWORD_HASH`) apply only as a **bootstrap fallback** when no active user exists for that role — create real accounts via `/admin/staff` after the first login.
 
 3. Start PostgreSQL:
 
@@ -46,7 +49,15 @@ npm run db:migrate
 npm run db:seed
 ```
 
-6. Start the development server:
+6. Bootstrap the first admin staff user (idempotent — skips if an admin already exists):
+
+```bash
+npm run db:seed-admin
+```
+
+Uses `ADMIN_BOOTSTRAP_PHONE`, `ADMIN_BOOTSTRAP_PASSWORD` (or `ADMIN_PASSWORD`), and optional `ADMIN_BOOTSTRAP_NAME` (default: `ادمین`).
+
+7. Start the development server:
 
 ```bash
 npm run dev
@@ -67,7 +78,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Landing → **Phone OTP** → Business Info → Questions (16 domains) → Review → Processing → **Result Dashboard** → **Detailed Report** → **CTA (lead form)**
 
-Returning users can sign in at `/account/login` and view past assessments at `/account/assessments`. Admins use `/admin/login` → `/admin/assessments`.
+Returning users can sign in at `/account/login` and view past assessments at `/account/assessments`.
+
+Internal staff panels (phone + password):
+
+- **Admin** — `/admin/login` → `/admin/dashboard` (assessments, leads, staff users)
+- **Sales expert** — `/expert/login` → `/expert/dashboard` (assigned leads)
 
 Legacy result links with `?token=` (email recovery) still work alongside session-based access.
 
@@ -82,6 +98,7 @@ Legacy result links with `?token=` (email recovery) still work alongside session
 | `npm run test:all` | Unit + integration tests |
 | `npm run db:migrate` | Run Prisma migrations (dev) |
 | `npm run db:seed` | Seed ModelVersion v1 (idempotent) |
+| `npm run db:seed-admin` | Create first admin `StaffUser` if none exists (idempotent) |
 | `npm run db:studio` | Open Prisma Studio |
 
 ## Deploy on personal server (Docker)
@@ -101,8 +118,11 @@ Edit `.env` — at minimum set:
 - `APP_BASE_URL` — `https://<APP_DOMAIN>`
 - `EXPERT_VIEW_TOKEN` — secret for internal expert view (`openssl rand -hex 32`)
 - `AUTH_SESSION_SECRET` — signed user/admin session cookies (`openssl rand -hex 32`)
-- `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH` — admin panel login
+- `ADMIN_BOOTSTRAP_PHONE` — mobile for the first admin staff account
+- `ADMIN_BOOTSTRAP_PASSWORD` — initial admin password (or `ADMIN_PASSWORD` / `ADMIN_PASSWORD_HASH` as fallback)
 - `KAVENEGAR_API_KEY` + `KAVENEGAR_OTP_TEMPLATE` — OTP SMS (optional in dev; codes logged when unset)
+
+Legacy `ADMIN_PASSWORD` / `SALES_EXPERT_PASSWORD` env vars are **bootstrap-only**: they let you sign in before any `StaffUser` exists. After bootstrap, manage staff at `/admin/staff`.
 
 2. Build and start:
 
@@ -110,9 +130,22 @@ Edit `.env` — at minimum set:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-3. App available at `https://<APP_DOMAIN>` (Caddy handles TLS). Expert view: `/expert/<assessmentId>?adminToken=<EXPERT_VIEW_TOKEN>` — without a valid token, production returns 401.
+3. Bootstrap the first admin (once per environment, after migrations):
 
-The entrypoint runs `prisma migrate deploy` and seeds only if no active model exists.
+The container entrypoint runs `prisma migrate deploy` and seeds the question bank when needed, but **does not** create staff users. From a machine with this repo and network access to Postgres:
+
+```bash
+ADMIN_BOOTSTRAP_PHONE=09XXXXXXXXX \
+ADMIN_BOOTSTRAP_PASSWORD='your-secure-password' \
+DATABASE_URL='postgresql://postgres:<POSTGRES_PASSWORD>@<postgres-host>:5432/sales_health_check' \
+npm run db:seed-admin
+```
+
+On a VPS where Postgres is Docker-internal only, run the command from a local checkout over an SSH tunnel, or clone the repo on the server and use the compose network URL (`postgresql://postgres:…@postgres:5432/sales_health_check`) via a one-off Node container on the same Docker network.
+
+Until `db:seed-admin` runs, you can still open `/admin/login` with any valid mobile number and the `ADMIN_PASSWORD` fallback (only while no admin `StaffUser` exists).
+
+4. App available at `https://<APP_DOMAIN>` (Caddy handles TLS). Expert view: `/expert/<assessmentId>?adminToken=<EXPERT_VIEW_TOKEN>` — without a valid token, production returns 401.
 
 ### Deploy on VPS with host nginx (recommended)
 
@@ -132,6 +165,8 @@ GHCR_TOKEN=ghp_xxxx ./scripts/bootstrap-vps.sh root@your-vps-ip
 ```
 
 Set GitHub Actions secrets `GHCR_TOKEN`, `VPS_SSH_HOST`, and `VPS_SSH_KEY` for automatic deploy on every merge to `main`.
+
+After the first deploy, run `npm run db:seed-admin` once (see step 3 above) or sign in via the env-password fallback at `/admin/login`, then create staff accounts at `/admin/staff`.
 
 ### Database backup
 

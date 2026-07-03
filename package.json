@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "prisma db seed",
+    "db:seed-admin": "tsx scripts/seed-admin-user.ts",
     "db:studio": "prisma studio",
     "sync:report-content": "tsx scripts/sync-report-content.ts",
     "bot:webhooks": "tsx scripts/set-bot-webhooks.ts",
