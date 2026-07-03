@@ -19,12 +19,7 @@ export function ChartContainer({
   return (
     <div className={cn(isPrint && "print-avoid-break")}>
       <h3 className="mb-4 text-sm font-medium text-zinc-700">{title}</h3>
-      <div
-        className={cn(
-          "min-w-0",
-          isPrint ? "min-h-[360px] sm:min-h-[420px]" : "min-h-[240px]",
-        )}
-      >
+      <div className="min-w-0">
         {children}
       </div>
       {caption && (

@@ -95,9 +95,28 @@ describe("renderReport variants", () => {
     expect(viewModel.presentation).toEqual({
       expandAllDomains: true,
       hideInteractive: true,
-      showPageBreakHints: true,
+      showPageBreakBeforeDomains: true,
       compactIssues: false,
     });
     expect(viewModel.domainBreakdown.every((d) => d.expanded)).toBe(true);
+  });
+
+  it("orders print blocks without CTAs or metrics gate", () => {
+    const spec = exampleReportSpec();
+    const viewModel = renderReport(spec, { medium: "print", variant: "full" });
+
+    expect(viewModel.blockOrder).toEqual([
+      "survival-banner",
+      "health-charts",
+      "issues",
+      "quick-win",
+      "domain-breakdown",
+      "locked-plan",
+      "confidence-note",
+    ]);
+    expect(viewModel.blockOrder).not.toContain("cta-top");
+    expect(viewModel.blockOrder).not.toContain("cta-score");
+    expect(viewModel.blockOrder).not.toContain("cta");
+    expect(viewModel.blockOrder).not.toContain("metrics-gate");
   });
 });

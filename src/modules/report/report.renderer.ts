@@ -32,7 +32,7 @@ export interface RenderReportOptions {
 export interface ReportPresentationFlags {
   expandAllDomains: boolean;
   hideInteractive: boolean;
-  showPageBreakHints: boolean;
+  showPageBreakBeforeDomains: boolean;
   compactIssues: boolean;
 }
 
@@ -238,6 +238,7 @@ function buildQuickWinViewModel(spec: ReportSpec): QuickWinViewModel | null {
 function buildBlockOrder(
   spec: ReportSpec,
   variant: ReportVariant,
+  medium: RenderMedium = "app",
 ): ReportBlockId[] {
   if (variant === "summary") {
     const order: ReportBlockId[] = [
@@ -251,6 +252,39 @@ function buildBlockOrder(
     }
 
     order.push("summary-actions");
+
+    return order;
+  }
+
+  if (medium === "print") {
+    const order: ReportBlockId[] = [
+      "survival-banner",
+      "health-charts",
+      "issues",
+    ];
+
+    if (buildQuickWinViewModel(spec)) {
+      order.push("quick-win");
+    }
+
+    if (spec.valueAtStake) {
+      order.push("value-at-stake");
+    }
+
+    order.push("domain-breakdown");
+
+    if (spec.lockedPlan.titles.length > 0) {
+      order.push("locked-plan");
+    }
+
+    if (
+      shouldShowConfidenceNote(
+        spec.confidenceNote.level,
+        spec.confidenceNote.instrumentFirst,
+      )
+    ) {
+      order.push("confidence-note");
+    }
 
     return order;
   }
@@ -418,7 +452,7 @@ function presentationFlagsForOptions(
     return {
       expandAllDomains: true,
       hideInteractive: true,
-      showPageBreakHints: true,
+      showPageBreakBeforeDomains: true,
       compactIssues: false,
     };
   }
@@ -426,7 +460,7 @@ function presentationFlagsForOptions(
   return {
     expandAllDomains: false,
     hideInteractive: false,
-    showPageBreakHints: false,
+    showPageBreakBeforeDomains: false,
     compactIssues: variant === "summary",
   };
 }
@@ -451,7 +485,7 @@ export function renderReport(
     variant,
     presentation,
     capacityMode: spec.capacityMode,
-    blockOrder: buildBlockOrder(spec, variant),
+    blockOrder: buildBlockOrder(spec, variant, medium),
     survivalBanner: {
       status: spec.survivalBanner.status,
       tone: spec.survivalBanner.tone,

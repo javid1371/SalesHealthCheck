@@ -86,7 +86,8 @@ export async function generateReportPdf(
       const pdf = await page.pdf({
         format: "A4",
         printBackground: true,
-        margin: { top: "12mm", right: "15mm", bottom: "12mm", left: "15mm" },
+        preferCSSPageSize: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
       });
 
       return Buffer.from(pdf);

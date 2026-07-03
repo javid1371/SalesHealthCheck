@@ -93,7 +93,7 @@ function renderChart(chart: ChartViewModel, medium: RenderMedium) {
     case "radar": {
       const data = chart.data as RadarChartData;
       return (
-        <div className={medium === "print" ? "h-[400px] w-full" : undefined}>
+        <div className={medium === "print" ? "mx-auto aspect-square max-h-[300px] w-full" : undefined}>
           <SpiderChart
             data={data.domains.map((d) => ({
               domainName: d.domainName,
@@ -129,20 +129,15 @@ export function ChartsSection({ charts, medium = "app" }: ChartsSectionProps) {
   };
 
   return (
-    <section
-      className={cn(
-        "rounded-2xl bg-white p-4 shadow-sm sm:p-8",
-        isPrint && "print-avoid-break",
-      )}
-    >
+    <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-8">
       <h2 className="text-lg font-semibold text-zinc-900">نمودارهای تشخیص</h2>
       <p className="mt-1 text-sm text-zinc-500">
         نقشه دامنه‌ها، نشت قیف و خانواده‌های مسئله
       </p>
       <div
         className={cn(
-          "mx-auto mt-6 max-w-full space-y-8",
-          isPrint ? "max-w-none" : "sm:max-w-3xl",
+          "mx-auto mt-6 max-w-full",
+          isPrint ? "max-w-none space-y-4" : "space-y-8 sm:max-w-3xl",
         )}
       >
         {visibleCharts.map((chart) => (

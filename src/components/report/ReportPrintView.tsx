@@ -23,7 +23,7 @@ export function ReportPrintView({
   const viewModel = renderReport(reportSpec, { medium: "print", variant: "full" });
 
   return (
-    <div className="mx-auto max-w-[210mm] space-y-8 px-4 py-8">
+    <div className="mx-auto max-w-[210mm] space-y-4 px-2 py-4">
       <PrintReadyMarker />
       <header className="print-avoid-break border-b border-zinc-200 pb-6">
         <p className="text-sm text-zinc-500">Sales Health Check</p>

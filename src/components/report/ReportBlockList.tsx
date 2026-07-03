@@ -62,8 +62,10 @@ export function ReportBlockList({
   }
 
   function renderBlock(blockId: ReportBlockId) {
-    const pageBreakClass = cn(
-      presentation.showPageBreakHints && "print-page-break",
+    const domainPageBreakClass = cn(
+      presentation.showPageBreakBeforeDomains &&
+        blockId === "domain-breakdown" &&
+        "print-page-break",
     );
 
     switch (blockId) {
@@ -90,8 +92,16 @@ export function ReportBlockList({
           />
         );
       case "health-charts":
+        if (medium === "print") {
+          return (
+            <div key={blockId}>
+              <ChartsSection charts={viewModel.charts} medium={medium} />
+            </div>
+          );
+        }
+
         return (
-          <div key={blockId} className={cn("space-y-6", pageBreakClass)}>
+          <div key={blockId} className="space-y-6">
             <HealthGauge gauge={viewModel.healthGauge} medium={medium} />
             <ChartsSection charts={viewModel.charts} medium={medium} />
           </div>
@@ -134,7 +144,7 @@ export function ReportBlockList({
         return <ValueStakeTeaser key={blockId} medium={medium} />;
       case "domain-breakdown":
         return (
-          <div key={blockId} className={cn("space-y-6", pageBreakClass)}>
+          <div key={blockId} className={domainPageBreakClass}>
             <DomainAnatomy
               domains={viewModel.domainBreakdown}
               medium={medium}

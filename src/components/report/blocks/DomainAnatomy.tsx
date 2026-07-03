@@ -15,7 +15,6 @@ import {
   DOMAIN_LEVEL_LABELS,
   domainLevelBarColor,
 } from "@/lib/report-ui";
-import { cn } from "@/lib/utils";
 
 interface DomainAnatomyProps {
   domains: DomainBreakdownViewModel[];
@@ -156,12 +155,7 @@ function DomainCard({
     !showQuickWinAction && hasText(domain.lockedActionTeaser);
 
   return (
-    <article
-      className={cn(
-        "rounded-xl border border-zinc-100 p-4",
-        isPrint && "print-avoid-break",
-      )}
-    >
+    <article className="rounded-xl border border-zinc-100 p-4">
       {isPrint ? (
         <div className="flex w-full items-start justify-between gap-4 text-right">
           <DomainCardHeader domain={domain} isExpanded={isExpanded} />
@@ -359,12 +353,7 @@ export function DomainAnatomy({
   const isPrint = medium === "print";
 
   return (
-    <section
-      className={cn(
-        "rounded-2xl bg-white p-6 shadow-sm sm:p-8",
-        isPrint && "print-avoid-break",
-      )}
-    >
+    <section className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-lg font-semibold text-zinc-900">جزئیات ۱۶ حوزه فروش</h2>
       <p className="mt-1 text-sm text-zinc-500">
         حوزه‌های ضعیف باز و حوزه‌های سالم جمع‌شده
