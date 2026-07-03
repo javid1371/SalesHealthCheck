@@ -52,6 +52,8 @@ export async function updateSmsFunnelSettingsRequest(input: {
   quietHoursStart?: number;
   quietHoursEnd?: number;
   maxUnanswered?: number;
+  kavenegarSenderLine?: string | null;
+  kavenegarOtpTemplate?: string | null;
 }) {
   return apiPatch<{ settings: import("@/modules/sms-funnel/funnel-config.service").FunnelSettings }>(
     "/api/admin/sms-funnel/settings",

@@ -1,4 +1,4 @@
-import { createSmsSender } from "@/modules/auth/sms/kavenegar";
+import { createSmsSenderFromSettings } from "@/modules/auth/sms/kavenegar";
 import { buildBrandedSmsMessage } from "./branding";
 import { evaluateSendGuard } from "./guards";
 import {
@@ -118,7 +118,7 @@ export async function processSmsFunnelJob(
   const message = buildBrandedSmsMessage(bodyText, link);
 
   try {
-    const sender = createSmsSender();
+    const sender = await createSmsSenderFromSettings();
     const result = await sender.sendMessage(phone, message);
 
     await updateSmsMessageStatus(existing.id, {

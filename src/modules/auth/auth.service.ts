@@ -28,7 +28,7 @@ import {
   incrementOtpAttempts,
   markPhoneVerified,
 } from "./otp.repository";
-import { createSmsSender } from "./sms/kavenegar";
+import { createSmsSenderFromSettings } from "./sms/kavenegar";
 
 export {
   OTP_SEND_SUCCESS_MESSAGE,
@@ -96,7 +96,7 @@ export async function sendOtp(
     expiresAt,
   });
 
-  const smsSender = createSmsSender();
+  const smsSender = await createSmsSenderFromSettings();
   try {
     await smsSender.sendOtp(input.phone, code);
   } catch (error) {

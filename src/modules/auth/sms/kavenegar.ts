@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { getKavenegarConfig } from "@/modules/sms-funnel/funnel-config.service";
 import type { SmsSender, SmsSendResult } from "./sms.types";
 
 type KavenegarReturnPayload = {
@@ -91,14 +92,29 @@ function createKavenegarSender(
   };
 }
 
-export function createSmsSender(): SmsSender {
-  const apiKey = env.kavenegarApiKey;
-  const template = env.kavenegarOtpTemplate;
-  const senderLine = env.kavenegarSenderLine;
+export interface SmsSenderConfig {
+  apiKey?: string;
+  template?: string;
+  senderLine?: string;
+}
+
+export function createSmsSender(config?: SmsSenderConfig): SmsSender {
+  const apiKey = config?.apiKey ?? env.kavenegarApiKey;
+  const template = config?.template ?? env.kavenegarOtpTemplate;
+  const senderLine = config?.senderLine ?? env.kavenegarSenderLine;
 
   if (apiKey && template) {
     return createKavenegarSender(apiKey, template, senderLine);
   }
 
   return createDevSmsSender();
+}
+
+export async function createSmsSenderFromSettings(): Promise<SmsSender> {
+  const kavenegar = await getKavenegarConfig();
+  return createSmsSender({
+    apiKey: env.kavenegarApiKey,
+    template: kavenegar.otpTemplate,
+    senderLine: kavenegar.senderLine,
+  });
 }

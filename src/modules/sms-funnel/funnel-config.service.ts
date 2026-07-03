@@ -15,16 +15,27 @@ export const FUNNEL_SETTING_KEYS = {
   quietHoursEnd: "quiet_hours_end",
   maxUnanswered: "max_unanswered",
   funnelEnabled: "funnel_enabled",
+  kavenegarSenderLine: "kavenegar_sender_line",
+  kavenegarOtpTemplate: "kavenegar_otp_template",
 } as const;
 
 export type FunnelSettingKey =
   (typeof FUNNEL_SETTING_KEYS)[keyof typeof FUNNEL_SETTING_KEYS];
+
+export interface KavenegarConfig {
+  senderLine: string | undefined;
+  otpTemplate: string | undefined;
+  apiKeyConfigured: boolean;
+}
 
 export interface FunnelSettings {
   funnelEnabled: boolean;
   quietHoursStart: number;
   quietHoursEnd: number;
   maxUnanswered: number;
+  kavenegarSenderLine: string | undefined;
+  kavenegarOtpTemplate: string | undefined;
+  apiKeyConfigured: boolean;
 }
 
 export interface ResolvedStepForAdmin extends SequenceStepDefinition {
@@ -57,6 +68,8 @@ export interface UpdateFunnelSettingsInput {
   quietHoursStart?: number;
   quietHoursEnd?: number;
   maxUnanswered?: number;
+  kavenegarSenderLine?: string | null;
+  kavenegarOtpTemplate?: string | null;
 }
 
 const SEQUENCE_LABELS: Record<SequenceKey, string> = {
@@ -69,6 +82,7 @@ const SEQUENCE_LABELS: Record<SequenceKey, string> = {
 };
 
 const MAX_BODY_LENGTH = 500;
+const KAVENEGAR_SENDER_LINE_PATTERN = /^[a-zA-Z0-9]+$/;
 
 function assertValidHour(value: number, field: string): void {
   if (!Number.isInteger(value) || value < 0 || value > 23) {
@@ -93,6 +107,49 @@ function assertValidBody(value: string | null | undefined, field: string): void 
       400,
     );
   }
+}
+
+function assertValidKavenegarSenderLine(value: string): void {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "kavenegarSenderLine cannot be empty",
+      400,
+    );
+  }
+  if (!KAVENEGAR_SENDER_LINE_PATTERN.test(trimmed)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "kavenegarSenderLine must contain only letters and digits",
+      400,
+    );
+  }
+}
+
+function assertValidKavenegarOtpTemplate(value: string): void {
+  if (!value.trim()) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "kavenegarOtpTemplate cannot be empty",
+      400,
+    );
+  }
+}
+
+function resolveKavenegarFromMap(
+  map: Map<string, string>,
+): KavenegarConfig {
+  const senderLineDb = map.get(FUNNEL_SETTING_KEYS.kavenegarSenderLine);
+  const otpTemplateDb = map.get(FUNNEL_SETTING_KEYS.kavenegarOtpTemplate);
+
+  return {
+    senderLine:
+      senderLineDb !== undefined ? senderLineDb : env.kavenegarSenderLine,
+    otpTemplate:
+      otpTemplateDb !== undefined ? otpTemplateDb : env.kavenegarOtpTemplate,
+    apiKeyConfigured: Boolean(env.kavenegarApiKey),
+  };
 }
 
 function mergeStepWithOverride(
@@ -156,6 +213,8 @@ export async function getFunnelSettings(): Promise<FunnelSettings> {
   const quietEndDb = map.get(FUNNEL_SETTING_KEYS.quietHoursEnd);
   const maxUnansweredDb = map.get(FUNNEL_SETTING_KEYS.maxUnanswered);
 
+  const kavenegar = resolveKavenegarFromMap(map);
+
   return {
     funnelEnabled:
       funnelEnabledDb !== undefined
@@ -173,7 +232,24 @@ export async function getFunnelSettings(): Promise<FunnelSettings> {
       maxUnansweredDb !== undefined
         ? Number.parseInt(maxUnansweredDb, 10)
         : env.smsFunnelMaxUnanswered,
+    kavenegarSenderLine: kavenegar.senderLine,
+    kavenegarOtpTemplate: kavenegar.otpTemplate,
+    apiKeyConfigured: kavenegar.apiKeyConfigured,
   };
+}
+
+export async function getKavenegarConfig(): Promise<KavenegarConfig> {
+  const rows = await db.smsFunnelSetting.findMany({
+    where: {
+      key: {
+        in: [
+          FUNNEL_SETTING_KEYS.kavenegarSenderLine,
+          FUNNEL_SETTING_KEYS.kavenegarOtpTemplate,
+        ],
+      },
+    },
+  });
+  return resolveKavenegarFromMap(new Map(rows.map((row) => [row.key, row.value])));
 }
 
 export async function isFunnelEnabledFromSettings(): Promise<boolean> {
@@ -347,6 +423,28 @@ export async function updateFunnelSettings(
       input.funnelEnabled ? "true" : "false",
     );
   }
+  if (input.kavenegarSenderLine !== undefined) {
+    if (input.kavenegarSenderLine === null) {
+      await deleteSetting(FUNNEL_SETTING_KEYS.kavenegarSenderLine);
+    } else {
+      assertValidKavenegarSenderLine(input.kavenegarSenderLine);
+      await upsertSetting(
+        FUNNEL_SETTING_KEYS.kavenegarSenderLine,
+        input.kavenegarSenderLine.trim(),
+      );
+    }
+  }
+  if (input.kavenegarOtpTemplate !== undefined) {
+    if (input.kavenegarOtpTemplate === null) {
+      await deleteSetting(FUNNEL_SETTING_KEYS.kavenegarOtpTemplate);
+    } else {
+      assertValidKavenegarOtpTemplate(input.kavenegarOtpTemplate);
+      await upsertSetting(
+        FUNNEL_SETTING_KEYS.kavenegarOtpTemplate,
+        input.kavenegarOtpTemplate.trim(),
+      );
+    }
+  }
 
   return getFunnelSettings();
 }
@@ -357,6 +455,10 @@ async function upsertSetting(key: string, value: string): Promise<void> {
     create: { key, value },
     update: { value },
   });
+}
+
+async function deleteSetting(key: string): Promise<void> {
+  await db.smsFunnelSetting.deleteMany({ where: { key } });
 }
 
 export function formatDelayMs(delayMs: number): string {

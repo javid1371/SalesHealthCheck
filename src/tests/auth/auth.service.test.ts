@@ -29,9 +29,11 @@ vi.mock("@/modules/auth/otp.repository", () => ({
 }));
 
 vi.mock("@/modules/auth/sms/kavenegar", () => ({
-  createSmsSender: vi.fn(() => ({
-    sendOtp: vi.fn().mockResolvedValue(undefined),
-  })),
+  createSmsSenderFromSettings: vi.fn(() =>
+    Promise.resolve({
+      sendOtp: vi.fn().mockResolvedValue(undefined),
+    }),
+  ),
 }));
 
 import {

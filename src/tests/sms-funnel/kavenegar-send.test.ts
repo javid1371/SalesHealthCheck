@@ -39,6 +39,31 @@ describe("Kavenegar sendMessage", () => {
     expect(result.providerMessageId).toBe("12345");
   });
 
+  it("uses explicit config when passed to createSmsSender", async () => {
+    global.fetch = vi.fn(async (url: string | URL | Request) => {
+      const href = typeof url === "string" ? url : url.toString();
+      expect(href).toContain("/sms/send.json");
+      expect(href).toContain("sender=99998888");
+
+      return new Response(
+        JSON.stringify({
+          return: { status: 200, message: "ok" },
+          entries: [{ messageid: 99 }],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    const { createSmsSender } = await import("@/modules/auth/sms/kavenegar");
+    const sender = createSmsSender({
+      apiKey: "override-key",
+      template: "override-template",
+      senderLine: "99998888",
+    });
+    const result = await sender.sendMessage("09123456789", "تست");
+    expect(result.providerMessageId).toBe("99");
+  });
+
   it("logs free-text SMS in dev mode when Kavenegar is unset", async () => {
     vi.stubEnv("KAVENEGAR_API_KEY", "");
     vi.stubEnv("KAVENEGAR_OTP_TEMPLATE", "");
