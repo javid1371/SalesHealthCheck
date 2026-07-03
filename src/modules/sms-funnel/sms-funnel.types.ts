@@ -14,3 +14,8 @@ export function buildDedupeKey(
 ): string {
   return `${enrollmentId}:${stepKey}`;
 }
+
+/** BullMQ custom job IDs must not contain colons. */
+export function toBullMqJobId(dedupeKey: string): string {
+  return dedupeKey.replace(/:/g, "__");
+}

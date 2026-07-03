@@ -2,7 +2,7 @@ import { Queue } from "bullmq";
 import { getBullMqConnection } from "@/lib/redis";
 import { env } from "@/lib/env";
 import type { SmsFunnelJobPayload } from "./sms-funnel.types";
-import { SMS_FUNNEL_QUEUE_NAME } from "./sms-funnel.types";
+import { SMS_FUNNEL_QUEUE_NAME, toBullMqJobId } from "./sms-funnel.types";
 
 let queue: Queue<SmsFunnelJobPayload> | null = null;
 
@@ -39,8 +39,8 @@ export async function enqueueSmsFunnelJob(
     return;
   }
 
-  await q.add(payload.dedupeKey, payload, {
-    jobId: payload.dedupeKey,
+  await q.add("send", payload, {
+    jobId: toBullMqJobId(payload.dedupeKey),
     delay: Math.max(0, delayMs),
   });
 }
