@@ -15,7 +15,14 @@ ARG NEXT_PUBLIC_SENTRY_DSN
 ARG CACHEBUST
 ENV SENTRY_DSN=$SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
-RUN echo "Build cache bust: ${CACHEBUST:-none}" && npx prisma generate && npm run build
+RUN echo "Build cache bust: ${CACHEBUST:-none}" && npx prisma generate && npm run build && \
+    npx esbuild scripts/sms-funnel-worker.ts \
+      --bundle \
+      --platform=node \
+      --format=cjs \
+      --outfile=scripts/sms-funnel-worker.bundle.cjs \
+      --alias:@=./src \
+      --packages=external
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -41,6 +48,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src/config ./src/config
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/sms-funnel-worker.bundle.cjs ./scripts/sms-funnel-worker.bundle.cjs
 
 # Prisma migrate/seed tools in a separate dir — must not overwrite standalone node_modules
 RUN mkdir -p /prisma-tools && \

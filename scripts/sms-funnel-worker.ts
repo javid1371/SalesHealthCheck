@@ -9,8 +9,9 @@ import {
 
 async function main() {
   if (!env.smsFunnelEnabled) {
-    console.error("SMS_FUNNEL_ENABLED is not true — worker exiting.");
-    process.exit(1);
+    console.log("[sms-funnel] SMS_FUNNEL_ENABLED is false — worker idle.");
+    await new Promise<void>(() => {});
+    return;
   }
 
   const connection = getBullMqConnection();

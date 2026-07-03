@@ -84,7 +84,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: ["/prisma-tools/node_modules/.bin/tsx", "scripts/sms-funnel-worker.ts"]
+    command: ["node", "scripts/sms-funnel-worker.bundle.cjs"]
     environment:
       HOME: /app
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
