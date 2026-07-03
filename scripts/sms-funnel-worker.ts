@@ -10,7 +10,7 @@ import {
 async function main() {
   if (!env.smsFunnelEnabled) {
     console.log("[sms-funnel] SMS_FUNNEL_ENABLED is false — worker idle.");
-    await new Promise<void>(() => {});
+    setInterval(() => {}, 60_000);
     return;
   }
 
@@ -46,4 +46,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown());
 }
 
-void main();
+void main().catch((error) => {
+  console.error("[sms-funnel] worker failed:", error);
+  process.exit(1);
+});
