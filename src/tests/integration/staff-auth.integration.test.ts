@@ -29,7 +29,7 @@ function phoneFor(suffix: number): string {
 
 function buildAllAnswers(questions: QuestionsForAssessmentDto) {
   const answers: { questionId: string; selectedOptionId: string }[] = [];
-  for (const domain of questions.domains.slice(0, 8)) {
+  for (const domain of questions.domains) {
     for (const question of domain.questions) {
       const option = question.options[2] ?? question.options[0];
       answers.push({ questionId: question.id, selectedOptionId: option.id });
