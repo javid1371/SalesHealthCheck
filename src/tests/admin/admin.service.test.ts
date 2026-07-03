@@ -35,6 +35,11 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
   };
 });
 
+vi.mock("@/modules/sms-funnel/funnel.repository", () => ({
+  getSmsFunnelAdminMetrics: vi.fn(),
+  listRecentSmsMessages: vi.fn(),
+}));
+
 import {
   getAdminDashboard,
   requireAdminSession,
@@ -50,6 +55,10 @@ import {
   findActiveSalesExperts,
   groupLeadsByAssignee,
 } from "@/modules/admin/admin.repository";
+import {
+  getSmsFunnelAdminMetrics,
+  listRecentSmsMessages,
+} from "@/modules/sms-funnel/funnel.repository";
 
 describe("verifyAdminPassword", () => {
   beforeEach(() => {
@@ -164,6 +173,15 @@ describe("getAdminDashboard", () => {
         _count: { id: 2 },
       },
     ] as never);
+    vi.mocked(getSmsFunnelAdminMetrics).mockResolvedValue({
+      smsSent: 12,
+      smsPending: 3,
+      smsFailed: 1,
+      optOutCount: 0,
+      linkClicks: 7,
+      consultationStarts: 4,
+    });
+    vi.mocked(listRecentSmsMessages).mockResolvedValue([]);
   });
 
   it("aggregates KPIs, funnel, and expert performance", async () => {
@@ -183,5 +201,7 @@ describe("getAdminDashboard", () => {
         closedLost: 0,
       },
     ]);
+    expect(dashboard.smsFunnel.smsSent).toBe(12);
+    expect(dashboard.recentSmsMessages).toEqual([]);
   });
 });

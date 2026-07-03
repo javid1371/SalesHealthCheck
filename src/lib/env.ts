@@ -106,4 +106,32 @@ export const env = {
   get baleWebhookSecret(): string | undefined {
     return process.env.BALE_WEBHOOK_SECRET;
   },
+  /** Redis URL for BullMQ queues; unset disables async workers. */
+  get redisUrl(): string | undefined {
+    return process.env.REDIS_URL;
+  },
+  /** Enable SMS sales funnel automation. */
+  get smsFunnelEnabled(): boolean {
+    return process.env.SMS_FUNNEL_ENABLED === "true";
+  },
+  /** Kavenegar dedicated sender line for free-text SMS. */
+  get kavenegarSenderLine(): string | undefined {
+    return process.env.KAVENEGAR_SENDER_LINE;
+  },
+  /** Quiet hours start (0-23, Asia/Tehran); default 9. */
+  get smsQuietHoursStart(): number {
+    return parsePositiveInt(process.env.SMS_QUIET_HOURS_START, 9);
+  },
+  /** Quiet hours end (0-23, Asia/Tehran); default 21. */
+  get smsQuietHoursEnd(): number {
+    return parsePositiveInt(process.env.SMS_QUIET_HOURS_END, 21);
+  },
+  /** Max nurture SMS without user reaction before dormant. */
+  get smsFunnelMaxUnanswered(): number {
+    return parsePositiveInt(process.env.SMS_FUNNEL_MAX_UNANSWERED, 4);
+  },
+  /** Secret for cron/reconciliation API routes. */
+  get smsFunnelCronSecret(): string | undefined {
+    return process.env.SMS_FUNNEL_CRON_SECRET;
+  },
 } as const;

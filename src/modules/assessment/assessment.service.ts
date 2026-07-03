@@ -230,6 +230,9 @@ export async function startAssessment(
       resultToken,
     });
 
+    const { hookAssessmentStarted } = await import("@/modules/sms-funnel/hooks");
+    hookAssessmentStarted(user.id, session.id);
+
     return {
       assessmentId: session.id,
       status: session.status,
@@ -326,6 +329,10 @@ export async function saveAnswers(
 
   if (assessment.status === "started") {
     await updateAssessmentStatus(assessmentId, "in_progress");
+    const { hookAssessmentInProgress } = await import(
+      "@/modules/sms-funnel/hooks"
+    );
+    hookAssessmentInProgress(assessment.userId, assessmentId);
   }
 
   const progress = await buildProgress(assessmentId, assessment.modelVersionId);
@@ -532,6 +539,13 @@ export async function finishAssessment(
       structuredReport,
       structuredDiagnosis: structuredDiagnosis ?? null,
       reportSpec: reportSpec ?? null,
+    });
+
+    const { hookAssessmentCompleted } = await import("@/modules/sms-funnel/hooks");
+    hookAssessmentCompleted({
+      userId: assessment.userId,
+      assessmentSessionId: assessmentId,
+      overallScorePercentage: overallScore.percentage,
     });
 
     return buildFinishResponse(assessmentId, assessment.resultToken, report.id);

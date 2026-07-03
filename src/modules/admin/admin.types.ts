@@ -77,6 +77,26 @@ export interface AdminDashboardFunnel {
   consultationRate: number;
 }
 
+export interface AdminSmsFunnelMetrics {
+  smsSent: number;
+  smsPending: number;
+  smsFailed: number;
+  optOutCount: number;
+  linkClicks: number;
+  consultationStarts: number;
+}
+
+export interface AdminSmsMessageRow {
+  id: string;
+  phone: string;
+  sequenceKey: string;
+  stepKey: string;
+  status: string;
+  scheduledFor: string;
+  sentAt: string | null;
+  createdAt: string;
+}
+
 export interface AdminExpertPerformanceRow {
   staffUserId: string;
   name: string;
@@ -90,4 +110,6 @@ export interface AdminDashboardData {
   kpis: AdminDashboardKpis;
   funnel: AdminDashboardFunnel;
   expertPerformance: AdminExpertPerformanceRow[];
+  smsFunnel: AdminSmsFunnelMetrics;
+  recentSmsMessages: AdminSmsMessageRow[];
 }

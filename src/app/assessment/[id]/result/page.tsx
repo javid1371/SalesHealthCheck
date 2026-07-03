@@ -8,7 +8,7 @@ import { ResultSummaryView } from "@/components/report/ResultSummaryView";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageState } from "@/components/ui/PageState";
 import { LinkButton } from "@/components/ui/LinkButton";
-import { apiGet } from "@/lib/api-client";
+import { apiGet, apiPost } from "@/lib/api-client";
 import { getResultToken } from "@/lib/assessment-storage";
 import {
   PAGE_MESSAGES,
@@ -43,6 +43,14 @@ function ResultContent() {
         if (cancelled) return;
         setResult(data);
         setError(null);
+
+        const tokenForEvent =
+          searchParams.get("token") ?? getResultToken(assessmentId) ?? undefined;
+        void apiPost("/api/funnel/events", {
+          type: "report_viewed",
+          assessmentSessionId: assessmentId,
+          token: tokenForEvent,
+        }).catch(() => undefined);
       } catch (err) {
         if (cancelled) return;
         setError(resolveApiError(err, PAGE_MESSAGES.notFound.result));

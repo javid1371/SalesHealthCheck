@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ConsultationForm } from "@/components/assessment/ConsultationForm";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/LinkButton";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
+import { apiPost } from "@/lib/api-client";
+import { getResultToken } from "@/lib/assessment-storage";
 import { PAGE_MESSAGES } from "@/lib/page-messages";
 
 function CtaContent() {
@@ -18,6 +20,15 @@ function CtaContent() {
   const resultHref = token
     ? `/assessment/${assessmentId}/result?token=${encodeURIComponent(token)}`
     : `/assessment/${assessmentId}/result`;
+
+  useEffect(() => {
+    const eventToken = token ?? getResultToken(assessmentId) ?? undefined;
+    void apiPost("/api/funnel/events", {
+      type: "consultation_started",
+      assessmentSessionId: assessmentId,
+      token: eventToken,
+    }).catch(() => undefined);
+  }, [assessmentId, token]);
 
   return (
     <div className="space-y-8">

@@ -1,11 +1,15 @@
 import { env } from "@/lib/env";
-import type { SmsSender } from "./sms.types";
+import type { SmsSender, SmsSendResult } from "./sms.types";
 
-type KavenegarLookupResponse = {
+type KavenegarReturnPayload = {
   return?: {
     status?: number;
     message?: string;
   };
+  entries?: Array<{
+    messageid?: number;
+    messageId?: number;
+  }>;
 };
 
 function createDevSmsSender(): SmsSender {
@@ -15,10 +19,38 @@ function createDevSmsSender(): SmsSender {
         `[dev] OTP for ${phone}: ${code} (KAVENEGAR_API_KEY not configured — SMS skipped)`,
       );
     },
+    async sendMessage(phone: string, message: string): Promise<SmsSendResult> {
+      console.log(`[dev] SMS to ${phone}:\n${message}`);
+      return {};
+    },
   };
 }
 
-function createKavenegarSender(apiKey: string, template: string): SmsSender {
+async function parseKavenegarResponse(
+  response: Response,
+  context: string,
+): Promise<KavenegarReturnPayload> {
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Kavenegar ${context} failed (${response.status}): ${body}`);
+  }
+
+  const payload = (await response.json()) as KavenegarReturnPayload;
+  const status = payload.return?.status;
+  if (status !== 200) {
+    throw new Error(
+      `Kavenegar ${context} rejected: ${payload.return?.message ?? "unknown error"}`,
+    );
+  }
+
+  return payload;
+}
+
+function createKavenegarSender(
+  apiKey: string,
+  template: string,
+  senderLine?: string,
+): SmsSender {
   return {
     async sendOtp(phone: string, code: string): Promise<void> {
       const params = new URLSearchParams({
@@ -28,22 +60,33 @@ function createKavenegarSender(apiKey: string, template: string): SmsSender {
       });
 
       const url = `https://api.kavenegar.com/v1/${apiKey}/verify/lookup.json?${params.toString()}`;
-      const response = await fetch(url, { method: "GET" });
-
-      if (!response.ok) {
-        const body = await response.text();
+      await parseKavenegarResponse(await fetch(url, { method: "GET" }), "OTP");
+    },
+    async sendMessage(phone: string, message: string): Promise<SmsSendResult> {
+      if (!senderLine) {
         throw new Error(
-          `Kavenegar OTP request failed (${response.status}): ${body}`,
+          "KAVENEGAR_SENDER_LINE is required for free-text SMS",
         );
       }
 
-      const payload = (await response.json()) as KavenegarLookupResponse;
-      const status = payload.return?.status;
-      if (status !== 200) {
-        throw new Error(
-          `Kavenegar OTP rejected: ${payload.return?.message ?? "unknown error"}`,
-        );
-      }
+      const params = new URLSearchParams({
+        receptor: phone,
+        sender: senderLine,
+        message,
+      });
+
+      const url = `https://api.kavenegar.com/v1/${apiKey}/sms/send.json?${params.toString()}`;
+      const payload = await parseKavenegarResponse(
+        await fetch(url, { method: "GET" }),
+        "SMS send",
+      );
+
+      const entry = payload.entries?.[0];
+      const messageId = entry?.messageid ?? entry?.messageId;
+      return {
+        providerMessageId:
+          messageId !== undefined ? String(messageId) : undefined,
+      };
     },
   };
 }
@@ -51,9 +94,10 @@ function createKavenegarSender(apiKey: string, template: string): SmsSender {
 export function createSmsSender(): SmsSender {
   const apiKey = env.kavenegarApiKey;
   const template = env.kavenegarOtpTemplate;
+  const senderLine = env.kavenegarSenderLine;
 
   if (apiKey && template) {
-    return createKavenegarSender(apiKey, template);
+    return createKavenegarSender(apiKey, template, senderLine);
   }
 
   return createDevSmsSender();

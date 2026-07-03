@@ -85,6 +85,43 @@ enum BotConversationState {
   completed
 }
 
+enum SmsStatus {
+  pending
+  sent
+  failed
+  canceled
+  skipped
+}
+
+enum EnrollmentStatus {
+  active
+  completed
+  stopped
+  converted
+}
+
+enum ScoreBand {
+  low
+  medium
+  high
+}
+
+enum FunnelEventType {
+  report_viewed
+  link_clicked
+  cta_clicked
+  consultation_started
+  sms_sent
+  opt_out
+}
+
+enum ShortLinkPurpose {
+  start
+  continue_assessment
+  result
+  consultation
+}
+
 model User {
   id              String    @id @default(cuid())
   name            String?
@@ -96,6 +133,9 @@ model User {
 
   organizations      Organization[]
   assessmentSessions AssessmentSession[]
+  funnelEnrollments  FunnelEnrollment[]
+  funnelEvents       FunnelEvent[]
+  shortLinks         ShortLink[]
 
   @@map("users")
 }
@@ -247,6 +287,9 @@ model AssessmentSession {
   report               Report?
   actionPlans          ActionPlan[]
   consultationRequests ConsultationRequest[]
+  funnelEnrollments    FunnelEnrollment[]
+  funnelEvents         FunnelEvent[]
+  shortLinks           ShortLink[]
 
   @@index([status])
   @@map("assessment_sessions")
@@ -468,4 +511,113 @@ model BotConversation {
 
   @@unique([platform, chatId])
   @@map("bot_conversations")
+}
+
+model SmsMessage {
+  id                String     @id @default(cuid())
+  phone             String
+  body              String
+  status            SmsStatus  @default(pending)
+  sequenceKey       String     @map("sequence_key")
+  stepKey           String     @map("step_key")
+  enrollmentId      String     @map("enrollment_id")
+  dedupeKey         String     @unique @map("dedupe_key")
+  providerMessageId String?    @map("provider_message_id")
+  scheduledFor      DateTime   @map("scheduled_for")
+  sentAt            DateTime?  @map("sent_at")
+  error             String?
+  createdAt         DateTime   @default(now()) @map("created_at")
+
+  enrollment FunnelEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledFor])
+  @@index([phone])
+  @@map("sms_messages")
+}
+
+model FunnelEnrollment {
+  id                  String           @id @default(cuid())
+  userId              String           @map("user_id")
+  assessmentSessionId String?          @map("assessment_session_id")
+  sequenceKey         String           @map("sequence_key")
+  currentStep         String?          @map("current_step")
+  status              EnrollmentStatus @default(active)
+  scoreBand           ScoreBand?       @map("score_band")
+  messagesSentCount   Int              @default(0) @map("messages_sent_count")
+  lastEventAt         DateTime         @default(now()) @map("last_event_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: Cascade)
+  smsMessages       SmsMessage[]
+
+  @@unique([userId, sequenceKey, assessmentSessionId])
+  @@index([status])
+  @@map("funnel_enrollments")
+}
+
+model FunnelEvent {
+  id                  String          @id @default(cuid())
+  userId              String?         @map("user_id")
+  assessmentSessionId String?         @map("assessment_session_id")
+  type                FunnelEventType
+  metadata            Json?
+  occurredAt          DateTime        @default(now()) @map("occurred_at")
+
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([assessmentSessionId])
+  @@index([type, occurredAt])
+  @@map("funnel_events")
+}
+
+model ShortLink {
+  slug                String           @id @db.VarChar(16)
+  targetUrl           String           @map("target_url")
+  userId              String?          @map("user_id")
+  assessmentSessionId String?          @map("assessment_session_id")
+  purpose             ShortLinkPurpose
+  clickCount          Int              @default(0) @map("click_count")
+  createdAt           DateTime         @default(now()) @map("created_at")
+
+  user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
+
+  @@index([assessmentSessionId])
+  @@map("short_links")
+}
+
+model SmsOptOut {
+  phone     String   @id
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sms_opt_outs")
+}
+
+model SmsFunnelStepConfig {
+  id          String   @id @default(cuid())
+  sequenceKey String   @map("sequence_key")
+  stepKey     String   @map("step_key")
+  body        String?
+  bodyLow     String?  @map("body_low")
+  bodyMedium  String?  @map("body_medium")
+  bodyHigh    String?  @map("body_high")
+  delayMs     Int?     @map("delay_ms")
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([sequenceKey, stepKey])
+  @@map("sms_funnel_step_configs")
+}
+
+model SmsFunnelSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sms_funnel_settings")
 }

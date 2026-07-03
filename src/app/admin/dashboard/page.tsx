@@ -117,6 +117,55 @@ export default async function AdminDashboardPage() {
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-zinc-900">قیف پیامکی</h2>
+          <LinkButton href="/admin/sms-funnel" variant="secondary" size="sm">
+            مدیریت قیف پیامکی
+          </LinkButton>
+        </div>
+        <Card>
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">ارسال‌شده</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.smsSent.toLocaleString("fa-IR")}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">در صف</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.smsPending.toLocaleString("fa-IR")}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">ناموفق</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.smsFailed.toLocaleString("fa-IR")}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">کلیک لینک</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.linkClicks.toLocaleString("fa-IR")}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">شروع فرم تماس</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.consultationStarts.toLocaleString("fa-IR")}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-zinc-600">لغو پیامک</p>
+              <p className="mt-1 text-2xl font-semibold text-zinc-900">
+                {dashboard.smsFunnel.optOutCount.toLocaleString("fa-IR")}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      <section className="mb-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-zinc-900">
             عملکرد کارشناس‌ها
           </h2>

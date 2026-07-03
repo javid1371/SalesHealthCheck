@@ -34,6 +34,7 @@ import type {
 } from "./consultation.types";
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
+import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "جدید",
@@ -87,6 +88,13 @@ export async function submitConsultationRequest(
   const record = await createConsultationRequest(
     input satisfies CreateConsultationRequestInput,
   );
+
+  if (validated.assessmentSessionId) {
+    const assessment = await findAssessmentById(validated.assessmentSessionId);
+    if (assessment?.userId) {
+      hookConsultationSubmitted(assessment.userId, validated.assessmentSessionId);
+    }
+  }
 
   return {
     id: record.id,

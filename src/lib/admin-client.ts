@@ -40,3 +40,47 @@ export async function resetStaffUserPasswordRequest(
     password,
   });
 }
+
+export async function fetchSmsFunnelAdminData() {
+  return apiGet<import("@/modules/sms-funnel/sms-funnel-admin.types").SmsFunnelAdminData>(
+    "/api/admin/sms-funnel",
+  );
+}
+
+export async function updateSmsFunnelSettingsRequest(input: {
+  funnelEnabled?: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
+  maxUnanswered?: number;
+}) {
+  return apiPatch<{ settings: import("@/modules/sms-funnel/funnel-config.service").FunnelSettings }>(
+    "/api/admin/sms-funnel/settings",
+    input,
+  );
+}
+
+export async function updateSmsFunnelStepRequest(
+  sequenceKey: string,
+  stepKey: string,
+  input: {
+    body?: string | null;
+    bodyLow?: string | null;
+    bodyMedium?: string | null;
+    bodyHigh?: string | null;
+    delayMs?: number | null;
+    enabled?: boolean;
+  },
+) {
+  return apiPatch<{
+    step: import("@/modules/sms-funnel/funnel-config.service").ResolvedStepForAdmin;
+  }>(`/api/admin/sms-funnel/steps/${encodeURIComponent(sequenceKey)}/${encodeURIComponent(stepKey)}`, input);
+}
+
+export async function resetSmsFunnelStepRequest(sequenceKey: string, stepKey: string) {
+  return apiPost<{
+    step: import("@/modules/sms-funnel/funnel-config.service").ResolvedStepForAdmin;
+  }>(
+    `/api/admin/sms-funnel/steps/${encodeURIComponent(sequenceKey)}/${encodeURIComponent(stepKey)}/reset`,
+    {},
+  );
+}

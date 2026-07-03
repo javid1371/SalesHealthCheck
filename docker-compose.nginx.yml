@@ -17,6 +17,18 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     image: ${APP_IMAGE:-ghcr.io/javid1371/sales-health-check:latest}
     pull_policy: always
@@ -50,8 +62,17 @@ services:
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       BALE_BOT_TOKEN: ${BALE_BOT_TOKEN:-}
       BALE_WEBHOOK_SECRET: ${BALE_WEBHOOK_SECRET:-}
+      REDIS_URL: redis://redis:6379
+      SMS_FUNNEL_ENABLED: ${SMS_FUNNEL_ENABLED:-false}
+      KAVENEGAR_SENDER_LINE: ${KAVENEGAR_SENDER_LINE:-}
+      SMS_QUIET_HOURS_START: ${SMS_QUIET_HOURS_START:-9}
+      SMS_QUIET_HOURS_END: ${SMS_QUIET_HOURS_END:-21}
+      SMS_FUNNEL_MAX_UNANSWERED: ${SMS_FUNNEL_MAX_UNANSWERED:-4}
+      SMS_FUNNEL_CRON_SECRET: ${SMS_FUNNEL_CRON_SECRET:-}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -64,5 +85,30 @@ services:
       retries: 5
       start_period: 40s
 
+  sms-funnel-worker:
+    image: ${APP_IMAGE:-ghcr.io/javid1371/sales-health-check:latest}
+    pull_policy: always
+    restart: unless-stopped
+    command: ["npx", "tsx", "scripts/sms-funnel-worker.ts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      SMS_FUNNEL_ENABLED: ${SMS_FUNNEL_ENABLED:-false}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_OTP_TEMPLATE: ${KAVENEGAR_OTP_TEMPLATE:-}
+      KAVENEGAR_SENDER_LINE: ${KAVENEGAR_SENDER_LINE:-}
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      SMS_QUIET_HOURS_START: ${SMS_QUIET_HOURS_START:-9}
+      SMS_QUIET_HOURS_END: ${SMS_QUIET_HOURS_END:-21}
+      SMS_FUNNEL_MAX_UNANSWERED: ${SMS_FUNNEL_MAX_UNANSWERED:-4}
+      SMS_FUNNEL_WORKER_CONCURRENCY: ${SMS_FUNNEL_WORKER_CONCURRENCY:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  redis_data:

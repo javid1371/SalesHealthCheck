@@ -28,6 +28,10 @@ import type {
   AdminDashboardData,
   AdminExpertPerformanceRow,
 } from "./admin.types";
+import {
+  getSmsFunnelAdminMetrics,
+  listRecentSmsMessages,
+} from "@/modules/sms-funnel/funnel.repository";
 import { validateAdminLoginRequest } from "./admin.validators";
 
 const STATUS_LABELS: Record<AssessmentStatus, string> = {
@@ -300,5 +304,16 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
       consultationRate: percent(consultationCount, completedCount),
     },
     expertPerformance,
+    smsFunnel: await getSmsFunnelAdminMetrics(),
+    recentSmsMessages: (await listRecentSmsMessages(10)).map((row) => ({
+      id: row.id,
+      phone: row.phone,
+      sequenceKey: row.sequenceKey,
+      stepKey: row.stepKey,
+      status: row.status,
+      scheduledFor: row.scheduledFor.toISOString(),
+      sentAt: row.sentAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    })),
   };
 }

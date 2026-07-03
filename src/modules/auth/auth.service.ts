@@ -135,5 +135,8 @@ export async function verifyOtp(body: unknown): Promise<VerifyOtpResult> {
     await markPhoneVerified(user.id);
   }
 
+  const { hookPhoneVerified } = await import("@/modules/sms-funnel/hooks");
+  hookPhoneVerified(user.id);
+
   return { userId: user.id };
 }
