@@ -94,7 +94,7 @@ function ReportBody({
   router: ReturnType<typeof useRouter>;
 }) {
   const token =
-    searchParams.get("token") ?? getResultToken(report.assessmentId) ?? "";
+    getResultToken(report.assessmentId) ?? searchParams.get("token") ?? "";
   const assessmentId = report.assessmentId;
 
   function navigateToCta() {

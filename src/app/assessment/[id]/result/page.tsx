@@ -98,7 +98,7 @@ function ResultContent() {
           assessmentId={assessmentId}
           result={result}
           token={
-            searchParams.get("token") ?? getResultToken(assessmentId) ?? ""
+            getResultToken(assessmentId) ?? searchParams.get("token") ?? ""
           }
           router={router}
         />

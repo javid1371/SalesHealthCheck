@@ -17,10 +17,14 @@ function CtaContent() {
   const assessmentId = params.id;
   const reportId = searchParams.get("reportId") ?? undefined;
   const urlToken = searchParams.get("token");
+  // Prefer the locally stored token: it was saved right after this exact
+  // assessment completed on this device, so it's always fresh. Falling back
+  // to the URL token still supports opening a valid link on a new device.
+  // This also protects against stale/incorrect tokens in old bookmarked
+  // test links overriding a perfectly valid local session.
   const token =
-    urlToken && urlToken.length > 0
-      ? urlToken
-      : (getResultToken(assessmentId) ?? undefined);
+    getResultToken(assessmentId) ??
+    (urlToken && urlToken.length > 0 ? urlToken : undefined);
   const resultHref = token
     ? `/assessment/${assessmentId}/result?token=${encodeURIComponent(token)}`
     : `/assessment/${assessmentId}/result`;
