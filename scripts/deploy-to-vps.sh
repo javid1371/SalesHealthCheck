@@ -40,6 +40,8 @@ rsync -avz -e "${SSH_BASE[*]}" \
   "${PROJECT_ROOT}/scripts/vps-update.sh" \
   "${PROJECT_ROOT}/scripts/vps-cron-call.sh" \
   "${PROJECT_ROOT}/scripts/install-vps-crons.sh" \
+  "${SSH_HOST}:${REMOTE_DIR}/scripts/"
+rsync -avz -e "${SSH_BASE[*]}" \
   "${PROJECT_ROOT}/scripts/lib/" \
   "${SSH_HOST}:${REMOTE_DIR}/scripts/lib/"
 rsync -avz -e "${SSH_BASE[*]}" \
