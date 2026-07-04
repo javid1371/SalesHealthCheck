@@ -1,5 +1,5 @@
 import { env } from "@/lib/env";
-import { createSmsSender } from "@/modules/auth/sms/kavenegar";
+import { createSmsSenderFromSettings } from "@/modules/auth/sms/kavenegar";
 import { findAssessmentById } from "@/modules/assessment/assessment.repository";
 import { computeLeadScore } from "@/modules/report/expert-view";
 import { parseReportSpec } from "@/modules/report/report-spec.service";
@@ -103,7 +103,7 @@ export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
   }
 
   try {
-    const sender = createSmsSender();
+    const sender = await createSmsSenderFromSettings();
     await sender.sendMessage(expert.phone, EXPERT_NEW_LEAD_SMS);
   } catch (error) {
     console.error("[lead-assignment] failed to notify expert via SMS:", error);

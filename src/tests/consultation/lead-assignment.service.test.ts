@@ -19,7 +19,7 @@ const smsMock = vi.hoisted(() => ({
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 vi.mock("@/modules/staff/staff.repository", () => staffMock);
 vi.mock("@/modules/auth/sms/kavenegar", () => ({
-  createSmsSender: () => ({ sendMessage: smsMock.sendMessage }),
+  createSmsSenderFromSettings: async () => ({ sendMessage: smsMock.sendMessage }),
 }));
 
 describe("lead-assignment.service", () => {
