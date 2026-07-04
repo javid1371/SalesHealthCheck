@@ -8,6 +8,7 @@ import { findAssessmentById, findReportById } from "@/modules/assessment/assessm
 import type {
   CreateConsultationRequestInput,
   CreateConsultationRequestResponse,
+  ResultAccessInput,
 } from "@/modules/assessment/assessment.types";
 import {
   addConsultationNote,
@@ -51,21 +52,43 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   unreachable: "در دسترس نیست",
 };
 
-function verifyResultToken(
-  token: string | undefined,
-  expected: string,
-): void {
-  if (!token || token !== expected) {
-    throw new AppError(
-      "report_access_denied",
-      "Invalid or missing access token",
-      403,
-    );
+/**
+ * Grants access if the token matches OR the caller is authenticated as the
+ * assessment owner (persistent login cookie) or staff. Mirrors
+ * assertResultAccess so a logged-in user who lost their local/URL token can
+ * still submit — matching how they can already view their result/report
+ * without one.
+ */
+function assertConsultationAccess(params: {
+  ownerId: string;
+  expectedToken: string;
+  token?: string;
+  access: ResultAccessInput;
+}): void {
+  const { ownerId, expectedToken, token, access } = params;
+
+  if (access.adminSession || access.salesExpertSession) {
+    return;
   }
+
+  if (token && token === expectedToken) {
+    return;
+  }
+
+  if (access.userSession && access.userSession.userId === ownerId) {
+    return;
+  }
+
+  throw new AppError(
+    "report_access_denied",
+    "Invalid or missing access token",
+    403,
+  );
 }
 
 export async function submitConsultationRequest(
   body: unknown,
+  access: ResultAccessInput = {},
 ): Promise<CreateConsultationRequestResponse> {
   const validated = validateConsultationRequest(body);
 
@@ -78,7 +101,12 @@ export async function submitConsultationRequest(
         404,
       );
     }
-    verifyResultToken(validated.token, assessment.resultToken);
+    assertConsultationAccess({
+      ownerId: assessment.userId,
+      expectedToken: assessment.resultToken,
+      token: validated.token,
+      access,
+    });
   }
 
   if (validated.reportId) {
@@ -86,7 +114,12 @@ export async function submitConsultationRequest(
     if (!report) {
       throw new AppError("report_not_found", "Report not found", 404);
     }
-    verifyResultToken(validated.token, report.assessmentSession.resultToken);
+    assertConsultationAccess({
+      ownerId: report.assessmentSession.userId,
+      expectedToken: report.assessmentSession.resultToken,
+      token: validated.token,
+      access,
+    });
   }
 
   const { token: _token, ...input } = validated;

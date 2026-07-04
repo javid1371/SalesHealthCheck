@@ -39,6 +39,8 @@ echo "==> Waiting for app health on 127.0.0.1:${APP_PORT}..."
 for i in $(seq 1 36); do
   if curl -sf "http://127.0.0.1:${APP_PORT}/api/health" >/dev/null 2>&1; then
     echo "App is healthy."
+    echo "==> Pruning unused Docker images to free disk space..."
+    docker image prune -af >/dev/null 2>&1 || true
     exit 0
   fi
   if [ "${i}" -eq 36 ]; then

@@ -5,6 +5,7 @@ import {
   consultationRequestLimiter,
   rateLimitResponse,
 } from "@/lib/rate-limit";
+import { readSessionsFromRequest } from "@/lib/session";
 import { submitConsultationRequest } from "@/modules/consultation/consultation.service";
 
 export async function POST(request: NextRequest) {
@@ -17,5 +18,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  return handleApiRequest(() => submitConsultationRequest(body));
+  const { userSession, adminSession, salesExpertSession } =
+    readSessionsFromRequest(request);
+
+  return handleApiRequest(() =>
+    submitConsultationRequest(body, {
+      userSession,
+      adminSession,
+      salesExpertSession,
+    }),
+  );
 }

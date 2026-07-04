@@ -48,14 +48,11 @@ export function ConsultationForm({
     setLoading(true);
     setError(null);
 
+    // A token isn't strictly required here: a logged-in user (persistent
+    // session cookie) can submit without one, same as they can view their
+    // result/report without a token. If neither is present, the server
+    // rejects with a 403 handled below.
     const token = tokenProp ?? getResultToken(assessmentId) ?? undefined;
-    if (!token) {
-      setError(
-        "دسترسی به این فرم منقضی شده است. لطفاً از لینک بازیابی نتیجه استفاده کنید.",
-      );
-      setLoading(false);
-      return;
-    }
 
     try {
       await apiPost<CreateConsultationRequestResponse>(
@@ -72,11 +69,21 @@ export function ConsultationForm({
       setSubmitted(true);
       onSuccess?.();
     } catch (err) {
-      setError(
-        err instanceof ApiClientError
-          ? err.message
-          : "ثبت درخواست با خطا مواجه شد.",
-      );
+      if (
+        err instanceof ApiClientError &&
+        (err.code === "report_access_denied" ||
+          err.code === "assessment_access_denied")
+      ) {
+        setError(
+          "دسترسی به این فرم منقضی شده است. لطفاً از لینک بازیابی نتیجه استفاده کنید.",
+        );
+      } else {
+        setError(
+          err instanceof ApiClientError
+            ? err.message
+            : "ثبت درخواست با خطا مواجه شد.",
+        );
+      }
     } finally {
       setLoading(false);
     }
