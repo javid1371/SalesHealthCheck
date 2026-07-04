@@ -15,12 +15,15 @@ import type { CreateConsultationRequestResponse } from "@/modules/assessment/ass
 interface ConsultationFormProps {
   assessmentId: string;
   reportId?: string;
+  /** Result access token from URL or session (required for submission). */
+  token?: string;
   onSuccess?: () => void;
 }
 
 export function ConsultationForm({
   assessmentId,
   reportId,
+  token: tokenProp,
   onSuccess,
 }: ConsultationFormProps) {
   const [name, setName] = useState("");
@@ -45,7 +48,14 @@ export function ConsultationForm({
     setLoading(true);
     setError(null);
 
-    const token = getResultToken(assessmentId);
+    const token = tokenProp ?? getResultToken(assessmentId) ?? undefined;
+    if (!token) {
+      setError(
+        "دسترسی به این فرم منقضی شده است. لطفاً از لینک بازیابی نتیجه استفاده کنید.",
+      );
+      setLoading(false);
+      return;
+    }
 
     try {
       await apiPost<CreateConsultationRequestResponse>(

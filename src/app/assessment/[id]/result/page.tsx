@@ -127,10 +127,10 @@ function ResultDashboard({
   const reportUrl = `/report/${result.report.id}?${reportQuery.toString()}`;
 
   function navigateToConsultation() {
-    const params = new URLSearchParams({
-      token,
-      reportId: result.report.id,
-    });
+    const params = new URLSearchParams({ reportId: result.report.id });
+    if (token) {
+      params.set("token", token);
+    }
     router.push(`/assessment/${assessmentId}/cta?${params.toString()}`);
   }
 

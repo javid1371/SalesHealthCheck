@@ -16,13 +16,17 @@ function CtaContent() {
   const searchParams = useSearchParams();
   const assessmentId = params.id;
   const reportId = searchParams.get("reportId") ?? undefined;
-  const token = searchParams.get("token");
+  const urlToken = searchParams.get("token");
+  const token =
+    urlToken && urlToken.length > 0
+      ? urlToken
+      : (getResultToken(assessmentId) ?? undefined);
   const resultHref = token
     ? `/assessment/${assessmentId}/result?token=${encodeURIComponent(token)}`
     : `/assessment/${assessmentId}/result`;
 
   useEffect(() => {
-    const eventToken = token ?? getResultToken(assessmentId) ?? undefined;
+    const eventToken = token;
     void apiPost("/api/funnel/events", {
       type: "consultation_started",
       assessmentSessionId: assessmentId,
@@ -41,7 +45,11 @@ function CtaContent() {
           اختصاصی، فرم زیر را تکمیل کنید. کارشناس ما با شما تماس می‌گیرد.
         </p>
         <div className="mt-8">
-          <ConsultationForm assessmentId={assessmentId} reportId={reportId} />
+          <ConsultationForm
+            assessmentId={assessmentId}
+            reportId={reportId}
+            token={token}
+          />
         </div>
       </Card>
 

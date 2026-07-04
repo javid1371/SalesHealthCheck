@@ -98,10 +98,10 @@ function ReportBody({
   const assessmentId = report.assessmentId;
 
   function navigateToCta() {
-    const params = new URLSearchParams({
-      token,
-      reportId,
-    });
+    const params = new URLSearchParams({ reportId });
+    if (token) {
+      params.set("token", token);
+    }
     router.push(`/assessment/${assessmentId}/cta?${params.toString()}`);
   }
 
