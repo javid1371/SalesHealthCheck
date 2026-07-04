@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Vazirmatn } from "next/font/google";
+import { UnregisterServiceWorkers } from "@/components/UnregisterServiceWorkers";
 import "./globals.css";
 
 const vazirmatn = Vazirmatn({
@@ -25,7 +26,10 @@ export default function RootLayout({
       dir="rtl"
       className={`${vazirmatn.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <UnregisterServiceWorkers />
+        {children}
+      </body>
     </html>
   );
 }
