@@ -88,6 +88,7 @@ export async function findAssessmentById(assessmentId: string) {
   return db.assessmentSession.findUnique({
     where: { id: assessmentId },
     include: {
+      user: true,
       organization: true,
       modelVersion: true,
       report: true,

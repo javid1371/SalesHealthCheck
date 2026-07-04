@@ -69,6 +69,7 @@ services:
       SMS_QUIET_HOURS_END: ${SMS_QUIET_HOURS_END:-21}
       SMS_FUNNEL_MAX_UNANSWERED: ${SMS_FUNNEL_MAX_UNANSWERED:-4}
       SMS_FUNNEL_CRON_SECRET: ${SMS_FUNNEL_CRON_SECRET:-}
+      LEAD_AUTO_ASSIGN_ENABLED: ${LEAD_AUTO_ASSIGN_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

@@ -18,6 +18,7 @@ import {
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
 import { createConsultationRequest } from "@/modules/consultation/consultation.repository";
+import { finalizeNewLead } from "@/modules/consultation/lead-assignment.service";
 import { generateReportChartImage } from "@/modules/report/report-image.service";
 import { generateReportPdf } from "@/modules/report/report-pdf.service";
 import type { BotClient } from "./bot/bot-client.types";
@@ -777,12 +778,16 @@ async function submitConsultationRequest(
       ? undefined
       : messageText.trim();
 
-  await createConsultationRequest({
+  const lead = await createConsultationRequest({
     name: conversation.contactFirstName?.trim() || "کاربر",
     phone: user?.phone ?? undefined,
     message,
     assessmentSessionId: latestCompleted?.id,
     reportId,
+  });
+
+  await finalizeNewLead(lead.id, {
+    assessmentSessionId: latestCompleted?.id,
   });
 
   await client.sendMessage({

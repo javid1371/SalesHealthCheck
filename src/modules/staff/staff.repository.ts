@@ -61,3 +61,31 @@ export async function touchLastLogin(id: string) {
     data: { lastLoginAt: new Date() },
   });
 }
+
+export async function pickNextSalesExpert() {
+  return db.$transaction(async (tx) => {
+    const experts = await tx.staffUser.findMany({
+      where: {
+        role: "sales_expert",
+        isActive: true,
+        NOT: { phone: "" },
+      },
+      orderBy: [
+        { lastAssignedAt: { sort: "asc", nulls: "first" } },
+        { id: "asc" },
+      ],
+    });
+
+    if (experts.length === 0) {
+      return null;
+    }
+
+    const expert = experts[0];
+    await tx.staffUser.update({
+      where: { id: expert.id },
+      data: { lastAssignedAt: new Date() },
+    });
+
+    return expert;
+  });
+}

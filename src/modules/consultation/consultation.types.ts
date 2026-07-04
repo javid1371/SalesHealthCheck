@@ -1,5 +1,5 @@
 import type { AdminSession, SalesExpertSession } from "@/lib/session";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadSource, LeadStatus, PurchaseProbability } from "@prisma/client";
 
 export interface ConsultationListFilter {
   phone?: string;
@@ -22,6 +22,10 @@ export interface ConsultationListItem {
   message: string | null;
   status: LeadStatus;
   statusLabel: string;
+  source: LeadSource;
+  sourceLabel: string;
+  purchaseProbabilityPercent: number | null;
+  purchaseProbabilityLabel: string | null;
   assignedToId: string | null;
   assignedToName: string | null;
   nextFollowUpAt: string | null;
@@ -92,6 +96,10 @@ export interface ConsultationLeadDetail {
   message: string | null;
   status: LeadStatus;
   statusLabel: string;
+  source: LeadSource;
+  sourceLabel: string;
+  purchaseProbabilityPercent: number | null;
+  purchaseProbabilityLabel: string | null;
   assignedToId: string | null;
   assignedToName: string | null;
   nextFollowUpAt: string | null;

@@ -22,8 +22,48 @@ export async function createConsultationRequest(
       message: input.message,
       assessmentSessionId: input.assessmentSessionId,
       reportId: input.reportId,
+      source: input.source,
+      purchaseProbabilityPercent: input.purchaseProbabilityPercent,
+      purchaseProbabilityBand: input.purchaseProbabilityBand,
     },
   });
+}
+
+export async function findConsultationRequestByAssessmentSessionId(
+  assessmentSessionId: string,
+) {
+  return db.consultationRequest.findFirst({
+    where: { assessmentSessionId },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function updateLeadPurchaseProbability(
+  id: string,
+  input: {
+    purchaseProbabilityPercent: number;
+    purchaseProbabilityBand: Prisma.ConsultationRequestUpdateInput["purchaseProbabilityBand"];
+  },
+) {
+  return db.consultationRequest.update({
+    where: { id },
+    data: {
+      purchaseProbabilityPercent: input.purchaseProbabilityPercent,
+      purchaseProbabilityBand: input.purchaseProbabilityBand,
+    },
+  });
+}
+
+export async function assignLeadToExpertIfUnassigned(
+  leadId: string,
+  expertId: string,
+): Promise<boolean> {
+  const result = await db.consultationRequest.updateMany({
+    where: { id: leadId, assignedToId: null },
+    data: { assignedToId: expertId },
+  });
+
+  return result.count > 0;
 }
 
 function buildConsultationWhere(

@@ -548,6 +548,21 @@ export async function finishAssessment(
       overallScorePercentage: overallScore.percentage,
     });
 
+    const { createSystemLeadIfEligible } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+    try {
+      await createSystemLeadIfEligible({
+        assessmentSessionId: assessmentId,
+        reportId: report.id,
+        leadScore: reportSpec?.expertView?.leadScore,
+        structuredDiagnosis: structuredDiagnosis ?? null,
+        valueAtStake,
+      });
+    } catch (error) {
+      console.error("[lead-assignment] system lead detection failed:", error);
+    }
+
     return buildFinishResponse(assessmentId, assessment.resultToken, report.id);
   } catch (error) {
     if (error instanceof AppError) throw error;

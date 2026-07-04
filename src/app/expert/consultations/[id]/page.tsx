@@ -58,10 +58,20 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
     >
       <ExpertNav isAdmin={Boolean(adminSession)} />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <p className="text-sm text-zinc-600">وضعیت</p>
           <p className="mt-1 font-semibold text-zinc-900">{lead.statusLabel}</p>
+        </Card>
+        <Card>
+          <p className="text-sm text-zinc-600">منبع</p>
+          <p className="mt-1 font-semibold text-zinc-900">{lead.sourceLabel}</p>
+        </Card>
+        <Card>
+          <p className="text-sm text-zinc-600">احتمال خرید</p>
+          <p className="mt-1 font-semibold text-zinc-900">
+            {lead.purchaseProbabilityLabel ?? "—"}
+          </p>
         </Card>
         <Card>
           <p className="text-sm text-zinc-600">تخصیص</p>

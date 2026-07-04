@@ -134,4 +134,8 @@ export const env = {
   get smsFunnelCronSecret(): string | undefined {
     return process.env.SMS_FUNNEL_CRON_SECRET;
   },
+  /** Enable automatic lead assignment and expert SMS notifications. */
+  get leadAutoAssignEnabled(): boolean {
+    return process.env.LEAD_AUTO_ASSIGN_ENABLED === "true";
+  },
 } as const;

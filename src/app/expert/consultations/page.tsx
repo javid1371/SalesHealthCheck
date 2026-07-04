@@ -97,6 +97,8 @@ export default async function ExpertConsultationsPage({
             <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
               <tr>
                 <th className="px-4 py-3 font-medium text-zinc-700">وضعیت</th>
+                <th className="px-4 py-3 font-medium text-zinc-700">منبع</th>
+                <th className="px-4 py-3 font-medium text-zinc-700">احتمال خرید</th>
                 <th className="px-4 py-3 font-medium text-zinc-700">تخصیص</th>
                 <th className="px-4 py-3 font-medium text-zinc-700">نام</th>
                 <th className="px-4 py-3 font-medium text-zinc-700">موبایل</th>
@@ -114,6 +116,20 @@ export default async function ExpertConsultationsPage({
                     <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
                       {item.statusLabel}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 ${
+                        item.source === "system"
+                          ? "bg-amber-100 text-amber-800"
+                          : "bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      {item.sourceLabel}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-600">
+                    {item.purchaseProbabilityLabel ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">
                     {item.assignedToName ?? "—"}

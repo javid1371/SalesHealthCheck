@@ -62,6 +62,17 @@ enum LeadStatus {
   unreachable
 }
 
+enum LeadSource {
+  direct
+  system
+}
+
+enum PurchaseProbability {
+  low
+  medium
+  high
+}
+
 enum ActionPlanTimeframe {
   seven_days
   thirty_days
@@ -407,18 +418,21 @@ model Report {
 }
 
 model ConsultationRequest {
-  id                  String     @id @default(cuid())
-  assessmentSessionId String?    @map("assessment_session_id")
-  reportId            String?    @map("report_id")
-  name                String
-  email               String?
-  phone               String?
-  message             String?
-  status              LeadStatus @default(new)
-  assignedToId        String?    @map("assigned_to_id")
-  nextFollowUpAt      DateTime?  @map("next_follow_up_at")
-  createdAt           DateTime   @default(now()) @map("created_at")
-  updatedAt           DateTime   @updatedAt @map("updated_at")
+  id                        String               @id @default(cuid())
+  assessmentSessionId       String?              @map("assessment_session_id")
+  reportId                  String?              @map("report_id")
+  name                      String
+  email                     String?
+  phone                     String?
+  message                   String?
+  status                    LeadStatus           @default(new)
+  source                    LeadSource           @default(direct)
+  purchaseProbabilityPercent Int?                @map("purchase_probability_percent")
+  purchaseProbabilityBand   PurchaseProbability? @map("purchase_probability_band")
+  assignedToId              String?              @map("assigned_to_id")
+  nextFollowUpAt            DateTime?            @map("next_follow_up_at")
+  createdAt                 DateTime             @default(now()) @map("created_at")
+  updatedAt                 DateTime             @updatedAt @map("updated_at")
 
   assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
   report            Report?            @relation(fields: [reportId], references: [id], onDelete: SetNull)
@@ -429,19 +443,21 @@ model ConsultationRequest {
   @@index([createdAt])
   @@index([assignedToId])
   @@index([status])
+  @@index([source])
   @@map("consultation_requests")
 }
 
 model StaffUser {
-  id           String    @id @default(cuid())
-  name         String
-  phone        String    @unique
-  passwordHash String    @map("password_hash")
-  role         StaffRole
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  name            String
+  phone           String    @unique
+  passwordHash    String    @map("password_hash")
+  role            StaffRole
+  isActive        Boolean   @default(true) @map("is_active")
+  lastLoginAt     DateTime? @map("last_login_at")
+  lastAssignedAt  DateTime? @map("last_assigned_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   assignedLeads     ConsultationRequest[] @relation("LeadAssignee")
   consultationNotes ConsultationNote[]

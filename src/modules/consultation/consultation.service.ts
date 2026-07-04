@@ -35,6 +35,11 @@ import type {
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
 import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
+import {
+  formatPurchaseProbabilityLabel,
+  LEAD_SOURCE_LABELS,
+} from "./lead-insights";
+import { finalizeNewLead } from "./lead-assignment.service";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "جدید",
@@ -88,6 +93,10 @@ export async function submitConsultationRequest(
   const record = await createConsultationRequest(
     input satisfies CreateConsultationRequestInput,
   );
+
+  await finalizeNewLead(record.id, {
+    assessmentSessionId: validated.assessmentSessionId,
+  });
 
   if (validated.assessmentSessionId) {
     const assessment = await findAssessmentById(validated.assessmentSessionId);
@@ -203,6 +212,18 @@ type ConsultationRow = Awaited<
   ReturnType<typeof findConsultationRequests>
 >[number];
 
+function mapLeadMetadata(row: ConsultationRow) {
+  return {
+    source: row.source,
+    sourceLabel: LEAD_SOURCE_LABELS[row.source],
+    purchaseProbabilityPercent: row.purchaseProbabilityPercent,
+    purchaseProbabilityLabel: formatPurchaseProbabilityLabel(
+      row.purchaseProbabilityPercent,
+      row.purchaseProbabilityBand,
+    ),
+  };
+}
+
 function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
@@ -215,6 +236,7 @@ function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
     message: row.message,
     status: row.status,
     statusLabel: LEAD_STATUS_LABELS[row.status],
+    ...mapLeadMetadata(row),
     assignedToId: row.assignedToId,
     assignedToName: row.assignedTo?.name ?? null,
     nextFollowUpAt: row.nextFollowUpAt
@@ -272,6 +294,7 @@ function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadD
     message: row.message,
     status: row.status,
     statusLabel: LEAD_STATUS_LABELS[row.status],
+    ...mapLeadMetadata(row),
     assignedToId: row.assignedToId,
     assignedToName: row.assignedTo?.name ?? null,
     nextFollowUpAt: row.nextFollowUpAt
