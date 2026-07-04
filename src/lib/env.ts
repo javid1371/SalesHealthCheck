@@ -138,4 +138,8 @@ export const env = {
   get leadAutoAssignEnabled(): boolean {
     return process.env.LEAD_AUTO_ASSIGN_ENABLED === "true";
   },
+  /** Hours to delay auto-assignment for system-detected hot leads; default 24. */
+  get leadSystemAssignDelayHours(): number {
+    return parsePositiveInt(process.env.LEAD_SYSTEM_ASSIGN_DELAY_HOURS, 24);
+  },
 } as const;

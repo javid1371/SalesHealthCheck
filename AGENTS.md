@@ -22,3 +22,15 @@ This is a Next.js 16 (Turbopack) modular monolith with Prisma + PostgreSQL. See 
 - `npm run dev` serves on `http://localhost:3000`. The UI is Persian/RTL.
 - `npm run lint` currently reports pre-existing errors (e.g. `no-empty-object-type`, a React `setState`-in-effect rule) and exits non-zero on an unmodified checkout — this is a baseline repo state, not an environment problem.
 - `npm test` (unit) needs no DB; `npm run test:integration` requires Postgres running with migrations+seed applied.
+
+### Production deploy (VPS)
+
+**Rule:** all production deploys go through GitHub Actions → GHCR → VPS `docker pull`. Never build or transfer images manually.
+
+1. Push/merge to `main` — CI builds and pushes `ghcr.io/javid1371/sales-health-check:<sha>`.
+2. Deploy: `./scripts/deploy-to-vps.sh <ssh-host> <git-sha>` (or rely on the CI deploy job when secrets are set).
+3. VPS only pulls from GHCR and restarts — `scripts/vps-update.sh` rejects non-GHCR `APP_IMAGE` values.
+
+**Forbidden:** `docker build` on VPS, `docker save | ssh docker load`, scp images, deploying unmerged local code.
+
+Full guide: `docs/ops/production-deploy.md`. Enforced in `scripts/lib/validate-ghcr-image.sh`.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run on the VPS to pull the app image from GHCR and restart the stack.
 # Invoked by deploy-to-vps.sh or GitHub Actions deploy job.
+# Production rule: pull from GHCR only — never build or load images on the VPS.
 
 set -euo pipefail
 
@@ -8,6 +9,11 @@ REMOTE_DIR="${REMOTE_DIR:-/opt/sales-health-check}"
 APP_PORT="${APP_PORT:-3105}"
 APP_IMAGE="${APP_IMAGE:-ghcr.io/javid1371/sales-health-check:latest}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.nginx.yml}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/validate-ghcr-image.sh
+source "${SCRIPT_DIR}/lib/validate-ghcr-image.sh"
+validate_ghcr_app_image "${APP_IMAGE}"
 
 cd "${REMOTE_DIR}"
 

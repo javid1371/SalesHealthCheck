@@ -132,7 +132,13 @@ export default async function ExpertConsultationsPage({
                     {item.purchaseProbabilityLabel ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-zinc-600">
-                    {item.assignedToName ?? "—"}
+                    {item.pendingAssignment ? (
+                      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-sky-800">
+                        در صف تخصیص
+                      </span>
+                    ) : (
+                      (item.assignedToName ?? "—")
+                    )}
                   </td>
                   <td className="px-4 py-3 font-medium text-zinc-900">
                     {item.name}

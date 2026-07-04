@@ -17,8 +17,8 @@ import {
   countAnswersForAssessment,
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
-import { createConsultationRequest } from "@/modules/consultation/consultation.repository";
-import { finalizeNewLead } from "@/modules/consultation/lead-assignment.service";
+import { createConsultationRequest, findConsultationRequestByAssessmentSessionId } from "@/modules/consultation/consultation.repository";
+import { finalizeNewLead, upgradeExistingLeadToDirect } from "@/modules/consultation/lead-assignment.service";
 import { generateReportChartImage } from "@/modules/report/report-image.service";
 import { generateReportPdf } from "@/modules/report/report-pdf.service";
 import type { BotClient } from "./bot/bot-client.types";
@@ -778,17 +778,31 @@ async function submitConsultationRequest(
       ? undefined
       : messageText.trim();
 
-  const lead = await createConsultationRequest({
+  const consultationInput = {
     name: conversation.contactFirstName?.trim() || "کاربر",
     phone: user?.phone ?? undefined,
     message,
     assessmentSessionId: latestCompleted?.id,
     reportId,
-  });
+  };
 
-  await finalizeNewLead(lead.id, {
-    assessmentSessionId: latestCompleted?.id,
-  });
+  if (latestCompleted?.id) {
+    const existing = await findConsultationRequestByAssessmentSessionId(
+      latestCompleted.id,
+    );
+    if (existing) {
+      await upgradeExistingLeadToDirect(existing.id, consultationInput);
+    } else {
+      const lead = await createConsultationRequest(consultationInput);
+      await finalizeNewLead(lead.id, {
+        assessmentSessionId: latestCompleted.id,
+        mode: "immediate",
+      });
+    }
+  } else {
+    const lead = await createConsultationRequest(consultationInput);
+    await finalizeNewLead(lead.id, { mode: "immediate" });
+  }
 
   await client.sendMessage({
     chatId: conversation.chatId,

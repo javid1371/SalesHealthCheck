@@ -75,9 +75,22 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         </Card>
         <Card>
           <p className="text-sm text-zinc-600">تخصیص</p>
-          <p className="mt-1 font-semibold text-zinc-900">
-            {lead.assignedToName ?? "—"}
-          </p>
+          {lead.pendingAssignment ? (
+            <div className="mt-1">
+              <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-sm font-semibold text-sky-800">
+                در صف تخصیص
+              </span>
+              {lead.assignScheduledFor ? (
+                <p className="mt-1 text-sm text-zinc-600">
+                  تخصیص خودکار: {lead.assignScheduledFor}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-1 font-semibold text-zinc-900">
+              {lead.assignedToName ?? "—"}
+            </p>
+          )}
         </Card>
         <Card>
           <p className="text-sm text-zinc-600">پیگیری بعدی</p>

@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { createSmsSenderFromSettings } from "@/modules/auth/sms/kavenegar";
 import { findAssessmentById } from "@/modules/assessment/assessment.repository";
+import type { CreateConsultationRequestInput } from "@/modules/assessment/assessment.types";
 import { computeLeadScore } from "@/modules/report/expert-view";
 import { parseReportSpec } from "@/modules/report/report-spec.service";
 import type { ExpertViewSpec } from "@/types/report-spec";
@@ -8,18 +9,23 @@ import type { StructuredDiagnosis } from "@/types/structured-diagnosis";
 import type { ValueAtStakeSpec } from "@/types/value-at-stake";
 import {
   assignLeadToExpertIfUnassigned,
+  clearAssignScheduledFor,
   createConsultationRequest,
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
+  findDueSystemLeadsForAssignment,
   updateLeadPurchaseProbability,
+  upgradeConsultationRequestToDirect,
 } from "./consultation.repository";
 import {
   computePurchaseProbability,
-  isNearHotLead,
+  isHotLead,
 } from "./lead-insights";
 import { pickNextSalesExpert } from "@/modules/staff/staff.repository";
 
 const EXPERT_NEW_LEAD_SMS = "لید جدید داری\nچک کن";
+
+export type FinalizeNewLeadMode = "immediate" | "probabilityOnly";
 
 export function resolveLeadScoreFromAssessment(input: {
   reportSpec: unknown;
@@ -112,18 +118,21 @@ export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
 
 export async function finalizeNewLead(
   leadId: string,
-  options?: { assessmentSessionId?: string | null },
+  options?: {
+    assessmentSessionId?: string | null;
+    mode?: FinalizeNewLeadMode;
+  },
 ): Promise<void> {
-  if (!env.leadAutoAssignEnabled) {
-    return;
-  }
+  const mode = options?.mode ?? "immediate";
 
   try {
     await enrichLeadWithPurchaseProbability(
       leadId,
       options?.assessmentSessionId,
     );
-    await autoAssignAndNotifyLead(leadId);
+    if (mode === "immediate" && env.leadAutoAssignEnabled) {
+      await autoAssignAndNotifyLead(leadId);
+    }
   } catch (error) {
     console.error("[lead-assignment] finalizeNewLead failed:", error);
   }
@@ -131,11 +140,39 @@ export async function finalizeNewLead(
 
 export function runFinalizeNewLead(
   leadId: string,
-  options?: { assessmentSessionId?: string | null },
+  options?: {
+    assessmentSessionId?: string | null;
+    mode?: FinalizeNewLeadMode;
+  },
 ): void {
   void finalizeNewLead(leadId, options).catch((error) => {
     console.error("[lead-assignment] runFinalizeNewLead failed:", error);
   });
+}
+
+function computeSystemAssignScheduledFor(): Date {
+  const delayMs = env.leadSystemAssignDelayHours * 60 * 60 * 1000;
+  return new Date(Date.now() + delayMs);
+}
+
+export async function upgradeExistingLeadToDirect(
+  leadId: string,
+  input: CreateConsultationRequestInput,
+): Promise<{ id: string; createdAt: Date }> {
+  const updated = await upgradeConsultationRequestToDirect(leadId, {
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    message: input.message,
+    reportId: input.reportId,
+  });
+
+  await finalizeNewLead(updated.id, {
+    assessmentSessionId: input.assessmentSessionId,
+    mode: "immediate",
+  });
+
+  return { id: updated.id, createdAt: updated.createdAt };
 }
 
 export async function createSystemLeadIfEligible(input: {
@@ -158,7 +195,7 @@ export async function createSystemLeadIfEligible(input: {
         )
       : null);
 
-  if (!leadScore || !isNearHotLead(leadScore)) {
+  if (!leadScore || !isHotLead(leadScore)) {
     return;
   }
 
@@ -180,7 +217,7 @@ export async function createSystemLeadIfEligible(input: {
     valueAtStake: input.valueAtStake ?? null,
   });
 
-  const lead = await createConsultationRequest({
+  await createConsultationRequest({
     name: assessment.user.name?.trim() || assessment.organization.businessName,
     phone: assessment.user.phone ?? undefined,
     email: assessment.user.email ?? undefined,
@@ -189,9 +226,25 @@ export async function createSystemLeadIfEligible(input: {
     source: "system",
     purchaseProbabilityPercent: probability.percent,
     purchaseProbabilityBand: probability.band,
+    assignScheduledFor: computeSystemAssignScheduledFor(),
   });
+}
 
-  await autoAssignAndNotifyLead(lead.id);
+export async function processDueSystemLeadAssignments(): Promise<number> {
+  if (!env.leadAutoAssignEnabled) {
+    return 0;
+  }
+
+  const dueLeads = await findDueSystemLeadsForAssignment(new Date());
+  let processed = 0;
+
+  for (const lead of dueLeads) {
+    await autoAssignAndNotifyLead(lead.id);
+    await clearAssignScheduledFor(lead.id);
+    processed += 1;
+  }
+
+  return processed;
 }
 
 export function hookSystemLeadDetection(input: {

@@ -16,16 +16,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 echo "==> Syncing deploy files to ${SSH_HOST}:${REMOTE_DIR}"
-ssh "${SSH_HOST}" "mkdir -p ${REMOTE_DIR}/deploy/nginx ${REMOTE_DIR}/scripts"
+ssh "${SSH_HOST}" "mkdir -p ${REMOTE_DIR}/deploy/nginx ${REMOTE_DIR}/scripts/lib"
 rsync -avz \
   "${PROJECT_ROOT}/docker-compose.nginx.yml" \
   "${PROJECT_ROOT}/.env.production.example" \
   "${SSH_HOST}:${REMOTE_DIR}/"
 rsync -avz \
   "${PROJECT_ROOT}/scripts/vps-update.sh" \
+  "${PROJECT_ROOT}/scripts/vps-cron-call.sh" \
+  "${PROJECT_ROOT}/scripts/install-vps-crons.sh" \
   "${PROJECT_ROOT}/scripts/bootstrap-vps.sh" \
   "${PROJECT_ROOT}/scripts/deploy-to-vps.sh" \
   "${SSH_HOST}:${REMOTE_DIR}/scripts/"
+rsync -avz \
+  "${PROJECT_ROOT}/scripts/lib/" \
+  "${SSH_HOST}:${REMOTE_DIR}/scripts/lib/"
 rsync -avz \
   "${PROJECT_ROOT}/deploy/nginx/" \
   "${SSH_HOST}:${REMOTE_DIR}/deploy/nginx/"

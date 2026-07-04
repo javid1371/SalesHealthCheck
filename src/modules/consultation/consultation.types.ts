@@ -41,6 +41,8 @@ export interface ConsultationListItem {
   expertViewUrl: string | null;
   adminAssessmentUrl: string | null;
   detailUrl: string;
+  assignScheduledFor: string | null;
+  pendingAssignment: boolean;
 }
 
 export interface ConsultationListResponse {
@@ -118,4 +120,6 @@ export interface ConsultationLeadDetail {
   bottlenecks: Array<{ title: string; severity: string }>;
   diagnoses: Array<{ title: string; severity: string }>;
   notes: ConsultationNoteItem[];
+  assignScheduledFor: string | null;
+  pendingAssignment: boolean;
 }

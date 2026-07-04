@@ -222,6 +222,7 @@ export interface CreateConsultationRequestInput {
   source?: LeadSource;
   purchaseProbabilityPercent?: number;
   purchaseProbabilityBand?: PurchaseProbability;
+  assignScheduledFor?: Date;
 }
 
 export interface CreateConsultationRequestResponse {

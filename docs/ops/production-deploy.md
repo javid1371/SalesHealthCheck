@@ -138,6 +138,11 @@ Configure daily cron and restore procedures: [database-backup.md](./database-bac
 
 ## Deploy with host nginx (multi-project VPS)
 
+> **Deploy rule:** production updates are **GitHub Actions → GHCR → `docker pull` on VPS** only.
+> Never `docker build` on the server, `docker save/load`, or scp images.
+> If code is not merged to `main`, do not deploy to production.
+> Enforced by `scripts/lib/validate-ghcr-image.sh`. See also `AGENTS.md` and `.cursor/rules/project-rules.md`.
+
 Use this when the VPS already runs **nginx** on ports 80/443 for other projects (no Caddy).
 
 ### Stack
@@ -229,6 +234,55 @@ Internet :443/:80
 # or on server:
 cd /opt/sales-health-check && bash scripts/vps-update.sh
 ```
+
+## 8. Scheduled jobs (cron)
+
+System leads with `source=system` are assigned after a delay (`LEAD_SYSTEM_ASSIGN_DELAY_HOURS`, default **24**). A host cron job must call the app every ~15 minutes.
+
+### Required env (`.env` on VPS)
+
+| Variable | Description |
+|----------|-------------|
+| `LEAD_AUTO_ASSIGN_ENABLED` | `true` — enable round-robin assignment + expert SMS |
+| `LEAD_SYSTEM_ASSIGN_DELAY_HOURS` | Hours before unassigned system leads are auto-assigned (default `24`) |
+| `SMS_FUNNEL_CRON_SECRET` | Bearer token for `/api/cron/*` routes (shared with SMS funnel reconciliation) |
+| `APP_BASE_URL` | Public URL used by cron scripts (e.g. `https://health.javidmgdm.com`) |
+
+Migrations run automatically on app container start (`prisma migrate deploy` in the entrypoint).
+
+### Install cron (one time on VPS)
+
+From `/opt/sales-health-check` after `.env` has the variables above:
+
+```bash
+chmod +x scripts/install-vps-crons.sh scripts/vps-cron-call.sh
+./scripts/install-vps-crons.sh
+```
+
+This installs:
+
+| Schedule | Endpoint | Purpose |
+|----------|----------|---------|
+| Every 15 min | `POST /api/cron/lead-assignment` | Assign due system leads + notify experts |
+| Every 5 min | `POST /api/cron/sms-funnel` | Re-queue stale SMS funnel messages |
+
+Logs: `/var/log/sales-health-check/lead-assignment.log` and `sms-funnel.log`.
+
+Manual test:
+
+```bash
+./scripts/vps-cron-call.sh /api/cron/lead-assignment
+# Expected: {"processed":0} or higher
+```
+
+Equivalent raw curl (from the plan):
+
+```bash
+curl -sf -X POST -H "Authorization: Bearer $SMS_FUNNEL_CRON_SECRET" \
+  https://health.javidmgdm.com/api/cron/lead-assignment
+```
+
+**Note:** Existing system leads that are already assigned are unchanged. Unassigned legacy system leads with `assign_scheduled_for = null` are not picked up by the delayed cron unless backfilled separately.
 
 ## Related
 

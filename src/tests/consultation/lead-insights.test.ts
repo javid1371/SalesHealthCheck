@@ -3,6 +3,7 @@ import {
   computePurchaseProbability,
   formatPurchaseProbabilityLabel,
   isNearHotLead,
+  isHotLead,
   LEAD_SOURCE_LABELS,
 } from "@/modules/consultation/lead-insights";
 
@@ -82,6 +83,14 @@ describe("isNearHotLead", () => {
     expect(isNearHotLead("hot")).toBe(true);
     expect(isNearHotLead("warm")).toBe(true);
     expect(isNearHotLead("cold")).toBe(false);
+  });
+});
+
+describe("isHotLead", () => {
+  it("treats only hot as hot lead", () => {
+    expect(isHotLead("hot")).toBe(true);
+    expect(isHotLead("warm")).toBe(false);
+    expect(isHotLead("cold")).toBe(false);
   });
 });
 

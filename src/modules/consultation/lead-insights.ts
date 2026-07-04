@@ -86,3 +86,7 @@ export function formatPurchaseProbabilityLabel(
 export function isNearHotLead(leadScore: ExpertViewSpec["leadScore"]): boolean {
   return leadScore === "hot" || leadScore === "warm";
 }
+
+export function isHotLead(leadScore: ExpertViewSpec["leadScore"]): boolean {
+  return leadScore === "hot";
+}

@@ -170,7 +170,7 @@ describe("auto lead assignment (integration)", () => {
     expect(item?.purchaseProbabilityLabel).toMatch(/٪$/);
   }, 120_000);
 
-  it("creates system lead for near-hot completed assessments", async () => {
+  it("creates system lead for hot completed assessments without immediate assign", async () => {
     await createStaffUserByAdmin({
       name: "System Lead Expert",
       phone: phoneFor(230),
@@ -186,7 +186,44 @@ describe("auto lead assignment (integration)", () => {
 
     const systemLead = leads.find((lead) => lead.source === "system");
     expect(systemLead).toBeDefined();
-    expect(systemLead?.assignedToId).not.toBeNull();
+    expect(systemLead?.assignedToId).toBeNull();
+    expect(systemLead?.assignScheduledFor).not.toBeNull();
     expect(systemLead?.purchaseProbabilityPercent).not.toBeNull();
+  }, 120_000);
+
+  it("upgrades system lead to direct on consultation submit without duplicate", async () => {
+    await createStaffUserByAdmin({
+      name: "Upgrade Expert",
+      phone: phoneFor(240),
+      password: "ExpertPass123",
+      role: "sales_expert",
+    });
+
+    const { start, finish } = await createCompletedAssessment(241);
+
+    const systemLeadsBefore = await db.consultationRequest.findMany({
+      where: { assessmentSessionId: start.assessmentId },
+    });
+    const systemLead = systemLeadsBefore.find((lead) => lead.source === "system");
+    expect(systemLead).toBeDefined();
+
+    const consultation = await submitConsultationRequest({
+      assessmentSessionId: start.assessmentId,
+      reportId: finish.reportId,
+      token: start.resultToken,
+      name: "Upgraded Lead",
+      phone: phoneFor(242),
+      message: "Direct request",
+    });
+
+    expect(consultation.id).toBe(systemLead!.id);
+
+    const leadsAfter = await db.consultationRequest.findMany({
+      where: { assessmentSessionId: start.assessmentId },
+    });
+    expect(leadsAfter).toHaveLength(1);
+    expect(leadsAfter[0]?.source).toBe("direct");
+    expect(leadsAfter[0]?.assignedToId).not.toBeNull();
+    expect(leadsAfter[0]?.assignScheduledFor).toBeNull();
   }, 120_000);
 });

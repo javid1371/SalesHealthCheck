@@ -85,3 +85,24 @@ See ADR 0015 and ADR 0016.
 ## ADR Rule
 
 If a proposed implementation conflicts with an ADR, stop and ask for a new ADR before changing the architecture.
+
+## Deploy Rule (VPS production)
+
+All production deploys go through **GitHub Actions → GHCR → VPS pull**. This minimizes transfer size (layer cache) and keeps one canonical build.
+
+**Required flow:**
+1. Merge/push to `main`
+2. CI builds the Docker image and pushes to `ghcr.io/javid1371/sales-health-check` (`latest` + `<git-sha>`)
+3. Deploy: `./scripts/deploy-to-vps.sh <ssh-host> <git-sha>` (or wait for the CI deploy job)
+
+**Allowed on VPS:** `docker compose pull` + restart; rsync only small deploy files (compose, scripts, nginx config).
+
+**Forbidden — never do these for production:**
+- `docker build` on the VPS or locally then push to prod
+- `docker save` / `docker load` / scp of images
+- Local-only image tags (e.g. `system-lead-delay`) as `APP_IMAGE`
+- Deploying unmerged local code to production
+
+If code is not on `main` yet, do **not** deploy to production — test locally instead.
+
+See `docs/ops/production-deploy.md` and `scripts/lib/validate-ghcr-image.sh` (enforced by deploy scripts).

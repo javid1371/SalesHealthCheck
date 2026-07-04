@@ -25,6 +25,7 @@ export async function createConsultationRequest(
       source: input.source,
       purchaseProbabilityPercent: input.purchaseProbabilityPercent,
       purchaseProbabilityBand: input.purchaseProbabilityBand,
+      assignScheduledFor: input.assignScheduledFor,
     },
   });
 }
@@ -35,6 +36,63 @@ export async function findConsultationRequestByAssessmentSessionId(
   return db.consultationRequest.findFirst({
     where: { assessmentSessionId },
     orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function findDueSystemLeadsForAssignment(now: Date, limit = 100) {
+  return db.consultationRequest.findMany({
+    where: {
+      source: "system",
+      assignedToId: null,
+      assignScheduledFor: { lte: now },
+    },
+    orderBy: { assignScheduledFor: "asc" },
+    take: limit,
+    select: { id: true },
+  });
+}
+
+export async function clearAssignScheduledFor(id: string) {
+  return db.consultationRequest.update({
+    where: { id },
+    data: { assignScheduledFor: null },
+  });
+}
+
+export async function upgradeConsultationRequestToDirect(
+  id: string,
+  input: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    message?: string;
+    reportId?: string;
+  },
+) {
+  const data: Prisma.ConsultationRequestUpdateInput = {
+    source: "direct",
+    assignScheduledFor: null,
+  };
+
+  if (input.name) {
+    data.name = input.name;
+  }
+  if (input.email) {
+    data.email = input.email;
+  }
+  if (input.phone) {
+    data.phone = input.phone;
+  }
+  if (input.message) {
+    data.message = input.message;
+  }
+  if (input.reportId) {
+    data.report = { connect: { id: input.reportId } };
+  }
+
+  return db.consultationRequest.update({
+    where: { id },
+    data,
   });
 }
 

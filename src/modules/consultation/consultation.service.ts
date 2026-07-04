@@ -16,6 +16,7 @@ import {
   countLeadsNeedingFollowUp,
   createConsultationRequest,
   findConsultationNotes,
+  findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
   findConsultationRequests,
   findLeadsNeedingFollowUp,
@@ -39,7 +40,7 @@ import {
   formatPurchaseProbabilityLabel,
   LEAD_SOURCE_LABELS,
 } from "./lead-insights";
-import { finalizeNewLead } from "./lead-assignment.service";
+import { finalizeNewLead, upgradeExistingLeadToDirect } from "./lead-assignment.service";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "جدید",
@@ -90,13 +91,32 @@ export async function submitConsultationRequest(
 
   const { token: _token, ...input } = validated;
 
-  const record = await createConsultationRequest(
-    input satisfies CreateConsultationRequestInput,
-  );
+  let record: { id: string; createdAt: Date };
 
-  await finalizeNewLead(record.id, {
-    assessmentSessionId: validated.assessmentSessionId,
-  });
+  if (validated.assessmentSessionId) {
+    const existing = await findConsultationRequestByAssessmentSessionId(
+      validated.assessmentSessionId,
+    );
+    if (existing) {
+      record = await upgradeExistingLeadToDirect(existing.id, input);
+    } else {
+      record = await createConsultationRequest(
+        input satisfies CreateConsultationRequestInput,
+      );
+      await finalizeNewLead(record.id, {
+        assessmentSessionId: validated.assessmentSessionId,
+        mode: "immediate",
+      });
+    }
+  } else {
+    record = await createConsultationRequest(
+      input satisfies CreateConsultationRequestInput,
+    );
+    await finalizeNewLead(record.id, {
+      assessmentSessionId: validated.assessmentSessionId,
+      mode: "immediate",
+    });
+  }
 
   if (validated.assessmentSessionId) {
     const assessment = await findAssessmentById(validated.assessmentSessionId);
@@ -224,6 +244,18 @@ function mapLeadMetadata(row: ConsultationRow) {
   };
 }
 
+function mapLeadAssignmentState(row: ConsultationRow) {
+  const assignScheduledFor = row.assignScheduledFor
+    ? formatConsultationDate(row.assignScheduledFor)
+    : null;
+  const pendingAssignment =
+    row.source === "system" &&
+    row.assignedToId == null &&
+    row.assignScheduledFor != null;
+
+  return { assignScheduledFor, pendingAssignment };
+}
+
 function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
@@ -263,6 +295,7 @@ function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
       ? `/admin/assessments/${assessmentId}`
       : null,
     detailUrl: `/expert/consultations/${row.id}`,
+    ...mapLeadAssignmentState(row),
   };
 }
 
@@ -330,6 +363,7 @@ function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadD
       severity: item.severity,
     })),
     notes: row.consultationNotes.map(toConsultationNoteItem),
+    ...mapLeadAssignmentState(row),
   };
 }
 

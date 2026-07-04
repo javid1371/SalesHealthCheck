@@ -430,6 +430,7 @@ model ConsultationRequest {
   purchaseProbabilityPercent Int?                @map("purchase_probability_percent")
   purchaseProbabilityBand   PurchaseProbability? @map("purchase_probability_band")
   assignedToId              String?              @map("assigned_to_id")
+  assignScheduledFor        DateTime?            @map("assign_scheduled_for")
   nextFollowUpAt            DateTime?            @map("next_follow_up_at")
   createdAt                 DateTime             @default(now()) @map("created_at")
   updatedAt                 DateTime             @updatedAt @map("updated_at")
@@ -444,6 +445,7 @@ model ConsultationRequest {
   @@index([assignedToId])
   @@index([status])
   @@index([source])
+  @@index([assignScheduledFor, assignedToId, source])
   @@map("consultation_requests")
 }
 
