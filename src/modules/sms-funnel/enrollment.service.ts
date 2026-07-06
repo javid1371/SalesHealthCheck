@@ -2,6 +2,7 @@ import {
   createPendingSmsMessage,
   findSmsMessageByDedupeKey,
   findUserPhone,
+  hasUserSmsForStep,
   stopEnrollmentsForUser,
   upsertFunnelEnrollment,
 } from "./funnel.repository";
@@ -60,6 +61,13 @@ export async function enrollAndSchedule(
     const existing = await findSmsMessageByDedupeKey(dedupeKey);
     if (existing) continue;
 
+    const userAlreadyHasStep = await hasUserSmsForStep(
+      ctx.userId,
+      sequenceKey,
+      step.stepKey,
+    );
+    if (userAlreadyHasStep) continue;
+
     const scheduledFor = nextAllowedSmsSendTime(
       new Date(triggeredAt + step.delayMs),
       quietHours,
@@ -115,14 +123,13 @@ export async function onPhoneVerified(userId: string): Promise<void> {
 
 export async function onAssessmentStarted(
   userId: string,
-  assessmentSessionId: string,
+  _assessmentSessionId: string,
 ): Promise<void> {
   await stopEnrollmentsForUser({
     userId,
-    sequenceKeys: ["seq_start"],
+    sequenceKeys: [...NURTURE_SEQUENCES],
     status: "stopped",
   });
-  await stopNurtureSequences({ userId, assessmentSessionId });
 }
 
 export async function onAssessmentInProgress(

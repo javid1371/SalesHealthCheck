@@ -142,6 +142,115 @@ export async function countCriticalCompletedConsultations(): Promise<number> {
   });
 }
 
+export async function countUsersVerifiedSince(
+  from: Date,
+  to?: Date,
+): Promise<number> {
+  return db.user.count({
+    where: {
+      phoneVerifiedAt: {
+        gte: from,
+        ...(to ? { lte: to } : {}),
+      },
+    },
+  });
+}
+
+export async function countUsersStartedInRange(
+  from: Date,
+  to?: Date,
+): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          startedAt: {
+            gte: from,
+            ...(to ? { lte: to } : {}),
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function countUsersCompletedInRange(
+  from: Date,
+  to?: Date,
+): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          status: "completed",
+          completedAt: {
+            gte: from,
+            ...(to ? { lte: to } : {}),
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function countUsersWithConsultation(): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          consultationRequests: { some: {} },
+        },
+      },
+    },
+  });
+}
+
+export async function countUsersWithNewConsultation(): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          consultationRequests: { some: { status: "new" } },
+        },
+      },
+    },
+  });
+}
+
+export async function countUsersCriticalLeads(): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          status: "completed",
+          overallScore: {
+            healthLevel: { in: ["critical", "weak"] },
+          },
+          consultationRequests: { some: {} },
+        },
+      },
+    },
+  });
+}
+
+export async function countUsersStartedAllTime(): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: { some: {} },
+    },
+  });
+}
+
+export async function countUsersCompletedAllTime(): Promise<number> {
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: { status: "completed" },
+      },
+    },
+  });
+}
+
 export async function groupLeadsByAssignee() {
   return db.consultationRequest.groupBy({
     by: ["assignedToId", "status"],

@@ -52,31 +52,41 @@ export default async function AdminDashboardPage() {
         <h2 className="mb-4 text-lg font-semibold text-zinc-900">KPIها</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KpiCard
-            label="ارزیابی امروز"
-            value={dashboard.kpis.assessmentsToday}
+            label="نفر تأییدشده امروز"
+            value={dashboard.kpis.usersVerifiedToday}
           />
           <KpiCard
-            label="ارزیابی این هفته"
-            value={dashboard.kpis.assessmentsThisWeek}
+            label="نفر تأییدشده این هفته"
+            value={dashboard.kpis.usersVerifiedThisWeek}
           />
           <KpiCard
-            label="ارزیابی این ماه"
-            value={dashboard.kpis.assessmentsThisMonth}
+            label="نفر تأییدشده این ماه"
+            value={dashboard.kpis.usersVerifiedThisMonth}
           />
           <KpiCard
-            label="نرخ تکمیل"
-            value={dashboard.kpis.completionRate}
+            label="نفر تکمیل‌کننده این هفته"
+            value={dashboard.kpis.usersCompletedThisWeek}
+          />
+          <KpiCard
+            label="نرخ تکمیل نفر"
+            value={dashboard.kpis.userCompletionRate}
             suffix="٪"
           />
           <KpiCard
-            label="لیدهای بحرانی"
-            value={dashboard.kpis.criticalLeads}
+            label="لید بحرانی (نفر)"
+            value={dashboard.kpis.usersCriticalLeads}
           />
           <KpiCard
-            label="درخواست مشاوره جدید"
-            value={dashboard.kpis.newConsultations}
+            label="درخواست مشاوره جدید (نفر)"
+            value={dashboard.kpis.usersNewConsultations}
           />
         </div>
+        <p className="mt-4 text-sm text-zinc-500">
+          عملیاتی — تعداد ارزیابی این هفته:{" "}
+          <span className="font-medium text-zinc-700">
+            {dashboard.kpis.assessmentsThisWeek.toLocaleString("fa-IR")}
+          </span>
+        </p>
       </section>
 
       <section className="mb-8">
@@ -86,29 +96,29 @@ export default async function AdminDashboardPage() {
         <Card>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="text-center">
-              <p className="text-sm text-zinc-600">شروع‌شده</p>
+              <p className="text-sm text-zinc-600">نفر شروع‌کننده</p>
               <p className="mt-1 text-2xl font-semibold text-zinc-900">
                 {dashboard.funnel.started.toLocaleString("fa-IR")}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-zinc-600">تکمیل‌شده</p>
+              <p className="text-sm text-zinc-600">نفر تکمیل‌کننده</p>
               <p className="mt-1 text-2xl font-semibold text-zinc-900">
                 {dashboard.funnel.completed.toLocaleString("fa-IR")}
               </p>
               <p className="text-xs text-zinc-500">
                 {dashboard.funnel.completedRate.toLocaleString("fa-IR")}٪ از
-                شروع‌شده
+                نفر شروع‌کننده
               </p>
             </div>
             <div className="text-center">
-              <p className="text-sm text-zinc-600">درخواست مشاوره</p>
+              <p className="text-sm text-zinc-600">نفر درخواست مشاوره</p>
               <p className="mt-1 text-2xl font-semibold text-zinc-900">
                 {dashboard.funnel.consultations.toLocaleString("fa-IR")}
               </p>
               <p className="text-xs text-zinc-500">
                 {dashboard.funnel.consultationRate.toLocaleString("fa-IR")}٪ از
-                تکمیل‌شده
+                نفر تکمیل‌کننده
               </p>
             </div>
           </div>

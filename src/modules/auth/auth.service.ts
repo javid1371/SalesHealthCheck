@@ -131,12 +131,12 @@ export async function verifyOtp(body: unknown): Promise<VerifyOtpResult> {
   const existingUser = await findLatestUserByPhone(input.phone);
   const user = existingUser ?? (await createUserWithPhone(input.phone));
 
-  if (!user.phoneVerifiedAt) {
+  const isFirstVerify = !user.phoneVerifiedAt;
+  if (isFirstVerify) {
     await markPhoneVerified(user.id);
+    const { hookPhoneVerified } = await import("@/modules/sms-funnel/hooks");
+    hookPhoneVerified(user.id);
   }
-
-  const { hookPhoneVerified } = await import("@/modules/sms-funnel/hooks");
-  hookPhoneVerified(user.id);
 
   return { userId: user.id };
 }

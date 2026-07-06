@@ -79,6 +79,19 @@ export async function findAssessmentForFunnel(assessmentSessionId: string) {
   });
 }
 
+export async function userHasInProgressOrCompletedAssessment(
+  userId: string,
+): Promise<boolean> {
+  const session = await db.assessmentSession.findFirst({
+    where: {
+      userId,
+      status: { in: ["in_progress", "completed"] },
+    },
+    select: { id: true },
+  });
+  return Boolean(session);
+}
+
 export async function upsertFunnelEnrollment(input: {
   userId: string;
   assessmentSessionId?: string | null;
@@ -96,6 +109,16 @@ export async function upsertFunnelEnrollment(input: {
   });
 
   if (existing) {
+    if (existing.status === "converted") {
+      return db.funnelEnrollment.update({
+        where: { id: existing.id },
+        data: {
+          scoreBand: input.scoreBand ?? existing.scoreBand,
+          lastEventAt: new Date(),
+        },
+      });
+    }
+
     return db.funnelEnrollment.update({
       where: { id: existing.id },
       data: {
@@ -123,7 +146,7 @@ export async function stopEnrollmentsForUser(input: {
   sequenceKeys?: string[];
   status: EnrollmentStatus;
 }) {
-  return db.funnelEnrollment.updateMany({
+  const result = await db.funnelEnrollment.updateMany({
     where: {
       userId: input.userId,
       ...(input.assessmentSessionId
@@ -137,6 +160,56 @@ export async function stopEnrollmentsForUser(input: {
       lastEventAt: new Date(),
     },
   });
+
+  await cancelPendingSmsForEnrollments({
+    userId: input.userId,
+    assessmentSessionId: input.assessmentSessionId,
+    sequenceKeys: input.sequenceKeys,
+  });
+
+  return result;
+}
+
+export async function cancelPendingSmsForEnrollments(input: {
+  userId: string;
+  assessmentSessionId?: string;
+  sequenceKeys?: string[];
+}) {
+  return db.smsMessage.updateMany({
+    where: {
+      status: "pending",
+      enrollment: {
+        userId: input.userId,
+        ...(input.assessmentSessionId
+          ? { assessmentSessionId: input.assessmentSessionId }
+          : {}),
+        ...(input.sequenceKeys
+          ? { sequenceKey: { in: input.sequenceKeys } }
+          : {}),
+      },
+    },
+    data: {
+      status: "canceled",
+      error: "enrollment_stopped",
+    },
+  });
+}
+
+export async function hasUserSmsForStep(
+  userId: string,
+  sequenceKey: string,
+  stepKey: string,
+): Promise<boolean> {
+  const message = await db.smsMessage.findFirst({
+    where: {
+      sequenceKey,
+      stepKey,
+      status: { in: ["pending", "sent"] },
+      enrollment: { userId },
+    },
+    select: { id: true },
+  });
+  return Boolean(message);
 }
 
 export async function findEnrollmentById(enrollmentId: string) {

@@ -36,6 +36,12 @@ vi.mock("@/modules/auth/sms/kavenegar", () => ({
   ),
 }));
 
+const mockHookPhoneVerified = vi.fn();
+
+vi.mock("@/modules/sms-funnel/hooks", () => ({
+  hookPhoneVerified: (...args: unknown[]) => mockHookPhoneVerified(...args),
+}));
+
 import {
   consumeActiveOtpCodesForPhone,
   consumeOtpCode,
@@ -181,7 +187,35 @@ describe("verifyOtp", () => {
     expect(result).toEqual({ userId: "user-1" });
     expect(consumeOtpCode).toHaveBeenCalledWith("otp-1");
     expect(markPhoneVerified).toHaveBeenCalledWith("user-1");
+    expect(mockHookPhoneVerified).toHaveBeenCalledWith("user-1");
     expect(createUserWithPhone).not.toHaveBeenCalled();
+  });
+
+  it("does not re-verify or trigger funnel hook when phone is already verified", async () => {
+    vi.mocked(findLatestActiveOtpCode).mockResolvedValue({
+      id: "otp-1",
+      phone: PHONE,
+      codeHash: hashOtpCode(PHONE, "123456"),
+      expiresAt: new Date(Date.now() + 60_000),
+      attempts: 0,
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    vi.mocked(findLatestUserByPhone).mockResolvedValue({
+      id: "user-1",
+      name: null,
+      email: null,
+      phone: PHONE,
+      phoneVerifiedAt: new Date("2024-01-01"),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const result = await verifyOtp({ phone: PHONE, code: "123456" });
+
+    expect(result).toEqual({ userId: "user-1" });
+    expect(markPhoneVerified).not.toHaveBeenCalled();
+    expect(mockHookPhoneVerified).not.toHaveBeenCalled();
   });
 
   it("creates a new user when phone is not registered", async () => {
@@ -210,5 +244,6 @@ describe("verifyOtp", () => {
     expect(result).toEqual({ userId: "user-new" });
     expect(createUserWithPhone).toHaveBeenCalledWith(PHONE);
     expect(markPhoneVerified).toHaveBeenCalledWith("user-new");
+    expect(mockHookPhoneVerified).toHaveBeenCalledWith("user-new");
   });
 });

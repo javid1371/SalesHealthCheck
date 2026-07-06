@@ -5,6 +5,7 @@ import {
   findUserPhone,
   hasFunnelEvent,
   isPhoneOptedOut,
+  userHasInProgressOrCompletedAssessment,
 } from "./funnel.repository";
 import {
   getFunnelSettings,
@@ -24,7 +25,8 @@ export type GuardSkipReason =
   | "consultation_not_started"
   | "consultation_already_submitted"
   | "max_unanswered_reached"
-  | "assessment_not_completed";
+  | "assessment_not_completed"
+  | "assessment_already_started";
 
 export interface GuardContext {
   enrollmentId: string;
@@ -130,6 +132,9 @@ export async function evaluateSendGuard(
   }
 
   if (enrollment.sequenceKey === "seq_start") {
+    if (await userHasInProgressOrCompletedAssessment(enrollment.userId)) {
+      return { allowed: false, reason: "assessment_already_started" };
+    }
     if (assessment && assessment.status !== "started") {
       return { allowed: false, reason: "assessment_not_in_progress" };
     }
