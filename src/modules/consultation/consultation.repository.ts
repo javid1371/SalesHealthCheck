@@ -154,7 +154,7 @@ export async function assignLeadToExpertIfUnassigned(
 }
 
 function buildConsultationWhere(
-  filter: ConsultationListFilter,
+  filter: Omit<ConsultationListFilter, "page" | "pageSize">,
 ): Prisma.ConsultationRequestWhereInput {
   const where: Prisma.ConsultationRequestWhereInput = {};
   const assessmentSession: Prisma.AssessmentSessionWhereInput = {};

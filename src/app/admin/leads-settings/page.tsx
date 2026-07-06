@@ -27,7 +27,7 @@ export default async function AdminLeadSettingsPage() {
       subtitle="مدیریت تخصیص خودکار، تأخیر لید سیستمی و اعلان SMS به کارشناسان."
       showBack
       backHref="/admin/dashboard"
-      maxWidth="3xl"
+      maxWidth="5xl"
       footer="minimal"
     >
       <AdminNav />
