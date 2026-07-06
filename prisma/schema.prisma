@@ -65,6 +65,16 @@ enum LeadStatus {
 enum LeadSource {
   direct
   system
+  messenger
+}
+
+enum LeadActivityType {
+  created
+  status_change
+  assignment_change
+  note_added
+  probability_override
+  follow_up_set
 }
 
 enum PurchaseProbability {
@@ -430,15 +440,19 @@ model ConsultationRequest {
   purchaseProbabilityPercent Int?                @map("purchase_probability_percent")
   purchaseProbabilityBand   PurchaseProbability? @map("purchase_probability_band")
   assignedToId              String?              @map("assigned_to_id")
-  assignScheduledFor        DateTime?            @map("assign_scheduled_for")
-  nextFollowUpAt            DateTime?            @map("next_follow_up_at")
-  createdAt                 DateTime             @default(now()) @map("created_at")
-  updatedAt                 DateTime             @updatedAt @map("updated_at")
+  assignScheduledFor              DateTime?            @map("assign_scheduled_for")
+  nextFollowUpAt                  DateTime?            @map("next_follow_up_at")
+  firstContactedAt                DateTime?            @map("first_contacted_at")
+  closedAt                        DateTime?            @map("closed_at")
+  adminProbabilityOverridePercent Int?                 @map("admin_probability_override_percent")
+  createdAt                       DateTime             @default(now()) @map("created_at")
+  updatedAt                       DateTime             @updatedAt @map("updated_at")
 
   assessmentSession AssessmentSession? @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
   report            Report?            @relation(fields: [reportId], references: [id], onDelete: SetNull)
   assignedTo        StaffUser?         @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   consultationNotes ConsultationNote[]
+  leadActivities    LeadActivity[]
 
   @@index([assessmentSessionId])
   @@index([createdAt])
@@ -463,6 +477,7 @@ model StaffUser {
 
   assignedLeads     ConsultationRequest[] @relation("LeadAssignee")
   consultationNotes ConsultationNote[]
+  leadActivities    LeadActivity[]
 
   @@map("staff_users")
 }
@@ -638,4 +653,27 @@ model SmsFunnelSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("sms_funnel_settings")
+}
+
+model LeadSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("lead_settings")
+}
+
+model LeadActivity {
+  id                    String           @id @default(cuid())
+  consultationRequestId String           @map("consultation_request_id")
+  staffUserId           String?          @map("staff_user_id")
+  type                  LeadActivityType
+  detail                String?
+  createdAt             DateTime         @default(now()) @map("created_at")
+
+  consultationRequest ConsultationRequest @relation(fields: [consultationRequestId], references: [id], onDelete: Cascade)
+  staffUser           StaffUser?          @relation(fields: [staffUserId], references: [id], onDelete: SetNull)
+
+  @@index([consultationRequestId])
+  @@map("lead_activities")
 }

@@ -13,6 +13,11 @@ import { validateConsultationListFilter } from "@/modules/consultation/consultat
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import { ExpertNav } from "@/app/expert/ExpertNav";
 import { ExpertConsultationFilters } from "./ExpertConsultationFilters";
+import { ConsultationListWithAdmin } from "./ConsultationListWithAdmin";
+import { ConsultationKanbanView } from "./ConsultationKanbanView";
+import { ConsultationViewToggle } from "./ConsultationViewToggle";
+
+const KANBAN_PAGE_SIZE = 100;
 
 interface ExpertConsultationsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -48,8 +53,22 @@ export default async function ExpertConsultationsPage({
   }
 
   const filter = validateConsultationListFilter(urlSearchParams);
+  const view =
+    urlSearchParams.get("view") === "kanban" ? "kanban" : ("list" as const);
+  const listFilter =
+    view === "kanban"
+      ? { ...filter, status: undefined, page: 1, pageSize: KANBAN_PAGE_SIZE }
+      : filter;
   const access = { adminSession, salesExpertSession };
-  const { requests, pagination } = await listConsultationRequests(filter, access);
+  const { requests, pagination } = await listConsultationRequests(
+    listFilter,
+    access,
+  );
+
+  const exportQueryParams = new URLSearchParams(urlSearchParams);
+  exportQueryParams.delete("page");
+  exportQueryParams.delete("pageSize");
+  const exportQueryString = exportQueryParams.toString();
 
   const assigneeOptions = adminSession
     ? (await listStaffUsers())
@@ -80,10 +99,17 @@ export default async function ExpertConsultationsPage({
         />
       </Suspense>
 
+      <Suspense fallback={null}>
+        <ConsultationViewToggle currentView={view} />
+      </Suspense>
+
       <p className="mb-4 text-sm text-zinc-600">
         {pagination.total.toLocaleString("fa-IR")} درخواست
-        {pagination.totalPages > 1
+        {view === "list" && pagination.totalPages > 1
           ? ` — صفحه ${pagination.page.toLocaleString("fa-IR")} از ${pagination.totalPages.toLocaleString("fa-IR")}`
+          : null}
+        {view === "kanban" && pagination.total > KANBAN_PAGE_SIZE
+          ? ` — نمایش ${KANBAN_PAGE_SIZE.toLocaleString("fa-IR")} مورد اول`
           : null}
       </p>
 
@@ -91,129 +117,18 @@ export default async function ExpertConsultationsPage({
         <Card className="text-center">
           <p className="text-zinc-600">درخواستی با این فیلترها یافت نشد.</p>
         </Card>
+      ) : view === "kanban" ? (
+        <ConsultationKanbanView requests={requests} />
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-              <tr>
-                <th className="px-4 py-3 font-medium text-zinc-700">وضعیت</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">منبع</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">احتمال خرید</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">تخصیص</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">نام</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">موبایل</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">کسب‌وکار</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">امتیاز</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">پیام</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">تاریخ</th>
-                <th className="px-4 py-3 font-medium text-zinc-700" aria-label="عملیات" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {requests.map((item) => (
-                <tr key={item.id} className="align-top hover:bg-zinc-50/80">
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
-                      {item.statusLabel}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 ${
-                        item.source === "system"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-emerald-50 text-emerald-800"
-                      }`}
-                    >
-                      {item.sourceLabel}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {item.purchaseProbabilityLabel ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {item.pendingAssignment ? (
-                      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-sky-800">
-                        در صف تخصیص
-                      </span>
-                    ) : (
-                      (item.assignedToName ?? "—")
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-zinc-900">
-                    {item.name}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600" dir="ltr">
-                    {item.phone ?? item.assessmentUserPhone ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {item.businessName ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {item.overallScorePercentage != null
-                      ? `${item.overallScorePercentage}٪`
-                      : "—"}
-                  </td>
-                  <td className="max-w-xs px-4 py-3 text-zinc-600">
-                    {item.message ? (
-                      <span className="line-clamp-3">{item.message}</span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
-                    {item.createdAt}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <div className="flex flex-col gap-1 text-sm">
-                      <Link
-                        href={item.detailUrl}
-                        className="font-medium text-emerald-700 hover:text-emerald-800"
-                      >
-                        جزئیات لید
-                      </Link>
-                      {item.reportUrl ? (
-                        <Link
-                          href={item.reportUrl}
-                          className="font-medium text-emerald-700 hover:text-emerald-800"
-                        >
-                          گزارش کامل
-                        </Link>
-                      ) : null}
-                      {item.resultUrl ? (
-                        <Link
-                          href={item.resultUrl}
-                          className="text-zinc-700 hover:text-zinc-900"
-                        >
-                          خلاصه نتیجه
-                        </Link>
-                      ) : null}
-                      {item.expertViewUrl ? (
-                        <Link
-                          href={item.expertViewUrl}
-                          className="text-zinc-600 hover:text-zinc-800"
-                        >
-                          نمای فروش
-                        </Link>
-                      ) : null}
-                      {adminSession && item.adminAssessmentUrl ? (
-                        <Link
-                          href={item.adminAssessmentUrl}
-                          className="text-zinc-500 hover:text-zinc-700"
-                        >
-                          جزئیات ادمین
-                        </Link>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ConsultationListWithAdmin
+          requests={requests}
+          assigneeOptions={assigneeOptions}
+          exportQueryString={exportQueryString}
+          isAdmin={Boolean(adminSession)}
+        />
       )}
 
-      {pagination.totalPages > 1 && (
+      {view === "list" && pagination.totalPages > 1 && (
         <nav
           className="mt-6 flex items-center justify-center gap-3"
           aria-label="صفحه‌بندی"

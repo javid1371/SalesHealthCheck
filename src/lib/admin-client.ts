@@ -78,6 +78,38 @@ export async function updateSmsFunnelStepRequest(
   }>(`/api/admin/sms-funnel/steps/${encodeURIComponent(sequenceKey)}/${encodeURIComponent(stepKey)}`, input);
 }
 
+export async function updateLeadSettingsRequest(input: {
+  autoAssignEnabled?: boolean;
+  systemAssignDelayHours?: number;
+  expertNewLeadSms?: string;
+  maxOpenLeadsPerExpert?: number;
+  hotLeadDirectAssigneeId?: string | null;
+}) {
+  return apiPatch<{
+    settings: import("@/modules/consultation/lead-config.service").LeadSettings;
+  }>("/api/admin/leads/settings", input);
+}
+
+export async function bulkUpdateLeadsRequest(input: {
+  ids: string[];
+  status?: import("@prisma/client").LeadStatus;
+  assignedToId?: string | null;
+}) {
+  return apiPost<{ updated: number }>("/api/admin/leads/bulk", input);
+}
+
+export async function createManualLeadRequest(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  message?: string;
+}) {
+  return apiPost<{ lead: import("@/modules/consultation/consultation.types").ConsultationListItem }>(
+    "/api/admin/leads",
+    input,
+  );
+}
+
 export async function resetSmsFunnelStepRequest(sequenceKey: string, stepKey: string) {
   return apiPost<{
     step: import("@/modules/sms-funnel/funnel-config.service").ResolvedStepForAdmin;

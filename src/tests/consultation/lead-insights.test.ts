@@ -5,6 +5,7 @@ import {
   isNearHotLead,
   isHotLead,
   LEAD_SOURCE_LABELS,
+  resolveEffectivePurchaseProbability,
 } from "@/modules/consultation/lead-insights";
 
 describe("computePurchaseProbability", () => {
@@ -98,5 +99,30 @@ describe("LEAD_SOURCE_LABELS", () => {
   it("maps source enums to Persian labels", () => {
     expect(LEAD_SOURCE_LABELS.direct).toBe("درخواست مستقیم");
     expect(LEAD_SOURCE_LABELS.system).toBe("تشخیص سیستم");
+    expect(LEAD_SOURCE_LABELS.messenger).toBe("پیام‌رسان");
+  });
+});
+
+describe("resolveEffectivePurchaseProbability", () => {
+  it("prefers admin override over system values", () => {
+    const result = resolveEffectivePurchaseProbability({
+      purchaseProbabilityPercent: 55,
+      purchaseProbabilityBand: "medium",
+      adminProbabilityOverridePercent: 85,
+    });
+
+    expect(result.percent).toBe(85);
+    expect(result.band).toBe("high");
+  });
+
+  it("falls back to system values when override is null", () => {
+    const result = resolveEffectivePurchaseProbability({
+      purchaseProbabilityPercent: 55,
+      purchaseProbabilityBand: "medium",
+      adminProbabilityOverridePercent: null,
+    });
+
+    expect(result.percent).toBe(55);
+    expect(result.band).toBe("medium");
   });
 });

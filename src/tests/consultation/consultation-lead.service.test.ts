@@ -11,12 +11,20 @@ const repoMock = vi.hoisted(() => ({
   countLeadsNeedingFollowUp: vi.fn(),
   findLeadsNeedingFollowUp: vi.fn(),
   countClosedLeadsSince: vi.fn(),
+  bulkUpdateConsultationLeads: vi.fn(),
+  createManualConsultationRequest: vi.fn(),
+  createLeadActivity: vi.fn(),
+  findAllConsultationRequests: vi.fn(),
+  findConsultationRequestsByIds: vi.fn(),
 }));
 
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 
 import {
   addLeadNote,
+  bulkUpdateLeads,
+  createManualLead,
+  exportLeadsToCsv,
   getConsultationLeadDetail,
   getExpertDashboard,
   listConsultationRequests,
@@ -33,7 +41,11 @@ const baseRow = {
   source: "direct" as const,
   purchaseProbabilityPercent: null,
   purchaseProbabilityBand: null,
+  adminProbabilityOverridePercent: null,
   assignedToId: "expert-1",
+  assignScheduledFor: null,
+  firstContactedAt: null,
+  closedAt: null,
   nextFollowUpAt: null,
   createdAt: new Date("2026-06-01T10:00:00Z"),
   updatedAt: new Date("2026-06-01T10:00:00Z"),
@@ -43,6 +55,7 @@ const baseRow = {
   assessmentSession: null,
   report: null,
   consultationNotes: [],
+  leadActivities: [],
 };
 
 const adminAccess = {
@@ -143,6 +156,7 @@ describe("updateConsultationLeadStatus", () => {
       ...baseRow,
       status: "contacted",
     });
+    repoMock.createLeadActivity.mockResolvedValue({ id: "activity-1" });
   });
 
   it("expert can update status on assigned lead", async () => {
@@ -155,6 +169,13 @@ describe("updateConsultationLeadStatus", () => {
     expect(result.status).toBe("contacted");
     expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
       status: "contacted",
+      firstContactedAt: expect.any(Date),
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "status_change",
+      detail: "new→contacted",
     });
   });
 
@@ -183,6 +204,169 @@ describe("updateConsultationLeadStatus", () => {
 
     expect(result.assignedToId).toBe("expert-2");
   });
+
+  it("expert cannot override purchase probability", async () => {
+    await expect(
+      updateConsultationLeadStatus(
+        "lead-1",
+        { adminProbabilityOverridePercent: 90 },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("admin can override purchase probability", async () => {
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      adminProbabilityOverridePercent: 90,
+      purchaseProbabilityPercent: 55,
+      purchaseProbabilityBand: "medium",
+    });
+
+    const result = await updateConsultationLeadStatus(
+      "lead-1",
+      { adminProbabilityOverridePercent: 90 },
+      adminAccess,
+    );
+
+    expect(result.adminProbabilityOverridePercent).toBe(90);
+    expect(result.purchaseProbabilityPercent).toBe(90);
+  });
+});
+
+describe("bulkUpdateLeads", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repoMock.findConsultationRequestsByIds.mockResolvedValue([
+      baseRow,
+      { ...baseRow, id: "lead-2" },
+    ]);
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      status: "contacted",
+    });
+    repoMock.createLeadActivity.mockResolvedValue({ id: "activity-1" });
+  });
+
+  it("requires admin access", async () => {
+    await expect(
+      bulkUpdateLeads(
+        { ids: ["lead-1", "lead-2"], status: "contacted" },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("updates multiple leads for admin", async () => {
+    const result = await bulkUpdateLeads(
+      { ids: ["lead-1", "lead-2"], status: "contacted" },
+      adminAccess,
+    );
+
+    expect(result.updated).toBe(2);
+    expect(repoMock.findConsultationRequestsByIds).toHaveBeenCalledWith([
+      "lead-1",
+      "lead-2",
+    ]);
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledTimes(2);
+    expect(repoMock.createLeadActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("sets firstContactedAt when bulk status moves to contacted", async () => {
+    await bulkUpdateLeads(
+      { ids: ["lead-1"], status: "contacted" },
+      adminAccess,
+    );
+
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
+      status: "contacted",
+      firstContactedAt: expect.any(Date),
+    });
+  });
+
+  it("bulk assigns leads to expert", async () => {
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      assignedToId: "expert-2",
+    });
+
+    const result = await bulkUpdateLeads(
+      { ids: ["lead-1", "lead-2"], assignedToId: "expert-2" },
+      adminAccess,
+    );
+
+    expect(result.updated).toBe(2);
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
+      assignedToId: "expert-2",
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "assignment_change",
+        detail: "expert-2",
+      }),
+    );
+  });
+
+  it("skips leads when no status or assignment change requested", async () => {
+    const result = await bulkUpdateLeads({ ids: ["lead-1"] }, adminAccess);
+
+    expect(result.updated).toBe(0);
+    expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
+  });
+});
+
+describe("createManualLead", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repoMock.createManualConsultationRequest.mockResolvedValue(baseRow);
+    repoMock.createLeadActivity.mockResolvedValue({ id: "activity-1" });
+  });
+
+  it("requires admin access", async () => {
+    await expect(
+      createManualLead({ name: "Manual Lead", phone: "09120000001" }, expertAccess),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("creates lead and activity for admin", async () => {
+    const result = await createManualLead(
+      { name: "Manual Lead", phone: "09120000001" },
+      adminAccess,
+    );
+
+    expect(result.id).toBe("lead-1");
+    expect(repoMock.createManualConsultationRequest).toHaveBeenCalledWith({
+      name: "Manual Lead",
+      phone: "09120000001",
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "admin-1",
+      type: "created",
+      detail: "manual",
+    });
+  });
+});
+
+describe("exportLeadsToCsv", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repoMock.findAllConsultationRequests.mockResolvedValue([baseRow]);
+  });
+
+  it("requires admin access", async () => {
+    await expect(
+      exportLeadsToCsv({ page: 1, pageSize: 20 }, expertAccess),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("returns UTF-8 BOM CSV for admin", async () => {
+    const csv = await exportLeadsToCsv({ page: 1, pageSize: 20 }, adminAccess);
+
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv).toContain("نام");
+    expect(csv).toContain("Lead One");
+  });
 });
 
 describe("addLeadNote", () => {
@@ -195,6 +379,7 @@ describe("addLeadNote", () => {
       createdAt: new Date("2026-06-02T10:00:00Z"),
       staffUser: { name: "Expert User" },
     });
+    repoMock.createLeadActivity.mockResolvedValue({ id: "activity-1" });
   });
 
   it("adds note for assigned expert", async () => {
@@ -206,6 +391,12 @@ describe("addLeadNote", () => {
       consultationRequestId: "lead-1",
       staffUserId: "expert-1",
       body: "Called customer",
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "note_added",
+      detail: "Called customer",
     });
   });
 

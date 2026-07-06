@@ -1,6 +1,16 @@
 import type { AssessmentStatus, LeadStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { STALE_NEW_LEAD_HOURS } from "@/modules/consultation/lead-sla";
 import type { AdminAssessmentFilter } from "./admin.types";
+
+export { STALE_NEW_LEAD_HOURS };
+
+const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "new",
+  "contacted",
+  "meeting_scheduled",
+  "unreachable",
+];
 
 function startOfDay(date = new Date()): Date {
   const result = new Date(date);
@@ -256,6 +266,145 @@ export async function groupLeadsByAssignee() {
     by: ["assignedToId", "status"],
     _count: { id: true },
     where: { assignedToId: { not: null } },
+  });
+}
+
+export async function countLeadsByStatus() {
+  return db.consultationRequest.groupBy({
+    by: ["status"],
+    _count: { id: true },
+  });
+}
+
+export async function countPendingAssignmentLeads() {
+  return db.consultationRequest.count({
+    where: {
+      source: "system",
+      assignedToId: null,
+      assignScheduledFor: { not: null },
+    },
+  });
+}
+
+export async function countOverdueFollowUps() {
+  return db.consultationRequest.count({
+    where: {
+      nextFollowUpAt: { lt: new Date() },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+}
+
+export async function countStaleNewLeads(hours: number) {
+  const threshold = new Date(Date.now() - hours * 60 * 60 * 1000);
+  return db.consultationRequest.count({
+    where: {
+      status: "new",
+      createdAt: { lt: threshold },
+    },
+  });
+}
+
+export async function countHighProbabilityUnassigned() {
+  return db.consultationRequest.count({
+    where: {
+      assignedToId: null,
+      purchaseProbabilityBand: "high",
+    },
+  });
+}
+
+export async function countLeadsCreatedInRange(from: Date, to?: Date) {
+  return db.consultationRequest.count({
+    where: {
+      createdAt: {
+        gte: from,
+        ...(to ? { lte: to } : {}),
+      },
+    },
+  });
+}
+
+export async function groupLeadsBySource() {
+  return db.consultationRequest.groupBy({
+    by: ["source"],
+    _count: { id: true },
+  });
+}
+
+export async function groupLeadsBySourceAndStatus() {
+  return db.consultationRequest.groupBy({
+    by: ["source", "status"],
+    _count: { id: true },
+  });
+}
+
+export async function findLeadsWithFirstContact() {
+  return db.consultationRequest.findMany({
+    where: { firstContactedAt: { not: null } },
+    select: { createdAt: true, firstContactedAt: true },
+  });
+}
+
+export async function findLeadsWithClose() {
+  return db.consultationRequest.findMany({
+    where: { closedAt: { not: null } },
+    select: { createdAt: true, closedAt: true },
+  });
+}
+
+export async function countOverdueFollowUpsByAssignee() {
+  return db.consultationRequest.groupBy({
+    by: ["assignedToId"],
+    _count: { id: true },
+    where: {
+      assignedToId: { not: null },
+      nextFollowUpAt: { lt: new Date() },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+}
+
+export async function countNewLeadsThisWeekByAssignee(from: Date) {
+  return db.consultationRequest.groupBy({
+    by: ["assignedToId"],
+    _count: { id: true },
+    where: {
+      assignedToId: { not: null },
+      status: "new",
+      createdAt: { gte: from },
+    },
+  });
+}
+
+export async function findUrgentLeads(limit = 10) {
+  const now = new Date();
+  const staleThreshold = new Date(
+    now.getTime() - STALE_NEW_LEAD_HOURS * 60 * 60 * 1000,
+  );
+
+  return db.consultationRequest.findMany({
+    where: {
+      OR: [
+        { assignedToId: null, purchaseProbabilityBand: "high" },
+        { status: "new", createdAt: { lt: staleThreshold } },
+        {
+          nextFollowUpAt: { lt: now },
+          status: { in: OPEN_LEAD_STATUSES },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      purchaseProbabilityBand: true,
+      nextFollowUpAt: true,
+      createdAt: true,
+      assignedToId: true,
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
   });
 }
 

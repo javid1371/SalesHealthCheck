@@ -13,7 +13,40 @@ export interface PurchaseProbabilityResult {
 export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   direct: "درخواست مستقیم",
   system: "تشخیص سیستم",
+  messenger: "پیام‌رسان",
 };
+
+export function percentToPurchaseProbabilityBand(
+  percent: number,
+): PurchaseProbability {
+  if (percent >= 70) {
+    return "high";
+  }
+  if (percent >= 40) {
+    return "medium";
+  }
+  return "low";
+}
+
+export function resolveEffectivePurchaseProbability(input: {
+  purchaseProbabilityPercent: number | null;
+  purchaseProbabilityBand: PurchaseProbability | null;
+  adminProbabilityOverridePercent: number | null;
+}): { percent: number | null; band: PurchaseProbability | null } {
+  if (input.adminProbabilityOverridePercent != null) {
+    return {
+      percent: input.adminProbabilityOverridePercent,
+      band: percentToPurchaseProbabilityBand(
+        input.adminProbabilityOverridePercent,
+      ),
+    };
+  }
+
+  return {
+    percent: input.purchaseProbabilityPercent,
+    band: input.purchaseProbabilityBand,
+  };
+}
 
 export const PURCHASE_PROBABILITY_BAND_LABELS: Record<
   PurchaseProbability,

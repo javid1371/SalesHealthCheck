@@ -18,7 +18,10 @@ import {
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
 import { createConsultationRequest, findConsultationRequestByAssessmentSessionId } from "@/modules/consultation/consultation.repository";
-import { finalizeNewLead, upgradeExistingLeadToDirect } from "@/modules/consultation/lead-assignment.service";
+import {
+  finalizeNewLead,
+  upgradeExistingLeadToMessenger,
+} from "@/modules/consultation/lead-assignment.service";
 import { generateReportChartImage } from "@/modules/report/report-image.service";
 import { generateReportPdf } from "@/modules/report/report-pdf.service";
 import type { BotClient } from "./bot/bot-client.types";
@@ -784,6 +787,7 @@ async function submitConsultationRequest(
     message,
     assessmentSessionId: latestCompleted?.id,
     reportId,
+    source: "messenger" as const,
   };
 
   if (latestCompleted?.id) {
@@ -791,7 +795,7 @@ async function submitConsultationRequest(
       latestCompleted.id,
     );
     if (existing) {
-      await upgradeExistingLeadToDirect(existing.id, consultationInput);
+      await upgradeExistingLeadToMessenger(existing.id, consultationInput);
     } else {
       const lead = await createConsultationRequest(consultationInput);
       await finalizeNewLead(lead.id, {

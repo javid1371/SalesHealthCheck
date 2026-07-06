@@ -1,5 +1,11 @@
 import type { AdminSession, SalesExpertSession } from "@/lib/session";
-import type { LeadSource, LeadStatus, PurchaseProbability } from "@prisma/client";
+import type {
+  LeadActivityType,
+  LeadSource,
+  LeadStatus,
+  PurchaseProbability,
+} from "@prisma/client";
+import type { LeadSlaFlags } from "./lead-sla";
 
 export interface ConsultationListFilter {
   phone?: string;
@@ -7,11 +13,28 @@ export interface ConsultationListFilter {
   createdFrom?: Date;
   createdTo?: Date;
   status?: LeadStatus;
-  assignedToId?: string;
+  source?: LeadSource;
+  purchaseProbabilityBand?: PurchaseProbability;
   onlyUnassigned?: boolean;
+  onlyPendingAssignment?: boolean;
+  onlyHot?: boolean;
   onlyMine?: boolean;
+  assignedToId?: string;
   page: number;
   pageSize: number;
+}
+
+export interface CreateManualLeadInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  message?: string;
+}
+
+export interface BulkUpdateLeadsInput {
+  ids: string[];
+  status?: LeadStatus;
+  assignedToId?: string | null;
 }
 
 export interface ConsultationListItem {
@@ -26,6 +49,7 @@ export interface ConsultationListItem {
   sourceLabel: string;
   purchaseProbabilityPercent: number | null;
   purchaseProbabilityLabel: string | null;
+  adminProbabilityOverridePercent: number | null;
   assignedToId: string | null;
   assignedToName: string | null;
   nextFollowUpAt: string | null;
@@ -43,6 +67,8 @@ export interface ConsultationListItem {
   detailUrl: string;
   assignScheduledFor: string | null;
   pendingAssignment: boolean;
+  sla: LeadSlaFlags;
+  slaReason: string | null;
 }
 
 export interface ConsultationListResponse {
@@ -69,6 +95,17 @@ export interface ConsultationNoteItem {
   body: string;
   authorName: string;
   createdAt: string;
+}
+
+export interface LeadTimelineEntry {
+  id: string;
+  kind: "note" | "activity";
+  label: string;
+  detail: string | null;
+  authorName: string | null;
+  createdAt: string;
+  createdAtIso: string;
+  activityType?: LeadActivityType;
 }
 
 export interface ExpertDashboardFollowUpRow {
@@ -102,6 +139,7 @@ export interface ConsultationLeadDetail {
   sourceLabel: string;
   purchaseProbabilityPercent: number | null;
   purchaseProbabilityLabel: string | null;
+  adminProbabilityOverridePercent: number | null;
   assignedToId: string | null;
   assignedToName: string | null;
   nextFollowUpAt: string | null;
@@ -120,6 +158,9 @@ export interface ConsultationLeadDetail {
   bottlenecks: Array<{ title: string; severity: string }>;
   diagnoses: Array<{ title: string; severity: string }>;
   notes: ConsultationNoteItem[];
+  timeline: LeadTimelineEntry[];
   assignScheduledFor: string | null;
   pendingAssignment: boolean;
+  sla: LeadSlaFlags;
+  slaReason: string | null;
 }

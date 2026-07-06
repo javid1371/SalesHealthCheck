@@ -222,5 +222,13 @@ describe("messenger flow (integration)", () => {
     });
 
     expect(conversation?.state).toBe("at_main_menu");
+
+    const user = await resolveUserFromContactPhone(phone);
+    const consultation = await db.consultationRequest.findFirst({
+      where: user?.phone ? { phone: user.phone } : { name: "Consult" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    expect(consultation?.source).toBe("messenger");
   });
 });

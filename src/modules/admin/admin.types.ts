@@ -107,11 +107,65 @@ export interface AdminExpertPerformanceRow {
   closedWon: number;
   closedLost: number;
   open: number;
+  winRate: number;
+  overdueFollowUpOpen: number;
+  newThisWeek: number;
+}
+
+export interface AdminLeadKpis {
+  newThisWeek: number;
+  pendingAssignment: number;
+  overdueFollowUps: number;
+  closeRate: number;
+  highProbabilityUnassigned: number;
+  staleNewLeads: number;
+}
+
+export interface AdminLeadStatusFunnel {
+  new: number;
+  contacted: number;
+  meetingScheduled: number;
+  closedWon: number;
+  closedLost: number;
+  unreachable: number;
+}
+
+export interface AdminLeadSourceBreakdown {
+  direct: number;
+  system: number;
+  messenger: number;
+}
+
+export interface AdminLeadSourceConversionRow {
+  source: "direct" | "system" | "messenger";
+  sourceLabel: string;
+  total: number;
+  closedWon: number;
+  conversionRate: number;
+}
+
+export interface AdminSalesMetrics {
+  avgDaysToFirstContact: number | null;
+  avgDaysToClose: number | null;
+  sourceConversion: AdminLeadSourceConversionRow[];
+}
+
+export interface AdminUrgentLeadRow {
+  id: string;
+  name: string;
+  reason: string;
+  detailUrl: string;
+  severity: "amber" | "red";
 }
 
 export interface AdminDashboardData {
   kpis: AdminDashboardKpis;
   funnel: AdminDashboardFunnel;
+  leadKpis: AdminLeadKpis;
+  leadStatusFunnel: AdminLeadStatusFunnel;
+  leadSourceBreakdown: AdminLeadSourceBreakdown;
+  salesMetrics: AdminSalesMetrics;
+  urgentLeads: AdminUrgentLeadRow[];
   expertPerformance: AdminExpertPerformanceRow[];
   smsFunnel: AdminSmsFunnelMetrics;
   recentSmsMessages: AdminSmsMessageRow[];

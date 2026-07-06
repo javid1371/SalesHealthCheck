@@ -1,4 +1,3 @@
-import { env } from "@/lib/env";
 import { createSmsSenderFromSettings } from "@/modules/auth/sms/kavenegar";
 import { findAssessmentById } from "@/modules/assessment/assessment.repository";
 import type { CreateConsultationRequestInput } from "@/modules/assessment/assessment.types";
@@ -16,14 +15,14 @@ import {
   findDueSystemLeadsForAssignment,
   updateLeadPurchaseProbability,
   upgradeConsultationRequestToDirect,
+  upgradeConsultationRequestToMessenger,
 } from "./consultation.repository";
 import {
   computePurchaseProbability,
   isHotLead,
 } from "./lead-insights";
+import { getLeadSettings } from "./lead-config.service";
 import { pickNextSalesExpert } from "@/modules/staff/staff.repository";
-
-const EXPERT_NEW_LEAD_SMS = "لید جدید داری\nچک کن";
 
 export type FinalizeNewLeadMode = "immediate" | "probabilityOnly";
 
@@ -88,7 +87,8 @@ async function enrichLeadWithPurchaseProbability(
 }
 
 export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
-  if (!env.leadAutoAssignEnabled) {
+  const settings = await getLeadSettings();
+  if (!settings.autoAssignEnabled) {
     return;
   }
 
@@ -110,7 +110,7 @@ export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
 
   try {
     const sender = await createSmsSenderFromSettings();
-    await sender.sendMessage(expert.phone, EXPERT_NEW_LEAD_SMS);
+    await sender.sendMessage(expert.phone, settings.expertNewLeadSms);
   } catch (error) {
     console.error("[lead-assignment] failed to notify expert via SMS:", error);
   }
@@ -130,7 +130,8 @@ export async function finalizeNewLead(
       leadId,
       options?.assessmentSessionId,
     );
-    if (mode === "immediate" && env.leadAutoAssignEnabled) {
+    const settings = await getLeadSettings();
+    if (mode === "immediate" && settings.autoAssignEnabled) {
       await autoAssignAndNotifyLead(leadId);
     }
   } catch (error) {
@@ -150,8 +151,8 @@ export function runFinalizeNewLead(
   });
 }
 
-function computeSystemAssignScheduledFor(): Date {
-  const delayMs = env.leadSystemAssignDelayHours * 60 * 60 * 1000;
+function computeSystemAssignScheduledFor(delayHours: number): Date {
+  const delayMs = delayHours * 60 * 60 * 1000;
   return new Date(Date.now() + delayMs);
 }
 
@@ -175,6 +176,26 @@ export async function upgradeExistingLeadToDirect(
   return { id: updated.id, createdAt: updated.createdAt };
 }
 
+export async function upgradeExistingLeadToMessenger(
+  leadId: string,
+  input: CreateConsultationRequestInput,
+): Promise<{ id: string; createdAt: Date }> {
+  const updated = await upgradeConsultationRequestToMessenger(leadId, {
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    message: input.message,
+    reportId: input.reportId,
+  });
+
+  await finalizeNewLead(updated.id, {
+    assessmentSessionId: input.assessmentSessionId,
+    mode: "immediate",
+  });
+
+  return { id: updated.id, createdAt: updated.createdAt };
+}
+
 export async function createSystemLeadIfEligible(input: {
   assessmentSessionId: string;
   reportId: string;
@@ -182,7 +203,8 @@ export async function createSystemLeadIfEligible(input: {
   structuredDiagnosis?: StructuredDiagnosis | null;
   valueAtStake?: ValueAtStakeSpec | null;
 }): Promise<void> {
-  if (!env.leadAutoAssignEnabled) {
+  const settings = await getLeadSettings();
+  if (!settings.autoAssignEnabled) {
     return;
   }
 
@@ -226,12 +248,15 @@ export async function createSystemLeadIfEligible(input: {
     source: "system",
     purchaseProbabilityPercent: probability.percent,
     purchaseProbabilityBand: probability.band,
-    assignScheduledFor: computeSystemAssignScheduledFor(),
+    assignScheduledFor: computeSystemAssignScheduledFor(
+      settings.systemAssignDelayHours,
+    ),
   });
 }
 
 export async function processDueSystemLeadAssignments(): Promise<number> {
-  if (!env.leadAutoAssignEnabled) {
+  const settings = await getLeadSettings();
+  if (!settings.autoAssignEnabled) {
     return 0;
   }
 

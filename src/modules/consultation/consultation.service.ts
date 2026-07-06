@@ -16,23 +16,30 @@ import {
   countConsultationRequests,
   countLeadsNeedingFollowUp,
   createConsultationRequest,
+  createLeadActivity,
+  createManualConsultationRequest,
+  findAllConsultationRequests,
   findConsultationNotes,
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
   findConsultationRequests,
+  findConsultationRequestsByIds,
   findLeadsNeedingFollowUp,
   updateConsultationLead,
 } from "./consultation.repository";
 import type { UpdateConsultationLeadInput } from "./consultation-lead.validators";
 import type {
+  BulkUpdateLeadsInput,
   ConsultationLeadDetail,
   ConsultationListFilter,
   ConsultationListItem,
   ConsultationListResponse,
   ConsultationNoteItem,
   ConsultationsAccessInput,
+  CreateManualLeadInput,
   ExpertDashboardData,
   ExpertDashboardFollowUpRow,
+  LeadTimelineEntry,
 } from "./consultation.types";
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
@@ -40,8 +47,14 @@ import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
 import {
   formatPurchaseProbabilityLabel,
   LEAD_SOURCE_LABELS,
+  resolveEffectivePurchaseProbability,
 } from "./lead-insights";
 import { finalizeNewLead, upgradeExistingLeadToDirect } from "./lead-assignment.service";
+import {
+  formatActivityDetail,
+  LEAD_ACTIVITY_LABELS,
+} from "./lead-activity";
+import { computeLeadSlaFlags, slaReasonLabel } from "./lead-sla";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new: "جدید",
@@ -266,14 +279,21 @@ type ConsultationRow = Awaited<
 >[number];
 
 function mapLeadMetadata(row: ConsultationRow) {
+  const effective = resolveEffectivePurchaseProbability({
+    purchaseProbabilityPercent: row.purchaseProbabilityPercent,
+    purchaseProbabilityBand: row.purchaseProbabilityBand,
+    adminProbabilityOverridePercent: row.adminProbabilityOverridePercent,
+  });
+
   return {
     source: row.source,
     sourceLabel: LEAD_SOURCE_LABELS[row.source],
-    purchaseProbabilityPercent: row.purchaseProbabilityPercent,
+    purchaseProbabilityPercent: effective.percent,
     purchaseProbabilityLabel: formatPurchaseProbabilityLabel(
-      row.purchaseProbabilityPercent,
-      row.purchaseProbabilityBand,
+      effective.percent,
+      effective.band,
     ),
+    adminProbabilityOverridePercent: row.adminProbabilityOverridePercent,
   };
 }
 
@@ -287,6 +307,21 @@ function mapLeadAssignmentState(row: ConsultationRow) {
     row.assignScheduledFor != null;
 
   return { assignScheduledFor, pendingAssignment };
+}
+
+function mapLeadSla(row: ConsultationRow) {
+  const sla = computeLeadSlaFlags({
+    status: row.status,
+    createdAt: row.createdAt,
+    nextFollowUpAt: row.nextFollowUpAt,
+    assignedToId: row.assignedToId,
+    purchaseProbabilityBand: row.purchaseProbabilityBand,
+  });
+
+  return {
+    sla,
+    slaReason: slaReasonLabel(sla),
+  };
 }
 
 function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
@@ -329,6 +364,7 @@ function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
       : null,
     detailUrl: `/expert/consultations/${row.id}`,
     ...mapLeadAssignmentState(row),
+    ...mapLeadSla(row),
   };
 }
 
@@ -346,6 +382,140 @@ function toConsultationNoteItem(
 type ConsultationDetailRow = NonNullable<
   Awaited<ReturnType<typeof findConsultationRequestById>>
 >;
+
+function buildLeadTimeline(row: ConsultationDetailRow): LeadTimelineEntry[] {
+  const entries: LeadTimelineEntry[] = [];
+
+  for (const note of row.consultationNotes) {
+    entries.push({
+      id: `note-${note.id}`,
+      kind: "note",
+      label: "یادداشت",
+      detail: note.body,
+      authorName: note.staffUser.name,
+      createdAt: formatConsultationDate(note.createdAt),
+      createdAtIso: note.createdAt.toISOString(),
+    });
+  }
+
+  for (const activity of row.leadActivities) {
+    if (activity.type === "note_added") {
+      continue;
+    }
+
+    entries.push({
+      id: activity.id,
+      kind: "activity",
+      label: LEAD_ACTIVITY_LABELS[activity.type],
+      detail: formatActivityDetail(activity.type, activity.detail),
+      authorName: activity.staffUser?.name ?? null,
+      createdAt: formatConsultationDate(activity.createdAt),
+      createdAtIso: activity.createdAt.toISOString(),
+      activityType: activity.type,
+    });
+  }
+
+  return entries.sort(
+    (left, right) =>
+      new Date(right.createdAtIso).getTime() -
+      new Date(left.createdAtIso).getTime(),
+  );
+}
+
+function resolveStatusTimestamps(
+  existing: {
+    status: LeadStatus;
+    firstContactedAt: Date | null;
+    closedAt: Date | null;
+  },
+  newStatus: LeadStatus | undefined,
+): { firstContactedAt?: Date; closedAt?: Date } {
+  if (newStatus === undefined || newStatus === existing.status) {
+    return {};
+  }
+
+  const updates: { firstContactedAt?: Date; closedAt?: Date } = {};
+  const now = new Date();
+
+  if (newStatus === "contacted" && !existing.firstContactedAt) {
+    updates.firstContactedAt = now;
+  }
+
+  if (
+    (newStatus === "closed_won" || newStatus === "closed_lost") &&
+    !existing.closedAt
+  ) {
+    updates.closedAt = now;
+  }
+
+  return updates;
+}
+
+async function recordLeadUpdateActivities(params: {
+  consultationRequestId: string;
+  staffUserId: string | null;
+  existing: {
+    status: LeadStatus;
+    assignedToId: string | null;
+    nextFollowUpAt: Date | null;
+    adminProbabilityOverridePercent: number | null;
+  };
+  input: UpdateConsultationLeadInput;
+}): Promise<void> {
+  const { consultationRequestId, staffUserId, existing, input } = params;
+
+  if (input.status !== undefined && input.status !== existing.status) {
+    await createLeadActivity({
+      consultationRequestId,
+      staffUserId,
+      type: "status_change",
+      detail: `${existing.status}→${input.status}`,
+    });
+  }
+
+  if (
+    input.assignedToId !== undefined &&
+    input.assignedToId !== existing.assignedToId
+  ) {
+    await createLeadActivity({
+      consultationRequestId,
+      staffUserId,
+      type: "assignment_change",
+      detail: input.assignedToId ?? "unassigned",
+    });
+  }
+
+  if (
+    input.adminProbabilityOverridePercent !== undefined &&
+    input.adminProbabilityOverridePercent !==
+      existing.adminProbabilityOverridePercent
+  ) {
+    await createLeadActivity({
+      consultationRequestId,
+      staffUserId,
+      type: "probability_override",
+      detail:
+        input.adminProbabilityOverridePercent == null
+          ? "cleared"
+          : String(input.adminProbabilityOverridePercent),
+    });
+  }
+
+  if (input.nextFollowUpAt !== undefined) {
+    const existingIso = existing.nextFollowUpAt?.toISOString() ?? null;
+    const inputIso = input.nextFollowUpAt?.toISOString() ?? null;
+    if (existingIso !== inputIso) {
+      await createLeadActivity({
+        consultationRequestId,
+        staffUserId,
+        type: "follow_up_set",
+        detail: input.nextFollowUpAt
+          ? input.nextFollowUpAt.toISOString()
+          : "cleared",
+      });
+    }
+  }
+}
 
 function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadDetail {
   const assessmentId = row.assessmentSessionId;
@@ -396,7 +566,9 @@ function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadD
       severity: item.severity,
     })),
     notes: row.consultationNotes.map(toConsultationNoteItem),
+    timeline: buildLeadTimeline(row),
     ...mapLeadAssignmentState(row),
+    ...mapLeadSla(row),
   };
 }
 
@@ -475,8 +647,177 @@ export async function updateConsultationLeadStatus(
     );
   }
 
-  const updated = await updateConsultationLead(id, input);
+  if (
+    !isAdminAccess(access) &&
+    input.adminProbabilityOverridePercent !== undefined
+  ) {
+    throw new AppError(
+      "FORBIDDEN",
+      "فقط ادمین می‌تواند احتمال خرید را بازنویسی کند.",
+      403,
+    );
+  }
+
+  const staffUserId =
+    access.adminSession?.staffUserId ??
+    access.salesExpertSession?.staffUserId ??
+    null;
+
+  const timestampUpdates = resolveStatusTimestamps(existing, input.status);
+
+  const updated = await updateConsultationLead(id, {
+    ...input,
+    ...timestampUpdates,
+  });
+
+  await recordLeadUpdateActivities({
+    consultationRequestId: id,
+    staffUserId,
+    existing: {
+      status: existing.status,
+      assignedToId: existing.assignedToId,
+      nextFollowUpAt: existing.nextFollowUpAt,
+      adminProbabilityOverridePercent: existing.adminProbabilityOverridePercent,
+    },
+    input,
+  });
+
   return toConsultationListItem(updated);
+}
+
+function requireAdminAccess(access: ConsultationsAccessInput): void {
+  if (!isAdminAccess(access)) {
+    throw new AppError(
+      "FORBIDDEN",
+      "فقط ادمین به این عملیات دسترسی دارد.",
+      403,
+    );
+  }
+}
+
+export async function bulkUpdateLeads(
+  input: BulkUpdateLeadsInput,
+  access: ConsultationsAccessInput,
+): Promise<{ updated: number }> {
+  requireConsultationsAccess(access);
+  requireAdminAccess(access);
+
+  const staffUserId = access.adminSession?.staffUserId ?? null;
+  const existingRows = await findConsultationRequestsByIds(input.ids);
+  let updated = 0;
+
+  for (const row of existingRows) {
+    const updateInput: UpdateConsultationLeadInput = {};
+    const timestampUpdates = resolveStatusTimestamps(row, input.status);
+
+    if (input.status !== undefined) {
+      updateInput.status = input.status;
+    }
+
+    if (input.assignedToId !== undefined) {
+      updateInput.assignedToId = input.assignedToId;
+    }
+
+    if (
+      updateInput.status === undefined &&
+      updateInput.assignedToId === undefined
+    ) {
+      continue;
+    }
+
+    await updateConsultationLead(row.id, {
+      ...updateInput,
+      ...timestampUpdates,
+    });
+
+    await recordLeadUpdateActivities({
+      consultationRequestId: row.id,
+      staffUserId,
+      existing: {
+        status: row.status,
+        assignedToId: row.assignedToId,
+        nextFollowUpAt: row.nextFollowUpAt,
+        adminProbabilityOverridePercent: row.adminProbabilityOverridePercent,
+      },
+      input: updateInput,
+    });
+
+    updated += 1;
+  }
+
+  return { updated };
+}
+
+export async function createManualLead(
+  input: CreateManualLeadInput,
+  access: ConsultationsAccessInput,
+): Promise<ConsultationListItem> {
+  requireConsultationsAccess(access);
+  requireAdminAccess(access);
+
+  const staffUserId = access.adminSession?.staffUserId ?? null;
+  const record = await createManualConsultationRequest(input);
+
+  await createLeadActivity({
+    consultationRequestId: record.id,
+    staffUserId,
+    type: "created",
+    detail: "manual",
+  });
+
+  return toConsultationListItem(record);
+}
+
+function escapeCsvField(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+export async function exportLeadsToCsv(
+  filter: ConsultationListFilter,
+  access: ConsultationsAccessInput,
+): Promise<string> {
+  requireConsultationsAccess(access);
+  requireAdminAccess(access);
+
+  const effectiveFilter = resolveListFilter(filter, access);
+  const { page: _page, pageSize: _pageSize, ...listFilter } = effectiveFilter;
+  const rows = await findAllConsultationRequests(listFilter);
+
+  const headers = [
+    "نام",
+    "موبایل",
+    "ایمیل",
+    "وضعیت",
+    "منبع",
+    "احتمال خرید",
+    "کارشناس",
+    "کسب‌وکار",
+    "تاریخ ثبت",
+    "پیام",
+  ];
+
+  const lines = rows.map((row) => {
+    const item = toConsultationListItem(row);
+    return [
+      item.name,
+      item.phone ?? item.assessmentUserPhone ?? "",
+      item.email ?? "",
+      item.statusLabel,
+      item.sourceLabel,
+      item.purchaseProbabilityLabel ?? "",
+      item.pendingAssignment ? "در صف تخصیص" : (item.assignedToName ?? ""),
+      item.businessName ?? "",
+      item.createdAt,
+      item.message ?? "",
+    ]
+      .map((cell) => escapeCsvField(cell))
+      .join(",");
+  });
+
+  return `\uFEFF${headers.join(",")}\n${lines.join("\n")}`;
 }
 
 export async function addLeadNote(
@@ -509,6 +850,13 @@ export async function addLeadNote(
     consultationRequestId: id,
     staffUserId,
     body,
+  });
+
+  await createLeadActivity({
+    consultationRequestId: id,
+    staffUserId,
+    type: "note_added",
+    detail: body.trim().slice(0, 500),
   });
 
   return toConsultationNoteItem(note);

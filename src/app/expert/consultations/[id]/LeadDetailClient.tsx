@@ -34,6 +34,7 @@ interface LeadDetailClientProps {
   initialStatus: LeadStatus;
   initialAssignedToId: string | null;
   initialNextFollowUpAtIso: string | null;
+  initialAdminProbabilityOverridePercent: number | null;
   isAdmin: boolean;
   assigneeOptions: AssigneeOption[];
 }
@@ -43,6 +44,7 @@ export function LeadDetailClient({
   initialStatus,
   initialAssignedToId,
   initialNextFollowUpAtIso,
+  initialAdminProbabilityOverridePercent,
   isAdmin,
   assigneeOptions,
 }: LeadDetailClientProps) {
@@ -54,6 +56,12 @@ export function LeadDetailClient({
   const [nextFollowUpAt, setNextFollowUpAt] = useState(
     initialNextFollowUpAtIso ?? "",
   );
+  const [adminProbabilityOverridePercent, setAdminProbabilityOverridePercent] =
+    useState(
+      initialAdminProbabilityOverridePercent != null
+        ? String(initialAdminProbabilityOverridePercent)
+        : "",
+    );
   const [noteBody, setNoteBody] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,10 +78,20 @@ export function LeadDetailClient({
         status?: LeadStatus;
         assignedToId?: string | null;
         nextFollowUpAt?: string | null;
+        adminProbabilityOverridePercent?: number | null;
       } = { status };
 
       if (isAdmin) {
         payload.assignedToId = assignedToId || null;
+
+        if (adminProbabilityOverridePercent.trim() === "") {
+          payload.adminProbabilityOverridePercent = null;
+        } else {
+          payload.adminProbabilityOverridePercent = Number.parseInt(
+            adminProbabilityOverridePercent,
+            10,
+          );
+        }
       }
 
       payload.nextFollowUpAt = nextFollowUpAt
@@ -157,6 +175,27 @@ export function LeadDetailClient({
                   </option>
                 ))}
               </Select>
+            </FieldLabel>
+          ) : null}
+
+          {isAdmin ? (
+            <FieldLabel
+              label="بازنویسی احتمال خرید (٪)"
+              htmlFor="lead-probability-override"
+            >
+              <Input
+                id="lead-probability-override"
+                type="number"
+                min={0}
+                max={100}
+                dir="ltr"
+                placeholder="خالی = مقدار سیستمی"
+                value={adminProbabilityOverridePercent}
+                onChange={(event) =>
+                  setAdminProbabilityOverridePercent(event.target.value)
+                }
+                disabled={loading}
+              />
             </FieldLabel>
           ) : null}
 

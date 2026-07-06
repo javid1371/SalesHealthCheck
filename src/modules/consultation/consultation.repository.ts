@@ -59,8 +59,8 @@ export async function clearAssignScheduledFor(id: string) {
   });
 }
 
-export async function upgradeConsultationRequestToDirect(
-  id: string,
+function buildConsultationUpgradeData(
+  source: "direct" | "messenger",
   input: {
     name?: string;
     email?: string;
@@ -68,9 +68,9 @@ export async function upgradeConsultationRequestToDirect(
     message?: string;
     reportId?: string;
   },
-) {
+): Prisma.ConsultationRequestUpdateInput {
   const data: Prisma.ConsultationRequestUpdateInput = {
-    source: "direct",
+    source,
     assignScheduledFor: null,
   };
 
@@ -90,9 +90,38 @@ export async function upgradeConsultationRequestToDirect(
     data.report = { connect: { id: input.reportId } };
   }
 
+  return data;
+}
+
+export async function upgradeConsultationRequestToDirect(
+  id: string,
+  input: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    message?: string;
+    reportId?: string;
+  },
+) {
   return db.consultationRequest.update({
     where: { id },
-    data,
+    data: buildConsultationUpgradeData("direct", input),
+  });
+}
+
+export async function upgradeConsultationRequestToMessenger(
+  id: string,
+  input: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    message?: string;
+    reportId?: string;
+  },
+) {
+  return db.consultationRequest.update({
+    where: { id },
+    data: buildConsultationUpgradeData("messenger", input),
   });
 }
 
@@ -162,6 +191,24 @@ function buildConsultationWhere(
     where.status = filter.status;
   }
 
+  if (filter.source) {
+    where.source = filter.source;
+  }
+
+  if (filter.purchaseProbabilityBand) {
+    where.purchaseProbabilityBand = filter.purchaseProbabilityBand;
+  }
+
+  if (filter.onlyHot) {
+    where.purchaseProbabilityBand = "high";
+  }
+
+  if (filter.onlyPendingAssignment) {
+    where.source = "system";
+    where.assignedToId = null;
+    where.assignScheduledFor = { not: null };
+  }
+
   if (filter.onlyUnassigned) {
     where.assignedToId = null;
   } else if (filter.assignedToId) {
@@ -206,6 +253,10 @@ const consultationDetailInclude = {
     include: { staffUser: true },
     orderBy: { createdAt: "desc" as const },
   },
+  leadActivities: {
+    include: { staffUser: true },
+    orderBy: { createdAt: "desc" as const },
+  },
 } as const;
 
 export async function countConsultationRequests(filter: ConsultationListFilter) {
@@ -224,6 +275,27 @@ export async function findConsultationRequests(filter: ConsultationListFilter) {
   });
 }
 
+export async function findAllConsultationRequests(
+  filter: Omit<ConsultationListFilter, "page" | "pageSize">,
+) {
+  return db.consultationRequest.findMany({
+    where: buildConsultationWhere(filter),
+    include: consultationInclude,
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function findConsultationRequestsByIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  return db.consultationRequest.findMany({
+    where: { id: { in: ids } },
+    include: consultationInclude,
+  });
+}
+
 export async function findConsultationRequestById(id: string) {
   return db.consultationRequest.findUnique({
     where: { id },
@@ -233,7 +305,10 @@ export async function findConsultationRequestById(id: string) {
 
 export async function updateConsultationLead(
   id: string,
-  input: UpdateConsultationLeadInput,
+  input: UpdateConsultationLeadInput & {
+    firstContactedAt?: Date;
+    closedAt?: Date;
+  },
 ) {
   const data: Prisma.ConsultationRequestUpdateInput = {};
 
@@ -252,10 +327,86 @@ export async function updateConsultationLead(
     data.nextFollowUpAt = input.nextFollowUpAt;
   }
 
+  if (input.adminProbabilityOverridePercent !== undefined) {
+    data.adminProbabilityOverridePercent = input.adminProbabilityOverridePercent;
+  }
+
+  if (input.firstContactedAt !== undefined) {
+    data.firstContactedAt = input.firstContactedAt;
+  }
+
+  if (input.closedAt !== undefined) {
+    data.closedAt = input.closedAt;
+  }
+
   return db.consultationRequest.update({
     where: { id },
     data,
     include: consultationInclude,
+  });
+}
+
+export async function createManualConsultationRequest(input: {
+  name: string;
+  email?: string;
+  phone?: string;
+  message?: string;
+}) {
+  return db.consultationRequest.create({
+    data: {
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      message: input.message,
+      source: "direct",
+    },
+    include: consultationInclude,
+  });
+}
+
+export async function createLeadActivity(input: {
+  consultationRequestId: string;
+  staffUserId?: string | null;
+  type: "created" | "status_change" | "assignment_change" | "note_added" | "probability_override" | "follow_up_set";
+  detail?: string | null;
+}) {
+  return db.leadActivity.create({
+    data: {
+      consultationRequestId: input.consultationRequestId,
+      staffUserId: input.staffUserId ?? null,
+      type: input.type,
+      detail: input.detail ?? null,
+    },
+  });
+}
+
+export async function bulkUpdateConsultationLeads(
+  ids: string[],
+  input: Pick<
+    UpdateConsultationLeadInput,
+    "status" | "assignedToId"
+  >,
+) {
+  const data: Prisma.ConsultationRequestUpdateInput = {};
+
+  if (input.status !== undefined) {
+    data.status = input.status;
+  }
+
+  if (input.assignedToId !== undefined) {
+    data.assignedTo =
+      input.assignedToId === null
+        ? { disconnect: true }
+        : { connect: { id: input.assignedToId } };
+  }
+
+  if (Object.keys(data).length === 0) {
+    return { count: 0 };
+  }
+
+  return db.consultationRequest.updateMany({
+    where: { id: { in: ids } },
+    data,
   });
 }
 

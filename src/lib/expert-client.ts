@@ -23,6 +23,7 @@ export async function updateConsultationLeadRequest(
     status?: LeadStatus;
     assignedToId?: string | null;
     nextFollowUpAt?: string | null;
+    adminProbabilityOverridePercent?: number | null;
   },
 ): Promise<{ lead: ConsultationListItem }> {
   return apiPatch<{ lead: ConsultationListItem }>(

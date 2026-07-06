@@ -17,6 +17,20 @@ const STATUS_OPTIONS = [
   { value: "unreachable", label: "در دسترس نیست" },
 ];
 
+const SOURCE_OPTIONS = [
+  { value: "", label: "همه منابع" },
+  { value: "direct", label: "درخواست مستقیم" },
+  { value: "system", label: "تشخیص سیستم" },
+  { value: "messenger", label: "پیام‌رسان" },
+];
+
+const PROBABILITY_BAND_OPTIONS = [
+  { value: "", label: "همه باندها" },
+  { value: "high", label: "بالا" },
+  { value: "medium", label: "متوسط" },
+  { value: "low", label: "پایین" },
+];
+
 interface AssigneeOption {
   id: string;
   name: string;
@@ -47,6 +61,16 @@ export function ExpertConsultationFilters({
   const [onlyUnassigned, setOnlyUnassigned] = useState(
     searchParams.get("onlyUnassigned") === "true",
   );
+  const [source, setSource] = useState(searchParams.get("source") ?? "");
+  const [purchaseProbabilityBand, setPurchaseProbabilityBand] = useState(
+    searchParams.get("purchaseProbabilityBand") ?? "",
+  );
+  const [onlyPendingAssignment, setOnlyPendingAssignment] = useState(
+    searchParams.get("onlyPendingAssignment") === "true",
+  );
+  const [onlyHot, setOnlyHot] = useState(
+    searchParams.get("onlyHot") === "true",
+  );
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,6 +89,18 @@ export function ExpertConsultationFilters({
     }
     if (status) {
       params.set("status", status);
+    }
+    if (source) {
+      params.set("source", source);
+    }
+    if (purchaseProbabilityBand) {
+      params.set("purchaseProbabilityBand", purchaseProbabilityBand);
+    }
+    if (onlyPendingAssignment) {
+      params.set("onlyPendingAssignment", "true");
+    }
+    if (onlyHot) {
+      params.set("onlyHot", "true");
     }
     if (isAdmin) {
       if (onlyUnassigned) {
@@ -85,6 +121,10 @@ export function ExpertConsultationFilters({
     setStatus("");
     setAssignedToId("");
     setOnlyUnassigned(false);
+    setSource("");
+    setPurchaseProbabilityBand("");
+    setOnlyPendingAssignment(false);
+    setOnlyHot(false);
     router.push(pathname);
   }
 
@@ -123,6 +163,59 @@ export function ExpertConsultationFilters({
             </option>
           ))}
         </Select>
+      </FieldLabel>
+
+      <FieldLabel label="منبع" htmlFor="filter-source">
+        <Select
+          id="filter-source"
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+        >
+          {SOURCE_OPTIONS.map((option) => (
+            <option key={option.value || "all-source"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </FieldLabel>
+
+      <FieldLabel label="باند احتمال خرید" htmlFor="filter-probability">
+        <Select
+          id="filter-probability"
+          value={purchaseProbabilityBand}
+          onChange={(event) => setPurchaseProbabilityBand(event.target.value)}
+        >
+          {PROBABILITY_BAND_OPTIONS.map((option) => (
+            <option key={option.value || "all-band"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </FieldLabel>
+
+      <FieldLabel label="فیلترهای ویژه" htmlFor="filter-pending">
+        <div className="flex min-h-10 flex-col justify-center gap-2 text-sm text-zinc-700">
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-pending"
+              type="checkbox"
+              checked={onlyPendingAssignment}
+              onChange={(event) => setOnlyPendingAssignment(event.target.checked)}
+              className="rounded border-zinc-300"
+            />
+            فقط در صف تخصیص
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-hot"
+              type="checkbox"
+              checked={onlyHot}
+              onChange={(event) => setOnlyHot(event.target.checked)}
+              className="rounded border-zinc-300"
+            />
+            فقط hot (احتمال بالا)
+          </label>
+        </div>
       </FieldLabel>
 
       {isAdmin ? (

@@ -225,30 +225,59 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         initialStatus={lead.status}
         initialAssignedToId={lead.assignedToId}
         initialNextFollowUpAtIso={lead.nextFollowUpAtIso}
+        initialAdminProbabilityOverridePercent={lead.adminProbabilityOverridePercent}
         isAdmin={Boolean(adminSession)}
         assigneeOptions={assigneeOptions}
       />
 
       <section className="mt-8">
         <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          تاریخچه یادداشت‌ها
+          خط زمانی
         </h2>
-        {lead.notes.length === 0 ? (
+        {lead.sla.severity !== "none" ? (
+          <div
+            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+              lead.sla.severity === "red"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            {lead.slaReason}
+          </div>
+        ) : null}
+        {lead.timeline.length === 0 ? (
           <Card className="text-center">
-            <p className="text-zinc-600">هنوز یادداشتی ثبت نشده است.</p>
+            <p className="text-zinc-600">هنوز رویدادی ثبت نشده است.</p>
           </Card>
         ) : (
           <ul className="space-y-3">
-            {lead.notes.map((note) => (
-              <li key={note.id}>
+            {lead.timeline.map((entry) => (
+              <li key={entry.id}>
                 <Card>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
-                    <span className="font-medium text-zinc-800">
-                      {note.authorName}
-                    </span>
-                    <time>{note.createdAt}</time>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          entry.kind === "note"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-zinc-100 text-zinc-700"
+                        }`}
+                      >
+                        {entry.label}
+                      </span>
+                      {entry.authorName ? (
+                        <span className="font-medium text-zinc-800">
+                          {entry.authorName}
+                        </span>
+                      ) : null}
+                    </div>
+                    <time>{entry.createdAt}</time>
                   </div>
-                  <p className="whitespace-pre-wrap text-zinc-800">{note.body}</p>
+                  {entry.detail ? (
+                    <p className="whitespace-pre-wrap text-zinc-800">
+                      {entry.detail}
+                    </p>
+                  ) : null}
                 </Card>
               </li>
             ))}

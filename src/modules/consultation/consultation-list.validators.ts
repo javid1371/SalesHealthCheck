@@ -1,6 +1,6 @@
 import { AppError } from "@/lib/errors";
 import { normalizePhone } from "@/modules/auth/auth.validators";
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus, LeadSource, PurchaseProbability } from "@prisma/client";
 import type {
   ConsultationListFilter,
   SalesExpertLoginInput,
@@ -15,6 +15,14 @@ const LEAD_STATUSES: LeadStatus[] = [
   "closed_won",
   "closed_lost",
   "unreachable",
+];
+
+const LEAD_SOURCES: LeadSource[] = ["direct", "system", "messenger"];
+
+const PURCHASE_PROBABILITY_BANDS: PurchaseProbability[] = [
+  "low",
+  "medium",
+  "high",
 ];
 
 function parseOptionalDate(value: string | null): Date | undefined {
@@ -73,7 +81,32 @@ export function validateConsultationListFilter(
 
   const assignedToId = searchParams.get("assignedToId")?.trim() || undefined;
   const onlyUnassigned = searchParams.get("onlyUnassigned") === "true";
+  const onlyPendingAssignment =
+    searchParams.get("onlyPendingAssignment") === "true";
+  const onlyHot = searchParams.get("onlyHot") === "true";
   const onlyMine = searchParams.get("onlyMine") === "true";
+
+  let source: LeadSource | undefined;
+  const sourceRaw = searchParams.get("source")?.trim();
+  if (sourceRaw) {
+    if (!LEAD_SOURCES.includes(sourceRaw as LeadSource)) {
+      throw new AppError("VALIDATION_ERROR", "Invalid source filter", 400);
+    }
+    source = sourceRaw as LeadSource;
+  }
+
+  let purchaseProbabilityBand: PurchaseProbability | undefined;
+  const bandRaw = searchParams.get("purchaseProbabilityBand")?.trim();
+  if (bandRaw) {
+    if (!PURCHASE_PROBABILITY_BANDS.includes(bandRaw as PurchaseProbability)) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Invalid probability band filter",
+        400,
+      );
+    }
+    purchaseProbabilityBand = bandRaw as PurchaseProbability;
+  }
 
   return {
     phone,
@@ -81,8 +114,12 @@ export function validateConsultationListFilter(
     createdFrom,
     createdTo,
     status,
+    source,
+    purchaseProbabilityBand,
     assignedToId,
     onlyUnassigned,
+    onlyPendingAssignment,
+    onlyHot,
     onlyMine,
     page,
     pageSize,

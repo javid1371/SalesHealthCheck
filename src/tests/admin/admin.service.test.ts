@@ -35,6 +35,19 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
     countUsersCompletedAllTime: vi.fn(),
     groupLeadsByAssignee: vi.fn(),
     findActiveSalesExperts: vi.fn(),
+    countLeadsByStatus: vi.fn(),
+    countPendingAssignmentLeads: vi.fn(),
+    countOverdueFollowUps: vi.fn(),
+    countStaleNewLeads: vi.fn(),
+    countHighProbabilityUnassigned: vi.fn(),
+    countLeadsCreatedInRange: vi.fn(),
+    groupLeadsBySource: vi.fn(),
+    groupLeadsBySourceAndStatus: vi.fn(),
+    findLeadsWithFirstContact: vi.fn(),
+    findLeadsWithClose: vi.fn(),
+    countOverdueFollowUpsByAssignee: vi.fn(),
+    countNewLeadsThisWeekByAssignee: vi.fn(),
+    findUrgentLeads: vi.fn(),
   };
 });
 
@@ -60,6 +73,19 @@ import {
   countUsersCompletedAllTime,
   findActiveSalesExperts,
   groupLeadsByAssignee,
+  countLeadsByStatus,
+  countPendingAssignmentLeads,
+  countOverdueFollowUps,
+  countStaleNewLeads,
+  countHighProbabilityUnassigned,
+  countLeadsCreatedInRange,
+  groupLeadsBySource,
+  groupLeadsBySourceAndStatus,
+  findLeadsWithFirstContact,
+  findLeadsWithClose,
+  countOverdueFollowUpsByAssignee,
+  countNewLeadsThisWeekByAssignee,
+  findUrgentLeads,
 } from "@/modules/admin/admin.repository";
 import {
   getSmsFunnelAdminMetrics,
@@ -184,6 +210,61 @@ describe("getAdminDashboard", () => {
         _count: { id: 2 },
       },
     ] as never);
+    vi.mocked(countLeadsByStatus).mockResolvedValue([
+      { status: "new", _count: { id: 5 } },
+      { status: "contacted", _count: { id: 4 } },
+      { status: "meeting_scheduled", _count: { id: 2 } },
+      { status: "closed_won", _count: { id: 3 } },
+      { status: "closed_lost", _count: { id: 1 } },
+    ] as never);
+    vi.mocked(countPendingAssignmentLeads).mockResolvedValue(2);
+    vi.mocked(countOverdueFollowUps).mockResolvedValue(1);
+    vi.mocked(countStaleNewLeads).mockResolvedValue(1);
+    vi.mocked(countHighProbabilityUnassigned).mockResolvedValue(1);
+    vi.mocked(countLeadsCreatedInRange).mockResolvedValue(7);
+    vi.mocked(groupLeadsBySource).mockResolvedValue([
+      { source: "direct", _count: { id: 10 } },
+      { source: "system", _count: { id: 5 } },
+    ] as never);
+    vi.mocked(groupLeadsBySourceAndStatus).mockResolvedValue([
+      { source: "direct", status: "new", _count: { id: 4 } },
+      { source: "direct", status: "closed_won", _count: { id: 2 } },
+      { source: "system", status: "new", _count: { id: 3 } },
+      { source: "system", status: "closed_won", _count: { id: 1 } },
+    ] as never);
+    vi.mocked(findLeadsWithFirstContact).mockResolvedValue([
+      {
+        createdAt: new Date("2026-01-01"),
+        firstContactedAt: new Date("2026-01-03"),
+      },
+      {
+        createdAt: new Date("2026-01-01"),
+        firstContactedAt: new Date("2026-01-05"),
+      },
+    ] as never);
+    vi.mocked(findLeadsWithClose).mockResolvedValue([
+      {
+        createdAt: new Date("2026-01-01"),
+        closedAt: new Date("2026-01-11"),
+      },
+    ] as never);
+    vi.mocked(countOverdueFollowUpsByAssignee).mockResolvedValue([
+      { assignedToId: "expert-1", _count: { id: 1 } },
+    ] as never);
+    vi.mocked(countNewLeadsThisWeekByAssignee).mockResolvedValue([
+      { assignedToId: "expert-1", _count: { id: 2 } },
+    ] as never);
+    vi.mocked(findUrgentLeads).mockResolvedValue([
+      {
+        id: "lead-1",
+        name: "Urgent Lead",
+        status: "new",
+        purchaseProbabilityBand: "high",
+        nextFollowUpAt: null,
+        createdAt: new Date("2026-01-01"),
+        assignedToId: null,
+      },
+    ] as never);
     vi.mocked(getSmsFunnelAdminMetrics).mockResolvedValue({
       smsSent: 12,
       smsPending: 3,
@@ -232,6 +313,66 @@ describe("getAdminDashboard", () => {
         open: 3,
         closedWon: 2,
         closedLost: 0,
+        winRate: 100,
+        overdueFollowUpOpen: 1,
+        newThisWeek: 2,
+      },
+    ]);
+    expect(dashboard.leadKpis).toEqual({
+      newThisWeek: 7,
+      pendingAssignment: 2,
+      overdueFollowUps: 1,
+      closeRate: 75,
+      highProbabilityUnassigned: 1,
+      staleNewLeads: 1,
+    });
+    expect(dashboard.leadStatusFunnel).toEqual({
+      new: 5,
+      contacted: 4,
+      meetingScheduled: 2,
+      closedWon: 3,
+      closedLost: 1,
+      unreachable: 0,
+    });
+    expect(dashboard.leadSourceBreakdown).toEqual({
+      direct: 10,
+      system: 5,
+      messenger: 0,
+    });
+    expect(dashboard.salesMetrics).toEqual({
+      avgDaysToFirstContact: 3,
+      avgDaysToClose: 10,
+      sourceConversion: [
+        {
+          source: "direct",
+          sourceLabel: "مستقیم",
+          total: 6,
+          closedWon: 2,
+          conversionRate: 33,
+        },
+        {
+          source: "system",
+          sourceLabel: "سیستم",
+          total: 4,
+          closedWon: 1,
+          conversionRate: 25,
+        },
+        {
+          source: "messenger",
+          sourceLabel: "پیام‌رسان",
+          total: 0,
+          closedWon: 0,
+          conversionRate: 0,
+        },
+      ],
+    });
+    expect(dashboard.urgentLeads).toEqual([
+      {
+        id: "lead-1",
+        name: "Urgent Lead",
+        reason: "احتمال بالا — بدون تخصیص",
+        severity: "amber",
+        detailUrl: "/expert/consultations/lead-1",
       },
     ]);
     expect(dashboard.smsFunnel.smsSent).toBe(12);
