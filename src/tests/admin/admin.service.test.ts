@@ -51,6 +51,7 @@ import {
 import {
   countAssessmentsByDateRange,
   countUsersVerifiedSince,
+  countUsersStartedInRange,
   countUsersCompletedInRange,
   countUsersWithConsultation,
   countUsersWithNewConsultation,
@@ -157,17 +158,17 @@ describe("verifyAdminPassword when not configured", () => {
 describe("getAdminDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(countUsersVerifiedSince)
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(50);
+    vi.mocked(countUsersStartedInRange).mockResolvedValue(18);
     vi.mocked(countUsersCompletedInRange).mockResolvedValue(15);
+    vi.mocked(countUsersVerifiedSince).mockResolvedValue(10);
     vi.mocked(countUsersStartedAllTime).mockResolvedValue(100);
     vi.mocked(countUsersCompletedAllTime).mockResolvedValue(60);
     vi.mocked(countUsersWithConsultation).mockResolvedValue(20);
     vi.mocked(countUsersCriticalLeads).mockResolvedValue(5);
     vi.mocked(countUsersWithNewConsultation).mockResolvedValue(8);
-    vi.mocked(countAssessmentsByDateRange).mockResolvedValue(25);
+    vi.mocked(countAssessmentsByDateRange)
+      .mockResolvedValueOnce(25)
+      .mockResolvedValueOnce(80);
     vi.mocked(findActiveSalesExperts).mockResolvedValue([
       { id: "expert-1", name: "Expert One" },
     ]);
@@ -198,14 +199,14 @@ describe("getAdminDashboard", () => {
     const dashboard = await getAdminDashboard();
 
     expect(dashboard.kpis).toEqual({
-      usersVerifiedToday: 3,
-      usersVerifiedThisWeek: 10,
-      usersVerifiedThisMonth: 50,
+      usersStartedThisWeek: 18,
       usersCompletedThisWeek: 15,
       userCompletionRate: 60,
+      usersVerifiedThisWeek: 10,
       usersCriticalLeads: 5,
       usersNewConsultations: 8,
       assessmentsThisWeek: 25,
+      assessmentsThisMonth: 80,
     });
     expect(dashboard.funnel).toEqual({
       started: 100,
@@ -214,14 +215,15 @@ describe("getAdminDashboard", () => {
       completedRate: 60,
       consultationRate: 33,
     });
-    expect(countUsersVerifiedSince).toHaveBeenCalledTimes(3);
+    expect(countUsersStartedInRange).toHaveBeenCalledTimes(1);
     expect(countUsersCompletedInRange).toHaveBeenCalledTimes(1);
+    expect(countUsersVerifiedSince).toHaveBeenCalledTimes(1);
     expect(countUsersStartedAllTime).toHaveBeenCalledTimes(1);
     expect(countUsersCompletedAllTime).toHaveBeenCalledTimes(1);
     expect(countUsersWithConsultation).toHaveBeenCalledTimes(1);
     expect(countUsersCriticalLeads).toHaveBeenCalledTimes(1);
     expect(countUsersWithNewConsultation).toHaveBeenCalledTimes(1);
-    expect(countAssessmentsByDateRange).toHaveBeenCalledTimes(1);
+    expect(countAssessmentsByDateRange).toHaveBeenCalledTimes(2);
     expect(dashboard.expertPerformance).toEqual([
       {
         staffUserId: "expert-1",

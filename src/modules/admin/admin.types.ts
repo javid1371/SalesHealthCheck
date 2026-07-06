@@ -61,15 +61,15 @@ export interface AdminAssessmentDetail {
 }
 
 export interface AdminDashboardKpis {
-  usersVerifiedToday: number;
-  usersVerifiedThisWeek: number;
-  usersVerifiedThisMonth: number;
+  usersStartedThisWeek: number;
   usersCompletedThisWeek: number;
   userCompletionRate: number;
+  usersVerifiedThisWeek: number;
   usersCriticalLeads: number;
   usersNewConsultations: number;
-  /** Session-level count for operational visibility */
+  /** Session-level counts for operational visibility */
   assessmentsThisWeek: number;
+  assessmentsThisMonth: number;
 }
 
 export interface AdminDashboardFunnel {

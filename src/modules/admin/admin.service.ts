@@ -7,6 +7,7 @@ import {
   countAssessmentsForAdmin,
   countAssessmentsByDateRange,
   countUsersVerifiedSince,
+  countUsersStartedInRange,
   countUsersCompletedInRange,
   countUsersWithConsultation,
   countUsersWithNewConsultation,
@@ -17,7 +18,6 @@ import {
   findAssessmentsForAdmin,
   findActiveSalesExperts,
   groupLeadsByAssignee,
-  startOfDay,
   startOfMonth,
   startOfWeek,
 } from "./admin.repository";
@@ -193,34 +193,33 @@ function percent(part: number, total: number): number {
 }
 
 export async function getAdminDashboard(): Promise<AdminDashboardData> {
-  const today = startOfDay();
   const weekStart = startOfWeek();
   const monthStart = startOfMonth();
 
   const [
-    usersVerifiedToday,
-    usersVerifiedThisWeek,
-    usersVerifiedThisMonth,
+    usersStartedThisWeek,
     usersCompletedThisWeek,
+    usersVerifiedThisWeek,
     usersStartedAllTime,
     usersCompletedAllTime,
     usersWithConsultation,
     usersCriticalLeads,
     usersNewConsultations,
     assessmentsThisWeek,
+    assessmentsThisMonth,
     leadGroups,
     salesExperts,
   ] = await Promise.all([
-    countUsersVerifiedSince(today),
-    countUsersVerifiedSince(weekStart),
-    countUsersVerifiedSince(monthStart),
+    countUsersStartedInRange(weekStart),
     countUsersCompletedInRange(weekStart),
+    countUsersVerifiedSince(weekStart),
     countUsersStartedAllTime(),
     countUsersCompletedAllTime(),
     countUsersWithConsultation(),
     countUsersCriticalLeads(),
     countUsersWithNewConsultation(),
     countAssessmentsByDateRange(weekStart),
+    countAssessmentsByDateRange(monthStart),
     groupLeadsByAssignee(),
     findActiveSalesExperts(),
   ]);
@@ -295,14 +294,14 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
 
   return {
     kpis: {
-      usersVerifiedToday,
-      usersVerifiedThisWeek,
-      usersVerifiedThisMonth,
+      usersStartedThisWeek,
       usersCompletedThisWeek,
       userCompletionRate: percent(usersCompletedAllTime, usersStartedAllTime),
+      usersVerifiedThisWeek,
       usersCriticalLeads,
       usersNewConsultations,
       assessmentsThisWeek,
+      assessmentsThisMonth,
     },
     funnel: {
       started: usersStartedAllTime,

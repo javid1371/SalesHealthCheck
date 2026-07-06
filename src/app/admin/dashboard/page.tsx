@@ -52,16 +52,8 @@ export default async function AdminDashboardPage() {
         <h2 className="mb-4 text-lg font-semibold text-zinc-900">KPIها</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KpiCard
-            label="نفر تأییدشده امروز"
-            value={dashboard.kpis.usersVerifiedToday}
-          />
-          <KpiCard
-            label="نفر تأییدشده این هفته"
-            value={dashboard.kpis.usersVerifiedThisWeek}
-          />
-          <KpiCard
-            label="نفر تأییدشده این ماه"
-            value={dashboard.kpis.usersVerifiedThisMonth}
+            label="نفر شروع‌کننده این هفته"
+            value={dashboard.kpis.usersStartedThisWeek}
           />
           <KpiCard
             label="نفر تکمیل‌کننده این هفته"
@@ -73,6 +65,10 @@ export default async function AdminDashboardPage() {
             suffix="٪"
           />
           <KpiCard
+            label="نفر تأییدشده این هفته"
+            value={dashboard.kpis.usersVerifiedThisWeek}
+          />
+          <KpiCard
             label="لید بحرانی (نفر)"
             value={dashboard.kpis.usersCriticalLeads}
           />
@@ -81,18 +77,29 @@ export default async function AdminDashboardPage() {
             value={dashboard.kpis.usersNewConsultations}
           />
         </div>
-        <p className="mt-4 text-sm text-zinc-500">
-          عملیاتی — تعداد ارزیابی این هفته:{" "}
-          <span className="font-medium text-zinc-700">
-            {dashboard.kpis.assessmentsThisWeek.toLocaleString("fa-IR")}
-          </span>
-        </p>
+        <div className="mt-4 space-y-1 text-sm text-zinc-500">
+          <p>
+            عملیاتی — تعداد ارزیابی این هفته:{" "}
+            <span className="font-medium text-zinc-700">
+              {dashboard.kpis.assessmentsThisWeek.toLocaleString("fa-IR")}
+            </span>
+          </p>
+          <p>
+            عملیاتی — تعداد ارزیابی این ماه:{" "}
+            <span className="font-medium text-zinc-700">
+              {dashboard.kpis.assessmentsThisMonth.toLocaleString("fa-IR")}
+            </span>
+          </p>
+        </div>
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+        <h2 className="mb-1 text-lg font-semibold text-zinc-900">
           قیف تبدیل
         </h2>
+        <p className="mb-4 text-sm text-zinc-500">
+          از ابتدا — هر نفر یک‌بار شمرده می‌شود
+        </p>
         <Card>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="text-center">
