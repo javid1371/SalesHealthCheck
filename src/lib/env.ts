@@ -114,6 +114,10 @@ export const env = {
   get smsFunnelEnabled(): boolean {
     return process.env.SMS_FUNNEL_ENABLED === "true";
   },
+  /** Enable sales funnel modeling module (/funnel pages and /api/funnels). */
+  get salesFunnelEnabled(): boolean {
+    return process.env.SALES_FUNNEL_ENABLED === "true";
+  },
   /** Kavenegar dedicated sender line for free-text SMS. */
   get kavenegarSenderLine(): string | undefined {
     return process.env.KAVENEGAR_SENDER_LINE;

@@ -3,6 +3,7 @@ import { AppError } from "@/lib/errors";
 import { generateResultToken } from "@/lib/token";
 import type { UserSession } from "@/lib/session";
 import { computeSalesFunnel } from "./sales-funnel.engine";
+import { assertSalesFunnelEnabled } from "./sales-funnel.guards";
 import {
   createSalesFunnel,
   createSalesFunnelSnapshot,
@@ -244,6 +245,8 @@ export async function createFunnel(
   context: CreateFunnelContext,
   input: CreateFunnelInput,
 ): Promise<FunnelResponse> {
+  assertSalesFunnelEnabled();
+
   const prefill = input.prefillFromAssessment
     ? await buildPrefillData(context.userId, input)
     : null;
@@ -269,6 +272,8 @@ export async function getFunnel(
   funnelId: string,
   access: FunnelAccessInput = {},
 ): Promise<FunnelResponse> {
+  assertSalesFunnelEnabled();
+
   const funnel = await findFunnelById(funnelId);
 
   if (!funnel) {
@@ -293,6 +298,8 @@ export async function updateFunnel(
   input: UpdateFunnelInput,
   access: FunnelAccessInput = {},
 ): Promise<FunnelResponse> {
+  assertSalesFunnelEnabled();
+
   const funnel = await findFunnelById(funnelId);
 
   if (!funnel) {
@@ -323,6 +330,8 @@ export async function updateFunnel(
 }
 
 export async function listUserFunnels(userSession: UserSession): Promise<FunnelListItem[]> {
+  assertSalesFunnelEnabled();
+
   const funnels = await listFunnelsByUserId(userSession.userId);
 
   return funnels.map((funnel) => ({
@@ -338,6 +347,8 @@ export async function deleteFunnel(
   funnelId: string,
   access: FunnelAccessInput = {},
 ): Promise<void> {
+  assertSalesFunnelEnabled();
+
   const funnel = await findFunnelById(funnelId);
 
   if (!funnel) {
@@ -361,6 +372,8 @@ export async function captureSnapshot(
   funnelId: string,
   access: FunnelAccessInput = {},
 ): Promise<FunnelSnapshotResponse> {
+  assertSalesFunnelEnabled();
+
   const funnel = await findFunnelById(funnelId);
 
   if (!funnel) {
