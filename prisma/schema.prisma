@@ -154,6 +154,7 @@ model User {
 
   organizations      Organization[]
   assessmentSessions AssessmentSession[]
+  salesFunnels       SalesFunnel[]
   funnelEnrollments  FunnelEnrollment[]
   funnelEvents       FunnelEvent[]
   shortLinks         ShortLink[]
@@ -173,6 +174,7 @@ model Organization {
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   assessmentSessions AssessmentSession[]
+  salesFunnels       SalesFunnel[]
 
   @@map("organizations")
 }
@@ -225,8 +227,9 @@ model Domain {
   modelVersion ModelVersion  @relation(fields: [modelVersionId], references: [id], onDelete: Cascade)
   layer        Layer         @relation(fields: [layerId], references: [id], onDelete: Cascade)
   questions    Question[]
-  domainScores DomainScore[]
-  bottlenecks  Bottleneck[]
+  domainScores       DomainScore[]
+  bottlenecks        Bottleneck[]
+  salesFunnelStages  SalesFunnelStage[]
 
   @@unique([modelVersionId, slug])
   @@map("domains")
@@ -311,6 +314,7 @@ model AssessmentSession {
   funnelEnrollments    FunnelEnrollment[]
   funnelEvents         FunnelEvent[]
   shortLinks           ShortLink[]
+  salesFunnels         SalesFunnel[]
 
   @@index([status])
   @@map("assessment_sessions")
@@ -676,4 +680,54 @@ model LeadActivity {
 
   @@index([consultationRequestId])
   @@map("lead_activities")
+}
+
+model SalesFunnel {
+  id                  String      @id @default(cuid())
+  userId              String      @map("user_id")
+  organizationId      String?     @map("organization_id")
+  assessmentSessionId String?     @map("assessment_session_id")
+  name                String
+  salesModel          SalesModel? @map("sales_model")
+  averageOrderValue   Float?      @map("average_order_value")
+  repeatPurchaseRate  Float?      @map("repeat_purchase_rate")
+  shareToken          String      @unique @map("share_token")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization      Organization?         @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  assessmentSession AssessmentSession?    @relation(fields: [assessmentSessionId], references: [id], onDelete: SetNull)
+  stages            SalesFunnelStage[]
+  snapshots         SalesFunnelSnapshot[]
+
+  @@index([userId])
+  @@map("sales_funnels")
+}
+
+model SalesFunnelStage {
+  id       String @id @default(cuid())
+  funnelId String @map("funnel_id")
+  order    Int    @map("stage_order")
+  name     String
+  count    Float
+  domainId String? @map("domain_id")
+
+  funnel SalesFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  domain Domain?     @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  @@unique([funnelId, order])
+  @@map("sales_funnel_stages")
+}
+
+model SalesFunnelSnapshot {
+  id         String   @id @default(cuid())
+  funnelId   String   @map("funnel_id")
+  capturedAt DateTime @default(now()) @map("captured_at")
+  data       Json
+
+  funnel SalesFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([funnelId])
+  @@map("sales_funnel_snapshots")
 }
