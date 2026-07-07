@@ -35,7 +35,8 @@ export type AppErrorCode =
   | "chart_generation_failed"
   | "report_spec_unavailable"
   | "funnel_not_found"
-  | "funnel_access_denied";
+  | "funnel_access_denied"
+  | "sales_funnel_disabled";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

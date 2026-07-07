@@ -60,7 +60,7 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function isValidMetric(value: number | undefined): boolean {
+function isValidMetric(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
