@@ -9,6 +9,8 @@ import {
 } from "@/lib/session";
 import { getFunnel } from "@/modules/sales-funnel/sales-funnel.service";
 
+export const dynamic = "force-dynamic";
+
 interface FunnelPrintPageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ token?: string }>;

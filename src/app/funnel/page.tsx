@@ -10,6 +10,8 @@ import { env } from "@/lib/env";
 import { readUserSession } from "@/lib/session";
 import { listUserFunnels } from "@/modules/sales-funnel/sales-funnel.service";
 
+export const dynamic = "force-dynamic";
+
 export default async function FunnelListPage() {
   if (!env.salesFunnelEnabled) {
     notFound();
