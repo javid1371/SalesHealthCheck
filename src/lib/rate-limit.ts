@@ -70,6 +70,13 @@ export const startAssessmentLimiter = createRateLimiter({
   namespace: "assessment-start",
 });
 
+/** 120 requests per hour per IP — anonymous funnel track events. */
+export const funnelTrackLimiter = createRateLimiter({
+  limit: 120,
+  windowMs: 60 * 60 * 1000,
+  namespace: "funnel-track",
+});
+
 /** 1 OTP send per 60 seconds per normalized phone. */
 export const otpSendLimiterByPhone = createRateLimiter({
   limit: 1,

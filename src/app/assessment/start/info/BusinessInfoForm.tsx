@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { apiPost, ApiClientError } from "@/lib/api-client";
 import { saveResultToken } from "@/lib/assessment-storage";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { SALES_MODEL_OPTIONS } from "@/lib/sales-model";
 import { TEAM_SIZE_OPTIONS } from "@/lib/team-size";
 import type { StartAssessmentResponse } from "@/modules/assessment/assessment.types";
@@ -78,6 +79,10 @@ export function BusinessInfoForm({
       );
 
       saveResultToken(result.assessmentId, result.resultToken);
+      void trackFunnelEvent({
+        type: "assessment_started",
+        assessmentSessionId: result.assessmentId,
+      });
       router.push(`/assessment/${result.assessmentId}/questions/0`);
     } catch (err) {
       if (err instanceof ApiClientError) {

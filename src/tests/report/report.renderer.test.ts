@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { ctaAfterValueHeadline } from "@/config/model-v1/report-content/cta-templates";
 import { domainsV1 } from "@/config/model-v1/domains";
 import { composeReport } from "@/modules/report/report.composer";
 import { renderReport } from "@/modules/report/report.renderer";
 import { runDiagnosisV2FromRawScores } from "@/modules/diagnosis/v2/run-diagnosis-v2";
+import type { ReportSpec } from "@/types/report-spec";
 
 const SPEC_EXAMPLE_RAW_BY_ENGINE_ID: Record<number, number> = {
   1: 6,
@@ -99,6 +101,47 @@ describe("renderReport variants", () => {
       compactIssues: false,
     });
     expect(viewModel.domainBreakdown.every((d) => d.expanded)).toBe(true);
+  });
+
+  it("uses dynamic afterValue headline when valueAtStake is present", () => {
+    const spec = exampleReportSpec();
+    const monthlyToman = 12_500_000;
+    const specWithValue: ReportSpec = {
+      ...spec,
+      valueAtStake: {
+        tier1: {
+          monthly: monthlyToman,
+          annual: monthlyToman * 12,
+          range: {
+            low: monthlyToman * 0.8,
+            high: monthlyToman * 1.2,
+          },
+          breakdown: {
+            conversion: monthlyToman * 0.4,
+            aov: monthlyToman * 0.35,
+            repeat: monthlyToman * 0.25,
+          },
+        },
+        tier2: { qualitative: "placeholder" },
+        tier3: { mechanism: "placeholder", conditions: [] },
+        confidence: "medium",
+      },
+    };
+
+    const viewModel = renderReport(specWithValue, { variant: "full" });
+    const afterValue = viewModel.ctaPlacements.find((p) => p.id === "afterValue");
+
+    expect(afterValue).toBeDefined();
+    expect(afterValue?.headline).toBe(ctaAfterValueHeadline(monthlyToman));
+  });
+
+  it("omits afterValue placement when valueAtStake is absent", () => {
+    const spec = exampleReportSpec();
+    const viewModel = renderReport(spec, { variant: "full" });
+
+    expect(
+      viewModel.ctaPlacements.find((p) => p.id === "afterValue"),
+    ).toBeUndefined();
   });
 
   it("orders print blocks without CTAs or metrics gate", () => {

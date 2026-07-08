@@ -42,11 +42,12 @@ function CtaContent() {
     <div className="space-y-8">
       <Card>
         <h2 className="text-xl font-semibold text-zinc-900">
-          درخواست مشاوره رایگان
+          تماس کوتاه و رایگان با کارشناس
         </h2>
         <p className="mt-3 text-sm leading-7 text-zinc-600">
           برای بررسی دقیق‌تر اولویت‌های شناسایی‌شده و دریافت نقشه اقدام
-          اختصاصی، فرم زیر را تکمیل کنید. کارشناس ما با شما تماس می‌گیرد.
+          اختصاصی، فرم زیر را تکمیل کنید. یک تماس کوتاه و کاملاً رایگان — بدون
+          هیچ تعهدی.
         </p>
         <div className="mt-8">
           <ConsultationForm
@@ -70,7 +71,7 @@ export default function CtaPage() {
   return (
     <PageLayout
       title="قدم بعدی"
-      subtitle="درخواست مشاوره رایگان"
+      subtitle="تماس کوتاه و رایگان با کارشناس"
       maxWidth="lg"
     >
       <Suspense fallback={<LoadingSpinner message={PAGE_MESSAGES.loading.default} />}>

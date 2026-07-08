@@ -233,6 +233,15 @@ export async function startAssessment(
     const { hookAssessmentStarted } = await import("@/modules/sms-funnel/hooks");
     hookAssessmentStarted(user.id, session.id);
 
+    const { recordConversionFunnelEvent } = await import(
+      "@/modules/funnel/conversion-events"
+    );
+    recordConversionFunnelEvent({
+      userId: user.id,
+      assessmentSessionId: session.id,
+      type: "assessment_started",
+    });
+
     return {
       assessmentId: session.id,
       status: session.status,
@@ -546,6 +555,15 @@ export async function finishAssessment(
       userId: assessment.userId,
       assessmentSessionId: assessmentId,
       overallScorePercentage: overallScore.percentage,
+    });
+
+    const { recordConversionFunnelEvent } = await import(
+      "@/modules/funnel/conversion-events"
+    );
+    recordConversionFunnelEvent({
+      userId: assessment.userId,
+      assessmentSessionId: assessmentId,
+      type: "assessment_completed",
     });
 
     const { createSystemLeadIfEligible } = await import(

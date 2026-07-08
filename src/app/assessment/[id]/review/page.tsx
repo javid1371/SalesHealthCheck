@@ -16,6 +16,7 @@ import {
   saveQuestions,
   type AnswerMap,
 } from "@/lib/assessment-storage";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { PAGE_MESSAGES, resolveApiError } from "@/lib/page-messages";
 import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question-bank.types";
 import type {
@@ -80,6 +81,10 @@ export default function ReviewPage() {
         setQuestionsData(questions);
         setAnswers(mergedAnswers);
         setStatus(assessmentStatus);
+        void trackFunnelEvent({
+          type: "review_reached",
+          assessmentSessionId: assessmentId,
+        });
       } catch (err) {
         if (cancelled) return;
         setError(resolveApiError(err, PAGE_MESSAGES.notFound.generic));

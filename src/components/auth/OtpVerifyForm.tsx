@@ -11,6 +11,7 @@ import {
   sendOtpRequest,
   verifyOtpRequest,
 } from "@/lib/auth-client";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { clearDevOtp, readDevOtp, storeDevOtp } from "@/lib/dev-otp";
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -61,6 +62,7 @@ export function OtpVerifyForm({
     setSubmitting(true);
     try {
       await verifyOtpRequest(phone, code.trim());
+      void trackFunnelEvent({ type: "phone_verified" });
       clearDevOtp();
       onVerified();
     } catch (err) {

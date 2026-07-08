@@ -44,6 +44,7 @@ import type {
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
 import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
+import { recordConversionFunnelEvent } from "@/modules/funnel/conversion-events";
 import {
   formatPurchaseProbabilityLabel,
   LEAD_SOURCE_LABELS,
@@ -168,6 +169,11 @@ export async function submitConsultationRequest(
     const assessment = await findAssessmentById(validated.assessmentSessionId);
     if (assessment?.userId) {
       hookConsultationSubmitted(assessment.userId, validated.assessmentSessionId);
+      recordConversionFunnelEvent({
+        userId: assessment.userId,
+        assessmentSessionId: validated.assessmentSessionId,
+        type: "consultation_submitted",
+      });
     }
   }
 

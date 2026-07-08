@@ -53,6 +53,7 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
 
 vi.mock("@/modules/sms-funnel/funnel.repository", () => ({
   getSmsFunnelAdminMetrics: vi.fn(),
+  getFullConversionFunnelMetrics: vi.fn(),
   listRecentSmsMessages: vi.fn(),
 }));
 
@@ -89,6 +90,7 @@ import {
 } from "@/modules/admin/admin.repository";
 import {
   getSmsFunnelAdminMetrics,
+  getFullConversionFunnelMetrics,
   listRecentSmsMessages,
 } from "@/modules/sms-funnel/funnel.repository";
 
@@ -273,6 +275,17 @@ describe("getAdminDashboard", () => {
       linkClicks: 7,
       consultationStarts: 4,
     });
+    vi.mocked(getFullConversionFunnelMetrics).mockResolvedValue({
+      steps: [
+        {
+          key: "landing_view",
+          label: "بازدید فرود",
+          count: 50,
+          dropOffPercent: null,
+        },
+      ],
+      domainDropOff: [],
+    });
     vi.mocked(listRecentSmsMessages).mockResolvedValue([]);
   });
 
@@ -296,6 +309,18 @@ describe("getAdminDashboard", () => {
       completedRate: 60,
       consultationRate: 33,
     });
+    expect(dashboard.fullConversionFunnel).toEqual({
+      steps: [
+        {
+          key: "landing_view",
+          label: "بازدید فرود",
+          count: 50,
+          dropOffPercent: null,
+        },
+      ],
+      domainDropOff: [],
+    });
+    expect(getFullConversionFunnelMetrics).toHaveBeenCalledTimes(1);
     expect(countUsersStartedInRange).toHaveBeenCalledTimes(1);
     expect(countUsersCompletedInRange).toHaveBeenCalledTimes(1);
     expect(countUsersVerifiedSince).toHaveBeenCalledTimes(1);

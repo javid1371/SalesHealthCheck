@@ -5,7 +5,10 @@ import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/LinkButton";
 import { readAdminSession } from "@/lib/session";
 import { getAdminDashboard } from "@/modules/admin/admin.service";
-import type { AdminLeadStatusFunnel } from "@/modules/admin/admin.types";
+import type {
+  AdminFullConversionFunnel,
+  AdminLeadStatusFunnel,
+} from "@/modules/admin/admin.types";
 import { AdminNav } from "../AdminNav";
 
 function KpiCard({
@@ -125,6 +128,91 @@ function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
         </p>
       ) : null}
     </Card>
+  );
+}
+
+function FullConversionFunnelSection({
+  funnel,
+}: {
+  funnel: AdminFullConversionFunnel;
+}) {
+  const maxCount = Math.max(...funnel.steps.map((step) => step.count), 1);
+
+  return (
+    <section className="mb-8">
+      <h2 className="mb-1 text-lg font-semibold text-zinc-900">
+        قیف کامل تبدیل
+      </h2>
+      <p className="mb-4 text-sm text-zinc-500">
+        از بازدید فرود تا ثبت مشاوره — هر بازدیدکننده/کاربر یک‌بار در هر مرحله
+        شمرده می‌شود
+      </p>
+      <Card className="space-y-4">
+        {funnel.steps.map((step) => (
+          <div key={step.key} className="space-y-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-medium text-zinc-800">{step.label}</span>
+              <span className="text-zinc-600">
+                {step.count.toLocaleString("fa-IR")}
+                {step.dropOffPercent !== null ? (
+                  <span className="mr-2 text-xs text-amber-700">
+                    (ریزش {step.dropOffPercent.toLocaleString("fa-IR")}٪)
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{
+                  width: `${maxCount > 0 ? (step.count / maxCount) * 100 : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      {funnel.domainDropOff.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="mb-3 text-base font-semibold text-zinc-900">
+            ریزش دامنه‌به‌دامنه
+          </h3>
+          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-zinc-700">دامنه</th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">
+                    تکمیل‌کننده
+                  </th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">ریزش</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {funnel.domainDropOff.map((row) => (
+                  <tr key={row.domainIndex} className="hover:bg-zinc-50/80">
+                    <td className="px-4 py-3 font-medium text-zinc-900">
+                      {row.domainSlug
+                        ? `دامنه ${(row.domainIndex + 1).toLocaleString("fa-IR")} — ${row.domainSlug}`
+                        : `دامنه ${(row.domainIndex + 1).toLocaleString("fa-IR")}`}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {row.count.toLocaleString("fa-IR")}
+                    </td>
+                    <td className="px-4 py-3 text-amber-700">
+                      {row.dropOffPercent === null
+                        ? "—"
+                        : `${row.dropOffPercent.toLocaleString("fa-IR")}٪`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -418,6 +506,8 @@ export default async function AdminDashboardPage() {
           </div>
         </Card>
       </section>
+
+      <FullConversionFunnelSection funnel={dashboard.fullConversionFunnel} />
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

@@ -355,3 +355,211 @@ export async function listSmsOptOuts(limit = 50) {
     take: limit,
   });
 }
+
+const FULL_FUNNEL_STEP_TYPES: FunnelEventType[] = [
+  "landing_view",
+  "assessment_start_click",
+  "otp_sent",
+  "phone_verified",
+  "assessment_started",
+  "review_reached",
+  "assessment_completed",
+  "report_viewed",
+  "consultation_started",
+  "consultation_submitted",
+];
+
+const FULL_FUNNEL_STEP_LABELS: Record<FunnelEventType, string> = {
+  landing_view: "بازدید فرود",
+  assessment_start_click: "کلیک شروع ارزیابی",
+  otp_sent: "ارسال OTP",
+  phone_verified: "تأیید تلفن",
+  assessment_started: "شروع ارزیابی",
+  domain_completed: "تکمیل دامنه",
+  review_reached: "رسیدن به مرور",
+  assessment_completed: "تکمیل ارزیابی",
+  report_viewed: "مشاهده گزارش",
+  consultation_started: "شروع فرم مشاوره",
+  consultation_submitted: "ثبت درخواست مشاوره",
+  link_clicked: "کلیک لینک",
+  cta_clicked: "کلیک CTA",
+  sms_sent: "ارسال پیامک",
+  opt_out: "لغو پیامک",
+};
+
+export interface FullConversionFunnelStep {
+  key: FunnelEventType;
+  label: string;
+  count: number;
+  dropOffPercent: number | null;
+}
+
+export interface DomainDropOffRow {
+  domainIndex: number;
+  domainSlug: string | null;
+  count: number;
+  dropOffPercent: number | null;
+}
+
+export interface FullConversionFunnelMetrics {
+  steps: FullConversionFunnelStep[];
+  domainDropOff: DomainDropOffRow[];
+}
+
+function resolveFunnelActorKey(event: {
+  userId: string | null;
+  assessmentSessionId: string | null;
+  metadata: unknown;
+}): string | null {
+  if (event.userId) {
+    return `u:${event.userId}`;
+  }
+
+  if (event.metadata && typeof event.metadata === "object" && event.metadata !== null) {
+    const visitorId = (event.metadata as Record<string, unknown>).visitorId;
+    if (typeof visitorId === "string" && visitorId.trim()) {
+      return `v:${visitorId}`;
+    }
+  }
+
+  if (event.assessmentSessionId) {
+    return `a:${event.assessmentSessionId}`;
+  }
+
+  return null;
+}
+
+function countDistinctActors(
+  events: Array<{
+    userId: string | null;
+    assessmentSessionId: string | null;
+    metadata: unknown;
+  }>,
+): number {
+  const actors = new Set<string>();
+
+  for (const event of events) {
+    const key = resolveFunnelActorKey(event);
+    if (key) {
+      actors.add(key);
+    }
+  }
+
+  return actors.size;
+}
+
+function dropOffPercent(previous: number, current: number): number | null {
+  if (previous <= 0) {
+    return null;
+  }
+  return Math.round(((previous - current) / previous) * 100);
+}
+
+const FULL_FUNNEL_QUERY_TYPES: FunnelEventType[] = [
+  ...FULL_FUNNEL_STEP_TYPES,
+  "domain_completed",
+];
+
+export async function getFullConversionFunnelMetrics(): Promise<FullConversionFunnelMetrics> {
+  const events = await db.funnelEvent.findMany({
+    where: {
+      type: {
+        in: FULL_FUNNEL_QUERY_TYPES,
+      },
+    },
+    select: {
+      type: true,
+      userId: true,
+      assessmentSessionId: true,
+      metadata: true,
+    },
+  });
+
+  const eventsByType = new Map<FunnelEventType, typeof events>();
+  for (const type of FULL_FUNNEL_QUERY_TYPES) {
+    eventsByType.set(
+      type,
+      events.filter((event) => event.type === type),
+    );
+  }
+
+  const steps: FullConversionFunnelStep[] = [];
+  let previousCount = 0;
+
+  for (const type of FULL_FUNNEL_STEP_TYPES) {
+    const typeEvents = eventsByType.get(type) ?? [];
+    const count = countDistinctActors(typeEvents);
+    steps.push({
+      key: type,
+      label: FULL_FUNNEL_STEP_LABELS[type],
+      count,
+      dropOffPercent:
+        steps.length === 0 ? null : dropOffPercent(previousCount, count),
+    });
+    previousCount = count;
+  }
+
+  const domainEvents = eventsByType.get("domain_completed") ?? [];
+  const domainMap = new Map<
+    number,
+    {
+      slug: string | null;
+      actors: Set<string>;
+    }
+  >();
+
+  for (const event of domainEvents) {
+    const actor = resolveFunnelActorKey(event);
+    if (!actor) {
+      continue;
+    }
+
+    const metadata =
+      event.metadata && typeof event.metadata === "object"
+        ? (event.metadata as Record<string, unknown>)
+        : null;
+    const domainIndex = metadata?.domainIndex;
+    if (typeof domainIndex !== "number" || domainIndex < 0) {
+      continue;
+    }
+
+    const domainSlug =
+      typeof metadata?.domainSlug === "string" ? metadata.domainSlug : null;
+    const entry = domainMap.get(domainIndex) ?? {
+      slug: domainSlug,
+      actors: new Set<string>(),
+    };
+    if (!entry.slug && domainSlug) {
+      entry.slug = domainSlug;
+    }
+    entry.actors.add(actor);
+    domainMap.set(domainIndex, entry);
+  }
+
+  const sortedDomains = [...domainMap.entries()].sort(
+    ([left], [right]) => left - right,
+  );
+
+  const assessmentStartedCount = countDistinctActors(
+    eventsByType.get("assessment_started") ?? [],
+  );
+
+  const domainDropOff: DomainDropOffRow[] = sortedDomains.map(
+    ([domainIndex, entry], index) => {
+      const count = entry.actors.size;
+      const baseline =
+        index === 0
+          ? assessmentStartedCount
+          : (sortedDomains[index - 1]?.[1].actors.size ?? 0);
+
+      return {
+        domainIndex,
+        domainSlug: entry.slug,
+        count,
+        dropOffPercent: dropOffPercent(baseline, count),
+      };
+    },
+  );
+
+  return { steps, domainDropOff };
+}

@@ -11,6 +11,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { apiPost } from "@/lib/api-client";
 import { getResultToken } from "@/lib/assessment-storage";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { PAGE_MESSAGES, resolveApiError } from "@/lib/page-messages";
 import type { FinishAssessmentResponse } from "@/modules/assessment/assessment.types";
 
@@ -60,6 +61,10 @@ export default function ProcessingPage() {
           `/api/assessments/${assessmentId}/finish`,
           {},
         );
+        void trackFunnelEvent({
+          type: "assessment_completed",
+          assessmentSessionId: assessmentId,
+        });
         navigateToResult(router, assessmentId, result);
       } catch (err) {
         finishStarted.current = false;
@@ -78,6 +83,10 @@ export default function ProcessingPage() {
         `/api/assessments/${assessmentId}/finish`,
         {},
       );
+      void trackFunnelEvent({
+        type: "assessment_completed",
+        assessmentSessionId: assessmentId,
+      });
       navigateToResult(router, assessmentId, result);
     } catch (err) {
       setError(resolveApiError(err, PAGE_MESSAGES.finishFailed));

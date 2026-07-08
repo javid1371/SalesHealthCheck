@@ -134,6 +134,15 @@ enum FunnelEventType {
   consultation_started
   sms_sent
   opt_out
+  landing_view
+  assessment_start_click
+  otp_sent
+  phone_verified
+  assessment_started
+  domain_completed
+  review_reached
+  assessment_completed
+  consultation_submitted
 }
 
 enum ShortLinkPurpose {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PrivacyConsentCheckbox } from "@/components/legal/PrivacyConsentCheckbox";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -8,8 +8,9 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
-import { apiPost, ApiClientError } from "@/lib/api-client";
+import { apiGet, apiPost, ApiClientError } from "@/lib/api-client";
 import { getResultToken } from "@/lib/assessment-storage";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import type { CreateConsultationRequestResponse } from "@/modules/assessment/assessment.types";
 
 interface ConsultationFormProps {
@@ -33,6 +34,26 @@ export function ConsultationForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    void apiGet<{
+      authenticated: boolean;
+      name?: string;
+      phone?: string;
+    }>("/api/me")
+      .then((me) => {
+        if (!me.authenticated) {
+          return;
+        }
+        if (me.name) {
+          setName(me.name);
+        }
+        if (me.phone) {
+          setPhone(me.phone);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -66,6 +87,10 @@ export function ConsultationForm({
           token,
         },
       );
+      void trackFunnelEvent({
+        type: "consultation_submitted",
+        assessmentSessionId: assessmentId,
+      });
       setSubmitted(true);
       onSuccess?.();
     } catch (err) {
@@ -145,7 +170,7 @@ export function ConsultationForm({
         loading={loading}
         loadingLabel="در حال ارسال..."
       >
-        ثبت درخواست تحلیل
+        ثبت درخواست تماس رایگان
       </Button>
     </form>
   );

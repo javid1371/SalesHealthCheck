@@ -21,6 +21,7 @@ import {
   setAnswer,
   type AnswerMap,
 } from "@/lib/assessment-storage";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { PAGE_MESSAGES, resolveApiError } from "@/lib/page-messages";
 import type { QuestionsForAssessmentDto } from "@/modules/question-bank/question-bank.types";
 import type {
@@ -191,6 +192,15 @@ export default function DomainQuestionsPage() {
 
     const saved = await saveCurrentDomain();
     if (!saved) return;
+
+    void trackFunnelEvent({
+      type: "domain_completed",
+      assessmentSessionId: assessmentId,
+      metadata: {
+        domainIndex,
+        domainSlug: domain.slug,
+      },
+    });
 
     const isLastDomain = domainIndex === questionsData.domains.length - 1;
     if (isLastDomain) {

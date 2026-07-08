@@ -8,7 +8,7 @@ import {
   shouldShowConfidenceNote,
 } from "@/config/model-v1/report-content/tone-templates";
 import {
-  ctaAfterValueCopy,
+  ctaAfterValueHeadline,
   ctaScoreCopy,
   ctaTopCopy,
   getCtaButtonLabel,
@@ -398,7 +398,7 @@ function buildCtaPlacements(
   if (spec.valueAtStake) {
     placements.push({
       id: "afterValue",
-      headline: ctaAfterValueCopy.headline,
+      headline: ctaAfterValueHeadline(spec.valueAtStake.tier1.monthly),
       buttonLabel,
       variant: "prominent",
     });

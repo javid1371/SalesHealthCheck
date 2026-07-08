@@ -51,6 +51,7 @@ import type {
 } from "./admin.types";
 import {
   getSmsFunnelAdminMetrics,
+  getFullConversionFunnelMetrics,
   listRecentSmsMessages,
 } from "@/modules/sms-funnel/funnel.repository";
 import { validateAdminLoginRequest } from "./admin.validators";
@@ -551,6 +552,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
         usersCompletedAllTime,
       ),
     },
+    fullConversionFunnel: await getFullConversionFunnelMetrics(),
     leadKpis: {
       newThisWeek: newLeadsThisWeek,
       pendingAssignment,

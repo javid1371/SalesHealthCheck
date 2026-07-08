@@ -80,6 +80,25 @@ export interface AdminDashboardFunnel {
   consultationRate: number;
 }
 
+export interface AdminFullFunnelStep {
+  key: string;
+  label: string;
+  count: number;
+  dropOffPercent: number | null;
+}
+
+export interface AdminDomainDropOffRow {
+  domainIndex: number;
+  domainSlug: string | null;
+  count: number;
+  dropOffPercent: number | null;
+}
+
+export interface AdminFullConversionFunnel {
+  steps: AdminFullFunnelStep[];
+  domainDropOff: AdminDomainDropOffRow[];
+}
+
 export interface AdminSmsFunnelMetrics {
   smsSent: number;
   smsPending: number;
@@ -161,6 +180,7 @@ export interface AdminUrgentLeadRow {
 export interface AdminDashboardData {
   kpis: AdminDashboardKpis;
   funnel: AdminDashboardFunnel;
+  fullConversionFunnel: AdminFullConversionFunnel;
   leadKpis: AdminLeadKpis;
   leadStatusFunnel: AdminLeadStatusFunnel;
   leadSourceBreakdown: AdminLeadSourceBreakdown;

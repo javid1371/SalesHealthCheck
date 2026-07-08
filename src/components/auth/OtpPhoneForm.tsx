@@ -7,6 +7,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { formatAuthApiError, sendOtpRequest } from "@/lib/auth-client";
+import { trackFunnelEvent } from "@/lib/funnel-track";
 import { OTP_SEND_SUCCESS_MESSAGE } from "@/modules/auth/auth.types";
 
 interface OtpPhoneFormProps {
@@ -36,6 +37,7 @@ export function OtpPhoneForm({
     setSubmitting(true);
     try {
       const result = await sendOtpRequest(phone.trim());
+      void trackFunnelEvent({ type: "otp_sent" });
       onSent(phone.trim(), result.devCode);
     } catch (err) {
       setError(formatAuthApiError(err));

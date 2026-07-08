@@ -89,6 +89,19 @@ describe("auto lead assignment (integration)", () => {
       role: "sales_expert",
     });
 
+    await db.staffUser.updateMany({
+      where: {
+        role: "sales_expert",
+        isActive: true,
+        id: { not: expert.id },
+      },
+      data: { lastAssignedAt: new Date() },
+    });
+    await db.staffUser.update({
+      where: { id: expert.id },
+      data: { lastAssignedAt: null },
+    });
+
     const { start, finish } = await createCompletedAssessment(201);
     const consultation = await submitConsultationRequest({
       assessmentSessionId: start.assessmentId,
