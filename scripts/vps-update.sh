@@ -29,6 +29,15 @@ fi
 
 export APP_IMAGE
 
+# Persist the deployed tag so later restarts (without APP_IMAGE in the shell)
+# do not fall back to a stale value still sitting in .env.
+if grep -q '^APP_IMAGE=' .env; then
+  sed -i.bak "s|^APP_IMAGE=.*|APP_IMAGE=${APP_IMAGE}|" .env
+  rm -f .env.bak
+else
+  printf '\nAPP_IMAGE=%s\n' "${APP_IMAGE}" >> .env
+fi
+
 echo "==> Pulling ${APP_IMAGE}..."
 docker compose -f "${COMPOSE_FILE}" pull app
 
