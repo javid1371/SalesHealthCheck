@@ -810,7 +810,7 @@ async function submitConsultationRequest(
       (await findConsultationRequestByAssessmentSessionId(
         latestCompleted.id,
       )) ??
-      (user?.id ? await findConsultationRequestByUserId(user.id) : null);
+      (await findConsultationRequestByUserId(conversation.userId));
     if (existing) {
       await upgradeExistingLeadToMessenger(existing.id, consultationInput);
     } else {
