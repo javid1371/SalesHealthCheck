@@ -17,7 +17,11 @@ import {
   countAnswersForAssessment,
   findAssessmentById,
 } from "@/modules/assessment/assessment.repository";
-import { createConsultationRequest, findConsultationRequestByAssessmentSessionId } from "@/modules/consultation/consultation.repository";
+import {
+  createConsultationRequest,
+  findConsultationRequestByAssessmentSessionId,
+  findConsultationRequestByUserId,
+} from "@/modules/consultation/consultation.repository";
 import {
   finalizeNewLead,
   hookLeadOnAssessmentAbandoned,
@@ -802,9 +806,11 @@ async function submitConsultationRequest(
   };
 
   if (latestCompleted?.id) {
-    const existing = await findConsultationRequestByAssessmentSessionId(
-      latestCompleted.id,
-    );
+    const existing =
+      (await findConsultationRequestByAssessmentSessionId(
+        latestCompleted.id,
+      )) ??
+      (user?.id ? await findConsultationRequestByUserId(user.id) : null);
     if (existing) {
       await upgradeExistingLeadToMessenger(existing.id, consultationInput);
     } else {

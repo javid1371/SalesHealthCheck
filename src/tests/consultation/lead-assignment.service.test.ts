@@ -14,10 +14,12 @@ const repoMock = vi.hoisted(() => ({
   findAssessmentInProgressLeadsForStaleCheck: vi.fn(),
   findConsultationRequestByAssessmentSessionId: vi.fn(),
   findConsultationRequestById: vi.fn(),
+  findConsultationRequestByUserId: vi.fn(),
   findDueSystemLeadsForAssignment: vi.fn(),
   findUnassignedOpenLeadsForAssignment: vi.fn(),
   transitionLeadToAssessmentCompleted: vi.fn(),
   transitionLeadToAssessmentIncomplete: vi.fn(),
+  updateLeadAssessmentBinding: vi.fn(),
   updateLeadPurchaseProbability: vi.fn(),
   upgradeConsultationRequestToDirect: vi.fn(),
   upgradeConsultationRequestToMessenger: vi.fn(),
@@ -67,7 +69,10 @@ describe("lead-assignment.service", () => {
       status: "new",
     });
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.updateLeadAssessmentBinding.mockResolvedValue({});
     assessmentMock.findAssessmentById.mockResolvedValue({
+      userId: "user-1",
       user: { name: "Test User", phone: "09121111111", email: "test@example.com" },
       organization: { businessName: "Test Biz" },
       structuredDiagnosis: null,
@@ -198,9 +203,12 @@ describe("lead-assignment.service", () => {
     expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("createLeadOnAssessmentStart dedupes existing leads", async () => {
-    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+  it("createLeadOnAssessmentStart reuses the user's existing pipeline lead", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue({
       id: "existing-lead",
+      status: "assessment_completed",
+      assignedToId: "expert-1",
     });
 
     const { createLeadOnAssessmentStart } = await import(
@@ -208,14 +216,49 @@ describe("lead-assignment.service", () => {
     );
 
     await createLeadOnAssessmentStart({
-      assessmentSessionId: "assessment-1",
+      assessmentSessionId: "assessment-2",
       name: "Test User",
       phone: "09121111111",
     });
 
     expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
-    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "existing-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-2",
+        status: "assessment_in_progress",
+      }),
+    );
     expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart does not regress CRM lead status", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "crm-lead",
+      status: "contacted",
+      assignedToId: "expert-1",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-2",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "crm-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-2",
+      }),
+    );
+    expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(
+      "status",
+    );
   });
 
   it("transitionLeadOnAssessmentComplete moves in-progress lead to completed", async () => {

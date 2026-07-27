@@ -56,6 +56,74 @@ export async function findConsultationRequestByAssessmentSessionId(
   });
 }
 
+/** Any lead already linked to one of this user's assessment sessions. */
+export async function findConsultationRequestByUserId(userId: string) {
+  return db.consultationRequest.findFirst({
+    where: {
+      assessmentSession: { userId },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function findConsultationRequestsByUserId(userId: string) {
+  return db.consultationRequest.findMany({
+    where: {
+      assessmentSession: { userId },
+    },
+    orderBy: { createdAt: "asc" },
+    include: {
+      _count: {
+        select: {
+          leadActivities: true,
+          consultationNotes: true,
+        },
+      },
+    },
+  });
+}
+
+export async function updateLeadAssessmentBinding(
+  id: string,
+  data: {
+    assessmentSessionId: string;
+    reportId?: string | null;
+    status?: LeadStatus;
+    name?: string;
+    phone?: string | null;
+    email?: string | null;
+  },
+) {
+  return db.consultationRequest.update({
+    where: { id },
+    data: {
+      assessmentSessionId: data.assessmentSessionId,
+      ...(data.reportId !== undefined
+        ? data.reportId
+          ? { reportId: data.reportId }
+          : { reportId: null }
+        : {}),
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.name ? { name: data.name } : {}),
+      ...(data.phone !== undefined
+        ? { phone: data.phone ?? null }
+        : {}),
+      ...(data.email !== undefined
+        ? { email: data.email ?? null }
+        : {}),
+    },
+  });
+}
+
+export async function deleteConsultationRequestsByIds(ids: string[]) {
+  if (ids.length === 0) {
+    return { count: 0 };
+  }
+  return db.consultationRequest.deleteMany({
+    where: { id: { in: ids } },
+  });
+}
+
 export async function findDueSystemLeadsForAssignment(now: Date, limit = 100) {
   return db.consultationRequest.findMany({
     where: {

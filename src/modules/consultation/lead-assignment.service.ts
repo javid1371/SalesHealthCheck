@@ -16,10 +16,12 @@ import {
   findAssessmentInProgressLeadsForStaleCheck,
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
+  findConsultationRequestByUserId,
   findDueSystemLeadsForAssignment,
   findUnassignedOpenLeadsForAssignment,
   transitionLeadToAssessmentCompleted,
   transitionLeadToAssessmentIncomplete,
+  updateLeadAssessmentBinding,
   updateLeadPurchaseProbability,
   upgradeConsultationRequestToDirect,
   upgradeConsultationRequestToMessenger,
@@ -317,10 +319,26 @@ export async function upgradeExistingLeadToMessenger(
   return { id: updated.id, createdAt: updated.createdAt };
 }
 
+async function findLeadForAssessmentUser(assessmentSessionId: string) {
+  const bySession =
+    await findConsultationRequestByAssessmentSessionId(assessmentSessionId);
+  if (bySession) {
+    return bySession;
+  }
+
+  const assessment = await findAssessmentById(assessmentSessionId);
+  if (!assessment) {
+    return null;
+  }
+
+  return findConsultationRequestByUserId(assessment.userId);
+}
+
 /**
  * Soft-assign a system lead when an assessment starts.
- * Creates status=assessment_in_progress and assigns round-robin without expert SMS
- * (experts must not call while the user is mid-test).
+ * One lead per person: reuses the user's existing lead when present.
+ * Creates/updates status=assessment_in_progress and assigns round-robin without
+ * expert SMS (experts must not call while the user is mid-test).
  */
 export async function createLeadOnAssessmentStart(input: {
   assessmentSessionId: string;
@@ -328,14 +346,42 @@ export async function createLeadOnAssessmentStart(input: {
   phone?: string | null;
   email?: string | null;
 }): Promise<void> {
-  const existing = await findConsultationRequestByAssessmentSessionId(
-    input.assessmentSessionId,
-  );
+  const existing = await findLeadForAssessmentUser(input.assessmentSessionId);
+  const name = input.name.trim() || "کاربر";
+
   if (existing) {
+    // CRM statuses (consultation request / contacted / …) must not regress.
+    if (
+      !ASSESSMENT_PIPELINE_STATUSES.includes(
+        existing.status as (typeof ASSESSMENT_PIPELINE_STATUSES)[number],
+      )
+    ) {
+      await updateLeadAssessmentBinding(existing.id, {
+        assessmentSessionId: input.assessmentSessionId,
+        name,
+        phone: input.phone,
+        email: input.email,
+      });
+      return;
+    }
+
+    await updateLeadAssessmentBinding(existing.id, {
+      assessmentSessionId: input.assessmentSessionId,
+      status: "assessment_in_progress",
+      name,
+      phone: input.phone,
+      email: input.email,
+    });
+
+    if (!existing.assignedToId) {
+      await finalizeNewLead(existing.id, {
+        assessmentSessionId: input.assessmentSessionId,
+        mode: "immediate",
+        notifyExpert: false,
+      });
+    }
     return;
   }
-
-  const name = input.name.trim() || "کاربر";
 
   const lead = await createConsultationRequest({
     name,
@@ -376,9 +422,7 @@ export async function transitionLeadOnAssessmentComplete(input: {
   structuredDiagnosis?: StructuredDiagnosis | null;
   valueAtStake?: ValueAtStakeSpec | null;
 }): Promise<void> {
-  const existing = await findConsultationRequestByAssessmentSessionId(
-    input.assessmentSessionId,
-  );
+  const existing = await findLeadForAssessmentUser(input.assessmentSessionId);
 
   if (!existing) {
     const assessment = await findAssessmentById(input.assessmentSessionId);
@@ -404,6 +448,11 @@ export async function transitionLeadOnAssessmentComplete(input: {
     });
     return;
   }
+
+  await updateLeadAssessmentBinding(existing.id, {
+    assessmentSessionId: input.assessmentSessionId,
+    reportId: input.reportId,
+  });
 
   const { transitioned, fromStatus } =
     await transitionLeadToAssessmentCompleted(existing.id, input.reportId);
@@ -452,12 +501,14 @@ export async function createSystemLeadIfEligible(input: {
 export async function markAssessmentLeadIncomplete(
   assessmentSessionId: string,
 ): Promise<boolean> {
-  const existing = await findConsultationRequestByAssessmentSessionId(
-    assessmentSessionId,
-  );
+  const existing = await findLeadForAssessmentUser(assessmentSessionId);
   if (!existing) {
     return false;
   }
+
+  await updateLeadAssessmentBinding(existing.id, {
+    assessmentSessionId,
+  });
 
   const { transitioned, fromStatus } =
     await transitionLeadToAssessmentIncomplete(existing.id);

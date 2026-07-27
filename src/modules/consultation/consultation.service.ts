@@ -21,6 +21,7 @@ import {
   findAllConsultationRequests,
   findConsultationNotes,
   findConsultationRequestByAssessmentSessionId,
+  findConsultationRequestByUserId,
   findConsultationRequestById,
   findConsultationRequests,
   findConsultationRequestsByIds,
@@ -145,9 +146,14 @@ export async function submitConsultationRequest(
   let record: { id: string; createdAt: Date };
 
   if (validated.assessmentSessionId) {
-    const existing = await findConsultationRequestByAssessmentSessionId(
-      validated.assessmentSessionId,
-    );
+    const assessment = await findAssessmentById(validated.assessmentSessionId);
+    const existing =
+      (await findConsultationRequestByAssessmentSessionId(
+        validated.assessmentSessionId,
+      )) ??
+      (assessment
+        ? await findConsultationRequestByUserId(assessment.userId)
+        : null);
     if (existing) {
       record = await upgradeExistingLeadToDirect(existing.id, input);
     } else {
