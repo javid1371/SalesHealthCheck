@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 interface SectionHeaderProps {
-  label: string;
+  label?: string;
   title?: string;
   subtitle?: string;
   className?: string;
@@ -15,15 +15,18 @@ export function SectionHeader({
 }: SectionHeaderProps) {
   return (
     <div className={className}>
-      <p className="text-sm font-medium text-emerald-700">{label}</p>
+      {label && (
+        <p className="text-sm font-medium text-emerald-700">{label}</p>
+      )}
       {subtitle && (
-        <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>
+        <p className={cn("text-sm text-zinc-500", label && "mt-1")}>{subtitle}</p>
       )}
       {title && (
         <h2
           className={cn(
             "font-bold text-zinc-900",
-            subtitle ? "mt-2 text-3xl" : "mt-2 text-2xl sm:text-3xl",
+            (label || subtitle) && "mt-2",
+            subtitle ? "text-3xl" : "text-2xl sm:text-3xl",
           )}
         >
           {title}

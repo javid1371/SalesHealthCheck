@@ -3,31 +3,37 @@ import {
   LandingFunnelTracker,
   LandingStartButton,
 } from "@/components/funnel/LandingFunnel";
+import { LandingHeroMedia } from "@/components/funnel/LandingHeroMedia";
 import { LandingSampleOutput } from "@/components/funnel/LandingSampleOutput";
 import { HealthGauge } from "@/components/report/blocks/HealthGauge";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { countCompletedAssessments } from "@/modules/assessment/assessment.repository";
+
+/** Hide the live count until there are enough completions to feel credible. */
+const MIN_COMPLETED_TO_SHOW = 10;
+
+export const revalidate = 300;
 
 const TRUST_BULLETS = [
-  "مناسب برای مدیران کسب‌وکارهای کوچک و متوسط",
-  "خروجی شامل امتیاز، گلوگاه‌ها و اقدام‌های پیشنهادی",
-  "زمان تقریبی: ۱۰ تا ۱۵ دقیقه",
+  "اگه فروش داری ولی نمی‌دونی مشکل از کجاست، برای توئه",
+  "تهش می‌فهمی اولویت چیه و از کجا باید شروع کنی",
+  "جلسه و مشاور لازم نداره؛ چند تا سؤال کافیه",
 ] as const;
 
 const SOCIAL_PROOF_QUOTES = [
   {
     quote:
-      "«برای اولین بار دیدم مشکل فروش از کجاست — نه حدس، بلکه با عدد و اولویت.»",
+      "«فکر می‌کردم جذب مشکل داره. معلوم شد پیگیری‌مون می‌لنگه.»",
     author: "مدیر بازاریابی، کسب‌وکار خدماتی",
   },
   {
     quote:
-      "«گزارش عملی بود؛ همان هفته دو اقدام کوتاه‌مدت را اجرا کردیم.»",
+      "«دیگه جلسه حدس‌زنی نداریم. می‌دونیم اول باید چی کار کنیم.»",
     author: "بنیان‌گذار، فروش B2B",
   },
   {
-    quote:
-      "«زیر ۱۵ دقیقه مشخص شد کدام بخش قیف بیشترین افت را دارد.»",
+    quote: "«۱۵ دقیقه طول کشید بفهمم پول کجا داره می‌سوزه.»",
     author: "مدیرعامل، فروشگاه آنلاین",
   },
 ] as const;
@@ -38,7 +44,10 @@ const SAMPLE_GAUGE = {
   survivalStatus: "AMBER" as const,
 };
 
-export default function Home() {
+export default async function Home() {
+  const completedCount = await countCompletedAssessments();
+  const showCompletedCount = completedCount >= MIN_COMPLETED_TO_SHOW;
+
   return (
     <PageLayout maxWidth="lg">
       <LandingFunnelTracker />
@@ -47,19 +56,14 @@ export default function Home() {
         <Card padding="spacious">
           <SectionHeader label="Sales Health Check" />
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
-            سلامت مسیر فروش کسب‌وکارت را بسنج
+            ممکنه مشکل فروش‌ات جایی باشه که فکرشو نمی‌کنی
           </h1>
           <p className="mt-4 text-lg leading-8 text-zinc-600">
-            در چند دقیقه گلوگاه‌های اصلی فروش را پیدا کن و برنامه اقدام
-            عملیاتی دریافت کن.
+            خیلی‌ها رو جذب مشتری خرج می‌کنن، ولی پول‌شون یه جای دیگه می‌سوزه. ۱۵
+            دقیقه وقت بذار، ببین گیر اصلی کجاست.
           </p>
 
-          <div
-            className="mt-8 flex aspect-video items-center justify-center rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 text-sm text-zinc-500"
-            aria-hidden
-          >
-            ویدیو / تصویر معرفی (placeholder)
-          </div>
+          <LandingHeroMedia />
 
           <ul className="mt-8 space-y-3">
             {TRUST_BULLETS.map((item) => (
@@ -78,15 +82,15 @@ export default function Home() {
             fullWidth
             className="mt-10"
           >
-            شروع ارزیابی فروش
+            رایگان شروع کن
           </LandingStartButton>
         </Card>
 
         <Card padding="spacious">
           <SectionHeader
-            label="خروجی آزمون"
-            title="بعد از آزمون چه می‌گیری؟"
-            subtitle="نمونه‌ای از گزارش شخصی‌سازی‌شده — محتوای واقعی بر اساس پاسخ‌های شما"
+            label="چیزی که می‌گیری"
+            title="یه گزارش که بگه از کجا شروع کنی"
+            subtitle="نمونه‌ست؛ مال خودت بعد از جواب‌هات می‌آد"
           />
 
           <div className="mt-8 space-y-6">
@@ -95,22 +99,23 @@ export default function Home() {
           </div>
 
           <p className="mt-6 text-sm leading-7 text-zinc-600">
-            علاوه بر امتیاز کلی، گلوگاه‌های اصلی، اقدام‌های پیشنهادی و در صورت
-            تمایل، برآورد فرصت فروش از دست‌رفته را دریافت می‌کنید.
+            امتیاز، چند تا گلوگاه اصلی، و کارهایی که همون هفته می‌تونی انجام بدی.
+            اگه بخوای می‌گه چقدر فروش داری از دست می‌دی.
           </p>
         </Card>
 
         <Card padding="spacious">
-          <SectionHeader
-            label="اثبات اجتماعی"
-            title="مدیران کسب‌وکارهایی مثل شما از این ابزار استفاده کرده‌اند"
-          />
+          <SectionHeader title="کسایی که تمومش کردن، دیگه حدس نمی‌زنن" />
 
-          <p className="mt-4 text-sm text-zinc-600">
-            بیش از{" "}
-            <span className="font-semibold text-zinc-900">۵۰۰+</span> ارزیابی
-            تکمیل‌شده (placeholder)
-          </p>
+          {showCompletedCount && (
+            <p className="mt-4 text-sm text-zinc-600">
+              تا الان{" "}
+              <span className="font-semibold text-zinc-900">
+                {completedCount.toLocaleString("fa-IR")}
+              </span>{" "}
+              نفر ارزیابی رو تموم کردن
+            </p>
+          )}
 
           <ul className="mt-8 space-y-6">
             {SOCIAL_PROOF_QUOTES.map((item) => (
@@ -129,7 +134,7 @@ export default function Home() {
             fullWidth
             className="mt-10"
           >
-            شروع ارزیابی فروش
+            رایگان شروع کن
           </LandingStartButton>
         </Card>
       </div>

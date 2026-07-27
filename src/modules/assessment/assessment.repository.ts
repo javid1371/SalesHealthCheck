@@ -130,6 +130,12 @@ export async function countAnswersForAssessment(assessmentId: string) {
   });
 }
 
+export async function countCompletedAssessments() {
+  return db.assessmentSession.count({
+    where: { status: "completed" },
+  });
+}
+
 export async function upsertAnswer(data: {
   assessmentSessionId: string;
   questionId: string;
