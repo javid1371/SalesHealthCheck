@@ -15,6 +15,7 @@ const repoMock = vi.hoisted(() => ({
   findConsultationRequestByAssessmentSessionId: vi.fn(),
   findConsultationRequestById: vi.fn(),
   findDueSystemLeadsForAssignment: vi.fn(),
+  findUnassignedOpenLeadsForAssignment: vi.fn(),
   transitionLeadToAssessmentCompleted: vi.fn(),
   transitionLeadToAssessmentIncomplete: vi.fn(),
   updateLeadPurchaseProbability: vi.fn(),
@@ -57,6 +58,7 @@ describe("lead-assignment.service", () => {
       maxOpenLeadsPerExpert: 30,
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
@@ -97,6 +99,7 @@ describe("lead-assignment.service", () => {
       fromStatus: "assessment_in_progress",
     });
     repoMock.findAssessmentInProgressLeadsForStaleCheck.mockResolvedValue([]);
+    repoMock.findUnassignedOpenLeadsForAssignment.mockResolvedValue([]);
     smsMock.sendMessage.mockResolvedValue({});
   });
 
@@ -111,7 +114,9 @@ describe("lead-assignment.service", () => {
 
     await autoAssignAndNotifyLead("lead-1");
 
-    expect(staffMock.pickNextSalesExpert).toHaveBeenCalled();
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+    });
     expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalledWith(
       "lead-1",
       "expert-1",
@@ -122,6 +127,28 @@ describe("lead-assignment.service", () => {
     );
   });
 
+  it("passes excluded staff IDs into round-robin picker", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: ["amin-id"],
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: ["amin-id"],
+    });
+  });
+
   it("skips assignment when feature flag is disabled", async () => {
     leadConfigMock.getLeadSettings.mockResolvedValue({
       autoAssignEnabled: false,
@@ -130,6 +157,7 @@ describe("lead-assignment.service", () => {
       maxOpenLeadsPerExpert: 30,
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
     });
 
     const { autoAssignAndNotifyLead } = await import(
@@ -554,5 +582,37 @@ describe("lead-assignment.service", () => {
     expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalledTimes(2);
     expect(repoMock.clearAssignScheduledFor).toHaveBeenCalledWith("due-lead-1");
     expect(repoMock.clearAssignScheduledFor).toHaveBeenCalledWith("due-lead-2");
+  });
+
+  it("processUnassignedLeadAssignments assigns open unassigned leads", async () => {
+    const assigned = new Set<string>();
+    repoMock.findUnassignedOpenLeadsForAssignment.mockResolvedValue([
+      { id: "open-1", status: "new" },
+      { id: "open-2", status: "assessment_in_progress" },
+    ]);
+    repoMock.findConsultationRequestById.mockImplementation(
+      async (id: string) => ({
+        id,
+        assignedToId: assigned.has(id) ? "expert-1" : null,
+        status: id === "open-2" ? "assessment_in_progress" : "new",
+      }),
+    );
+    repoMock.assignLeadToExpertIfUnassigned.mockImplementation(
+      async (leadId: string) => {
+        assigned.add(leadId);
+        return true;
+      },
+    );
+
+    const { processUnassignedLeadAssignments } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    const processed = await processUnassignedLeadAssignments();
+
+    expect(processed).toBe(2);
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledTimes(2);
+    // Mid-assessment soft lead: no SMS for that assignment path.
+    expect(smsMock.sendMessage).toHaveBeenCalledTimes(1);
   });
 });

@@ -69,6 +69,19 @@ export async function findDueSystemLeadsForAssignment(now: Date, limit = 100) {
   });
 }
 
+/** Open leads with no assignee — for automatic backfill / catch-up assignment. */
+export async function findUnassignedOpenLeadsForAssignment(limit = 100) {
+  return db.consultationRequest.findMany({
+    where: {
+      assignedToId: null,
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true, status: true },
+  });
+}
+
 export async function clearAssignScheduledFor(id: string) {
   return db.consultationRequest.update({
     where: { id },

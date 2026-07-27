@@ -10,6 +10,7 @@ export const LEAD_SETTING_KEYS = {
   maxOpenLeadsPerExpert: "max_open_leads_per_expert",
   hotLeadDirectAssigneeId: "hot_lead_direct_assignee_id",
   assessmentIncompleteAfterHours: "assessment_incomplete_after_hours",
+  autoAssignExcludeStaffIds: "auto_assign_exclude_staff_ids",
 } as const;
 
 export const DEFAULT_EXPERT_NEW_LEAD_SMS = "لید جدید داری\nچک کن";
@@ -24,6 +25,8 @@ export interface LeadSettings {
   maxOpenLeadsPerExpert: number;
   hotLeadDirectAssigneeId: string | null;
   assessmentIncompleteAfterHours: number;
+  /** Staff IDs excluded from automatic round-robin assignment. */
+  autoAssignExcludeStaffIds: string[];
 }
 
 export interface UpdateLeadSettingsInput {
@@ -33,6 +36,25 @@ export interface UpdateLeadSettingsInput {
   maxOpenLeadsPerExpert?: number;
   hotLeadDirectAssigneeId?: string | null;
   assessmentIncompleteAfterHours?: number;
+  autoAssignExcludeStaffIds?: string[];
+}
+
+function parseStaffIdList(raw: string | undefined): string[] {
+  if (!raw?.trim()) {
+    return [];
+  }
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function serializeStaffIdList(ids: string[]): string {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))].join(",");
 }
 
 function assertValidDelayHours(value: number, field = "systemAssignDelayHours"): void {
@@ -97,6 +119,9 @@ export async function getLeadSettings(): Promise<LeadSettings> {
   const incompleteHoursDb = map.get(
     LEAD_SETTING_KEYS.assessmentIncompleteAfterHours,
   );
+  const excludeStaffIdsDb = map.get(
+    LEAD_SETTING_KEYS.autoAssignExcludeStaffIds,
+  );
 
   return {
     autoAssignEnabled:
@@ -121,6 +146,7 @@ export async function getLeadSettings(): Promise<LeadSettings> {
       incompleteHoursDb !== undefined
         ? Number.parseInt(incompleteHoursDb, 10)
         : env.leadAssessmentIncompleteAfterHours,
+    autoAssignExcludeStaffIds: parseStaffIdList(excludeStaffIdsDb),
   };
 }
 
@@ -184,6 +210,34 @@ export async function updateLeadSettings(
       await upsertSetting(
         LEAD_SETTING_KEYS.hotLeadDirectAssigneeId,
         input.hotLeadDirectAssigneeId,
+      );
+    }
+  }
+
+  if (input.autoAssignExcludeStaffIds !== undefined) {
+    const ids = [
+      ...new Set(
+        input.autoAssignExcludeStaffIds
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
+    for (const id of ids) {
+      const staff = await findStaffUserById(id);
+      if (!staff || staff.role !== "sales_expert") {
+        throw new AppError(
+          "VALIDATION_ERROR",
+          "autoAssignExcludeStaffIds must contain sales expert IDs",
+          400,
+        );
+      }
+    }
+    if (ids.length === 0) {
+      await deleteSetting(LEAD_SETTING_KEYS.autoAssignExcludeStaffIds);
+    } else {
+      await upsertSetting(
+        LEAD_SETTING_KEYS.autoAssignExcludeStaffIds,
+        serializeStaffIdList(ids),
       );
     }
   }

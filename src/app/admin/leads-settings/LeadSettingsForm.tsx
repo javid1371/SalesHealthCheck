@@ -36,6 +36,9 @@ export function LeadSettingsForm({
   const [hotLeadDirectAssigneeId, setHotLeadDirectAssigneeId] = useState(
     settings.hotLeadDirectAssigneeId ?? "",
   );
+  const [autoAssignExcludeStaffIds, setAutoAssignExcludeStaffIds] = useState<
+    string[]
+  >(settings.autoAssignExcludeStaffIds);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -57,6 +60,7 @@ export function LeadSettingsForm({
         expertNewLeadSms,
         maxOpenLeadsPerExpert: Number.parseInt(maxOpenLeadsPerExpert, 10),
         hotLeadDirectAssigneeId: hotLeadDirectAssigneeId.trim() || null,
+        autoAssignExcludeStaffIds,
       });
       setSuccess("تنظیمات ذخیره شد.");
       router.refresh();
@@ -164,6 +168,44 @@ export function LeadSettingsForm({
           </select>
           <p className="mt-1 text-xs text-zinc-500">
             اگر انتخاب شود، لیدهای hot مستقیماً به این کارشناس می‌روند.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-zinc-700">
+            خارج از تخصیص خودکار
+          </p>
+          <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
+            {salesExperts.length === 0 ? (
+              <p className="text-xs text-zinc-500">کارشناس فعالی نیست.</p>
+            ) : (
+              salesExperts.map((expert) => {
+                const checked = autoAssignExcludeStaffIds.includes(expert.id);
+                return (
+                  <label
+                    key={expert.id}
+                    className="flex items-center gap-2 text-sm text-zinc-700"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setAutoAssignExcludeStaffIds((prev) =>
+                          e.target.checked
+                            ? [...prev, expert.id]
+                            : prev.filter((id) => id !== expert.id),
+                        );
+                      }}
+                    />
+                    {expert.name} ({expert.phone})
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            کارشناسان انتخاب‌شده در چرخش خودکار لید جدید/بدون تخصیص شرکت
+            نمی‌کنند؛ تخصیص دستی همچنان ممکن است.
           </p>
         </div>
 

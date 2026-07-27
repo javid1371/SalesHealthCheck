@@ -62,13 +62,18 @@ export async function touchLastLogin(id: string) {
   });
 }
 
-export async function pickNextSalesExpert() {
+export async function pickNextSalesExpert(options?: {
+  excludeIds?: string[];
+}) {
+  const excludeIds = (options?.excludeIds ?? []).filter(Boolean);
+
   return db.$transaction(async (tx) => {
     const experts = await tx.staffUser.findMany({
       where: {
         role: "sales_expert",
         isActive: true,
         NOT: { phone: "" },
+        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
       },
       orderBy: [
         { lastAssignedAt: { sort: "asc", nulls: "first" } },

@@ -17,6 +17,7 @@ import {
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
   findDueSystemLeadsForAssignment,
+  findUnassignedOpenLeadsForAssignment,
   transitionLeadToAssessmentCompleted,
   transitionLeadToAssessmentIncomplete,
   updateLeadPurchaseProbability,
@@ -178,7 +179,9 @@ export async function autoAssignAndNotifyLead(
     return;
   }
 
-  const expert = await pickNextSalesExpert();
+  const expert = await pickNextSalesExpert({
+    excludeIds: settings.autoAssignExcludeStaffIds,
+  });
   if (!expert) {
     console.warn("[lead-assignment] no active sales expert with phone found");
     return;
@@ -549,6 +552,36 @@ export async function processDueSystemLeadAssignments(): Promise<number> {
     await autoAssignAndNotifyLead(lead.id);
     await clearAssignScheduledFor(lead.id);
     processed += 1;
+  }
+
+  return processed;
+}
+
+/**
+ * Catch-up: assign any open lead still without an expert (round-robin, respecting
+ * auto-assign exclusions). Skips expert SMS for mid-assessment soft leads.
+ */
+export async function processUnassignedLeadAssignments(): Promise<number> {
+  const settings = await getLeadSettings();
+  if (!settings.autoAssignEnabled) {
+    return 0;
+  }
+
+  const leads = await findUnassignedOpenLeadsForAssignment();
+  let processed = 0;
+
+  for (const lead of leads) {
+    const notifyExpert = lead.status !== "assessment_in_progress";
+    const before = await findConsultationRequestById(lead.id);
+    if (!before || before.assignedToId) {
+      continue;
+    }
+
+    await autoAssignAndNotifyLead(lead.id, { notifyExpert });
+    const after = await findConsultationRequestById(lead.id);
+    if (after?.assignedToId) {
+      processed += 1;
+    }
   }
 
   return processed;

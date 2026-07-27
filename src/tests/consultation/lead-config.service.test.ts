@@ -45,6 +45,7 @@ describe("lead-config.service", () => {
       maxOpenLeadsPerExpert: 30,
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
     });
   });
 
@@ -56,6 +57,7 @@ describe("lead-config.service", () => {
       { key: "max_open_leads_per_expert", value: "15" },
       { key: "hot_lead_direct_assignee_id", value: "expert-1" },
       { key: "assessment_incomplete_after_hours", value: "48" },
+      { key: "auto_assign_exclude_staff_ids", value: "expert-2,expert-3" },
     ]);
 
     const { getLeadSettings } = await import(
@@ -69,6 +71,7 @@ describe("lead-config.service", () => {
       maxOpenLeadsPerExpert: 15,
       hotLeadDirectAssigneeId: "expert-1",
       assessmentIncompleteAfterHours: 48,
+      autoAssignExcludeStaffIds: ["expert-2", "expert-3"],
     });
   });
 
@@ -182,5 +185,32 @@ describe("lead-config.service", () => {
       }),
     );
     expect(settings.hotLeadDirectAssigneeId).toBe("expert-1");
+  });
+
+  it("persists autoAssignExcludeStaffIds for sales experts", async () => {
+    mockFindStaffUserById.mockResolvedValue({
+      id: "expert-2",
+      isActive: true,
+      role: "sales_expert",
+    });
+    mockUpsert.mockResolvedValue({});
+    mockFindMany.mockResolvedValue([
+      { key: "auto_assign_exclude_staff_ids", value: "expert-2" },
+    ]);
+
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const settings = await updateLeadSettings({
+      autoAssignExcludeStaffIds: ["expert-2"],
+    });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "auto_assign_exclude_staff_ids" },
+        create: { key: "auto_assign_exclude_staff_ids", value: "expert-2" },
+      }),
+    );
+    expect(settings.autoAssignExcludeStaffIds).toEqual(["expert-2"]);
   });
 });

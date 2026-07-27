@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import {
   processDueSystemLeadAssignments,
   processStaleAssessmentLeads,
+  processUnassignedLeadAssignments,
 } from "@/modules/consultation/lead-assignment.service";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +27,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const [processed, staleMoved] = await Promise.all([
-    processDueSystemLeadAssignments(),
+  // Keep due + unassigned sequential so the same lead is not raced by both.
+  const [staleMoved, assignmentResult] = await Promise.all([
     processStaleAssessmentLeads(),
+    (async () => {
+      const processed = await processDueSystemLeadAssignments();
+      const unassignedAssigned = await processUnassignedLeadAssignments();
+      return { processed, unassignedAssigned };
+    })(),
   ]);
-  return NextResponse.json({ processed, staleMoved });
+  return NextResponse.json({
+    processed: assignmentResult.processed,
+    staleMoved,
+    unassignedAssigned: assignmentResult.unassignedAssigned,
+  });
 }
