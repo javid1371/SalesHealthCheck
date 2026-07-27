@@ -8,10 +8,10 @@ import { LandingSampleOutput } from "@/components/funnel/LandingSampleOutput";
 import { HealthGauge } from "@/components/report/blocks/HealthGauge";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { countAssessmentParticipants } from "@/modules/assessment/assessment.repository";
+import { countCompletedAssessments } from "@/modules/assessment/assessment.repository";
 
-/** Hide the live count until there are enough participants to feel credible. */
-const MIN_PARTICIPANTS_TO_SHOW = 10;
+/** Hide the live count until there are enough completions to feel credible. */
+const MIN_COMPLETED_TO_SHOW = 10;
 
 /** Avoid build-time prerender — this page queries Postgres for the live count. */
 export const dynamic = "force-dynamic";
@@ -46,8 +46,8 @@ const SAMPLE_GAUGE = {
 };
 
 export default async function Home() {
-  const participantCount = await countAssessmentParticipants();
-  const showParticipantCount = participantCount >= MIN_PARTICIPANTS_TO_SHOW;
+  const completedCount = await countCompletedAssessments();
+  const showCompletedCount = completedCount >= MIN_COMPLETED_TO_SHOW;
 
   return (
     <PageLayout maxWidth="lg">
@@ -108,13 +108,13 @@ export default async function Home() {
         <Card padding="spacious">
           <SectionHeader title="کسایی که تمومش کردن، دیگه حدس نمی‌زنن" />
 
-          {showParticipantCount && (
+          {showCompletedCount && (
             <p className="mt-4 text-sm text-zinc-600">
               تا الان{" "}
               <span className="font-semibold text-zinc-900">
-                {participantCount.toLocaleString("fa-IR")}
+                {completedCount.toLocaleString("fa-IR")}
               </span>{" "}
-              نفر از این ابزار استفاده کردن
+              نفر ارزیابی رو تموم کردن
             </p>
           )}
 

@@ -130,12 +130,10 @@ export async function countAnswersForAssessment(assessmentId: string) {
   });
 }
 
-/** Unique people who have started at least one assessment (any status). */
-export async function countAssessmentParticipants() {
-  const groups = await db.assessmentSession.groupBy({
-    by: ["userId"],
+export async function countCompletedAssessments() {
+  return db.assessmentSession.count({
+    where: { status: "completed" },
   });
-  return groups.length;
 }
 
 export async function upsertAnswer(data: {
