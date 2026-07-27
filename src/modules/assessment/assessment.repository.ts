@@ -177,14 +177,31 @@ export async function abandonAssessment(assessmentId: string) {
   });
 }
 
-export async function abandonInProgressAssessmentsForUser(userId: string) {
-  return db.assessmentSession.updateMany({
+/** Abandons in-progress assessments and returns their IDs. */
+export async function abandonInProgressAssessmentsForUser(
+  userId: string,
+): Promise<string[]> {
+  const sessions = await db.assessmentSession.findMany({
+    where: {
+      userId,
+      status: { in: ["started", "in_progress"] },
+    },
+    select: { id: true },
+  });
+
+  if (sessions.length === 0) {
+    return [];
+  }
+
+  await db.assessmentSession.updateMany({
     where: {
       userId,
       status: { in: ["started", "in_progress"] },
     },
     data: { status: "abandoned" },
   });
+
+  return sessions.map((session) => session.id);
 }
 
 export async function updateOrganization(

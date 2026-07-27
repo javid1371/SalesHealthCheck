@@ -213,6 +213,9 @@ function percent(part: number, total: number): number {
 }
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
   "new",
   "contacted",
   "meeting_scheduled",
@@ -225,6 +228,9 @@ function buildLeadStatusFunnel(
   const counts = new Map(rows.map((row) => [row.status, row._count.id]));
 
   return {
+    assessmentInProgress: counts.get("assessment_in_progress") ?? 0,
+    assessmentIncomplete: counts.get("assessment_incomplete") ?? 0,
+    assessmentCompleted: counts.get("assessment_completed") ?? 0,
     new: counts.get("new") ?? 0,
     contacted: counts.get("contacted") ?? 0,
     meetingScheduled: counts.get("meeting_scheduled") ?? 0,

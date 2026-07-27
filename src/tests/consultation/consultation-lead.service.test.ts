@@ -179,6 +179,17 @@ describe("updateConsultationLeadStatus", () => {
     });
   });
 
+  it("rejects manual move into assessment_in_progress", async () => {
+    await expect(
+      updateConsultationLeadStatus(
+        "lead-1",
+        { status: "assessment_in_progress" },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
+  });
+
   it("expert cannot change assignment", async () => {
     await expect(
       updateConsultationLeadStatus(

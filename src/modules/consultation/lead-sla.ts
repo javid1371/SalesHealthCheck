@@ -3,6 +3,9 @@ import type { LeadStatus, PurchaseProbability } from "@prisma/client";
 export const STALE_NEW_LEAD_HOURS = 24;
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
   "new",
   "contacted",
   "meeting_scheduled",

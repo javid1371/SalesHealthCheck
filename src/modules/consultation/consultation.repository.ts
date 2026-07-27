@@ -3,12 +3,28 @@ import type { CreateConsultationRequestInput } from "@/modules/assessment/assess
 import type { ConsultationListFilter } from "./consultation.types";
 import type { LeadStatus, Prisma } from "@prisma/client";
 import type { UpdateConsultationLeadInput } from "./consultation-lead.validators";
+import { compareLeadsByCallQueuePriority } from "./lead-status";
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
   "new",
   "contacted",
   "meeting_scheduled",
   "unreachable",
+];
+
+/** Lead statuses that still belong to the assessment pipeline (pre-CRM). */
+export const ASSESSMENT_PIPELINE_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
+];
+
+const ASSESSMENT_OPEN_FOR_COMPLETE: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
 ];
 
 export async function createConsultationRequest(
@@ -23,6 +39,7 @@ export async function createConsultationRequest(
       assessmentSessionId: input.assessmentSessionId,
       reportId: input.reportId,
       source: input.source,
+      status: input.status,
       purchaseProbabilityPercent: input.purchaseProbabilityPercent,
       purchaseProbabilityBand: input.purchaseProbabilityBand,
       assignScheduledFor: input.assignScheduledFor,
@@ -68,11 +85,19 @@ function buildConsultationUpgradeData(
     message?: string;
     reportId?: string;
   },
+  currentStatus?: LeadStatus,
 ): Prisma.ConsultationRequestUpdateInput {
   const data: Prisma.ConsultationRequestUpdateInput = {
     source,
     assignScheduledFor: null,
   };
+
+  if (
+    currentStatus &&
+    ASSESSMENT_PIPELINE_STATUSES.includes(currentStatus)
+  ) {
+    data.status = "new";
+  }
 
   if (input.name) {
     data.name = input.name;
@@ -103,9 +128,14 @@ export async function upgradeConsultationRequestToDirect(
     reportId?: string;
   },
 ) {
+  const existing = await db.consultationRequest.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+
   return db.consultationRequest.update({
     where: { id },
-    data: buildConsultationUpgradeData("direct", input),
+    data: buildConsultationUpgradeData("direct", input, existing?.status),
   });
 }
 
@@ -119,9 +149,112 @@ export async function upgradeConsultationRequestToMessenger(
     reportId?: string;
   },
 ) {
+  const existing = await db.consultationRequest.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+
   return db.consultationRequest.update({
     where: { id },
-    data: buildConsultationUpgradeData("messenger", input),
+    data: buildConsultationUpgradeData("messenger", input, existing?.status),
+  });
+}
+
+/**
+ * Conditionally update lead status when current status is in `fromStatuses`.
+ * Returns true when a row was updated.
+ */
+export async function transitionLeadStatusIfCurrent(
+  id: string,
+  fromStatuses: LeadStatus[],
+  toStatus: LeadStatus,
+  extra?: {
+    reportId?: string;
+  },
+): Promise<{ transitioned: boolean; fromStatus: LeadStatus | null }> {
+  const existing = await db.consultationRequest.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+  if (!existing || !fromStatuses.includes(existing.status)) {
+    return { transitioned: false, fromStatus: existing?.status ?? null };
+  }
+
+  const result = await db.consultationRequest.updateMany({
+    where: { id, status: { in: fromStatuses } },
+    data: {
+      status: toStatus,
+      ...(extra?.reportId ? { reportId: extra.reportId } : {}),
+    },
+  });
+
+  return {
+    transitioned: result.count > 0,
+    fromStatus: existing.status,
+  };
+}
+
+export async function transitionLeadToAssessmentCompleted(
+  id: string,
+  reportId: string,
+): Promise<{ transitioned: boolean; fromStatus: LeadStatus | null }> {
+  return transitionLeadStatusIfCurrent(
+    id,
+    ASSESSMENT_OPEN_FOR_COMPLETE,
+    "assessment_completed",
+    { reportId },
+  );
+}
+
+export async function transitionLeadToAssessmentIncomplete(
+  id: string,
+): Promise<{ transitioned: boolean; fromStatus: LeadStatus | null }> {
+  return transitionLeadStatusIfCurrent(
+    id,
+    ["assessment_in_progress"],
+    "assessment_incomplete",
+  );
+}
+
+export async function findAssessmentInProgressLeadsForStaleCheck(limit = 200) {
+  return db.consultationRequest.findMany({
+    where: {
+      status: "assessment_in_progress",
+      assessmentSessionId: { not: null },
+      assessmentSession: {
+        status: { in: ["started", "in_progress", "abandoned"] },
+      },
+    },
+    orderBy: { updatedAt: "asc" },
+    take: limit,
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+      assessmentSession: {
+        select: {
+          id: true,
+          status: true,
+          updatedAt: true,
+          startedAt: true,
+          answers: {
+            select: { answeredAt: true },
+            orderBy: { answeredAt: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+}
+
+export async function attachReportToLeadIfMissing(
+  id: string,
+  reportId: string,
+): Promise<void> {
+  await db.consultationRequest.updateMany({
+    where: { id, reportId: null },
+    data: { reportId },
   });
 }
 
@@ -266,23 +399,28 @@ export async function countConsultationRequests(filter: ConsultationListFilter) 
 }
 
 export async function findConsultationRequests(filter: ConsultationListFilter) {
-  return db.consultationRequest.findMany({
+  const rows = await db.consultationRequest.findMany({
     where: buildConsultationWhere(filter),
     include: consultationInclude,
     orderBy: { createdAt: "desc" },
-    skip: (filter.page - 1) * filter.pageSize,
-    take: filter.pageSize,
   });
+
+  rows.sort(compareLeadsByCallQueuePriority);
+  const start = (filter.page - 1) * filter.pageSize;
+  return rows.slice(start, start + filter.pageSize);
 }
 
 export async function findAllConsultationRequests(
   filter: Omit<ConsultationListFilter, "page" | "pageSize">,
 ) {
-  return db.consultationRequest.findMany({
+  const rows = await db.consultationRequest.findMany({
     where: buildConsultationWhere(filter),
     include: consultationInclude,
     orderBy: { createdAt: "desc" },
   });
+
+  rows.sort(compareLeadsByCallQueuePriority);
+  return rows;
 }
 
 export async function findConsultationRequestsByIds(ids: string[]) {

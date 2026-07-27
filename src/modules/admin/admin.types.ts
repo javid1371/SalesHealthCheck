@@ -141,6 +141,9 @@ export interface AdminLeadKpis {
 }
 
 export interface AdminLeadStatusFunnel {
+  assessmentInProgress: number;
+  assessmentIncomplete: number;
+  assessmentCompleted: number;
   new: number;
   contacted: number;
   meetingScheduled: number;

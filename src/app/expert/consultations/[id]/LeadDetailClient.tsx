@@ -16,7 +16,10 @@ import {
 import type { LeadStatus } from "@prisma/client";
 
 const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
-  { value: "new", label: "جدید" },
+  { value: "assessment_in_progress", label: "در حال انجام تست" },
+  { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
+  { value: "assessment_completed", label: "تست تکمیل‌شده" },
+  { value: "new", label: "درخواست مشاوره" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },
@@ -152,7 +155,11 @@ export function LeadDetailClient({
               }
               disabled={loading}
             >
-              {STATUS_OPTIONS.map((option) => (
+              {STATUS_OPTIONS.filter(
+                (option) =>
+                  option.value !== "assessment_in_progress" ||
+                  status === "assessment_in_progress",
+              ).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

@@ -84,6 +84,7 @@ export async function updateLeadSettingsRequest(input: {
   expertNewLeadSms?: string;
   maxOpenLeadsPerExpert?: number;
   hotLeadDirectAssigneeId?: string | null;
+  assessmentIncompleteAfterHours?: number;
 }) {
   return apiPatch<{
     settings: import("@/modules/consultation/lead-config.service").LeadSettings;

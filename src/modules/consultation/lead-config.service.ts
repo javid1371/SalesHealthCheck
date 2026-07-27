@@ -9,6 +9,7 @@ export const LEAD_SETTING_KEYS = {
   expertNewLeadSms: "expert_new_lead_sms",
   maxOpenLeadsPerExpert: "max_open_leads_per_expert",
   hotLeadDirectAssigneeId: "hot_lead_direct_assignee_id",
+  assessmentIncompleteAfterHours: "assessment_incomplete_after_hours",
 } as const;
 
 export const DEFAULT_EXPERT_NEW_LEAD_SMS = "لید جدید داری\nچک کن";
@@ -22,6 +23,7 @@ export interface LeadSettings {
   expertNewLeadSms: string;
   maxOpenLeadsPerExpert: number;
   hotLeadDirectAssigneeId: string | null;
+  assessmentIncompleteAfterHours: number;
 }
 
 export interface UpdateLeadSettingsInput {
@@ -30,13 +32,14 @@ export interface UpdateLeadSettingsInput {
   expertNewLeadSms?: string;
   maxOpenLeadsPerExpert?: number;
   hotLeadDirectAssigneeId?: string | null;
+  assessmentIncompleteAfterHours?: number;
 }
 
-function assertValidDelayHours(value: number): void {
+function assertValidDelayHours(value: number, field = "systemAssignDelayHours"): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new AppError(
       "VALIDATION_ERROR",
-      "systemAssignDelayHours must be a non-negative integer",
+      `${field} must be a non-negative integer`,
       400,
     );
   }
@@ -91,6 +94,9 @@ export async function getLeadSettings(): Promise<LeadSettings> {
   const expertSmsDb = map.get(LEAD_SETTING_KEYS.expertNewLeadSms);
   const maxOpenDb = map.get(LEAD_SETTING_KEYS.maxOpenLeadsPerExpert);
   const hotAssigneeDb = map.get(LEAD_SETTING_KEYS.hotLeadDirectAssigneeId);
+  const incompleteHoursDb = map.get(
+    LEAD_SETTING_KEYS.assessmentIncompleteAfterHours,
+  );
 
   return {
     autoAssignEnabled:
@@ -111,6 +117,10 @@ export async function getLeadSettings(): Promise<LeadSettings> {
       hotAssigneeDb !== undefined && hotAssigneeDb.length > 0
         ? hotAssigneeDb
         : null,
+    assessmentIncompleteAfterHours:
+      incompleteHoursDb !== undefined
+        ? Number.parseInt(incompleteHoursDb, 10)
+        : env.leadAssessmentIncompleteAfterHours,
   };
 }
 
@@ -122,6 +132,17 @@ export async function updateLeadSettings(
     await upsertSetting(
       LEAD_SETTING_KEYS.systemAssignDelayHours,
       String(input.systemAssignDelayHours),
+    );
+  }
+
+  if (input.assessmentIncompleteAfterHours !== undefined) {
+    assertValidDelayHours(
+      input.assessmentIncompleteAfterHours,
+      "assessmentIncompleteAfterHours",
+    );
+    await upsertSetting(
+      LEAD_SETTING_KEYS.assessmentIncompleteAfterHours,
+      String(input.assessmentIncompleteAfterHours),
     );
   }
 

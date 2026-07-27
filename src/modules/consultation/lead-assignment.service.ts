@@ -7,22 +7,28 @@ import type { ExpertViewSpec } from "@/types/report-spec";
 import type { StructuredDiagnosis } from "@/types/structured-diagnosis";
 import type { ValueAtStakeSpec } from "@/types/value-at-stake";
 import {
+  ASSESSMENT_PIPELINE_STATUSES,
   assignLeadToExpertIfUnassigned,
+  attachReportToLeadIfMissing,
   clearAssignScheduledFor,
   createConsultationRequest,
+  createLeadActivity,
+  findAssessmentInProgressLeadsForStaleCheck,
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
   findDueSystemLeadsForAssignment,
+  transitionLeadToAssessmentCompleted,
+  transitionLeadToAssessmentIncomplete,
   updateLeadPurchaseProbability,
   upgradeConsultationRequestToDirect,
   upgradeConsultationRequestToMessenger,
 } from "./consultation.repository";
-import {
-  computePurchaseProbability,
-  isHotLead,
-} from "./lead-insights";
+import { computePurchaseProbability } from "./lead-insights";
 import { getLeadSettings } from "./lead-config.service";
-import { pickNextSalesExpert } from "@/modules/staff/staff.repository";
+import {
+  findStaffUserById,
+  pickNextSalesExpert,
+} from "@/modules/staff/staff.repository";
 
 export type FinalizeNewLeadMode = "immediate" | "probabilityOnly";
 
@@ -49,26 +55,49 @@ export function resolveLeadScoreFromAssessment(input: {
 async function enrichLeadWithPurchaseProbability(
   leadId: string,
   assessmentSessionId: string | null | undefined,
+  overrides?: {
+    leadScore?: ExpertViewSpec["leadScore"] | null;
+    structuredDiagnosis?: StructuredDiagnosis | null;
+    valueAtStake?: ValueAtStakeSpec | null;
+  },
 ): Promise<void> {
-  if (!assessmentSessionId) {
-    return;
+  let leadScore = overrides?.leadScore ?? null;
+  let structuredDiagnosis = overrides?.structuredDiagnosis ?? null;
+  let valueAtStake = overrides?.valueAtStake ?? null;
+
+  if (!leadScore && assessmentSessionId) {
+    const assessment = await findAssessmentById(assessmentSessionId);
+    if (!assessment) {
+      return;
+    }
+
+    structuredDiagnosis =
+      structuredDiagnosis ??
+      ((assessment.structuredDiagnosis as StructuredDiagnosis | null) ?? null);
+    const reportSpec = assessment.report?.reportSpec;
+    valueAtStake =
+      valueAtStake ?? parseReportSpec(reportSpec)?.valueAtStake ?? null;
+
+    leadScore = resolveLeadScoreFromAssessment({
+      reportSpec,
+      structuredDiagnosis,
+      valueAtStake,
+    });
+  } else if (
+    leadScore &&
+    !structuredDiagnosis &&
+    !valueAtStake &&
+    assessmentSessionId
+  ) {
+    // Keep caller-provided score; still load diagnosis/value if omitted.
+    const assessment = await findAssessmentById(assessmentSessionId);
+    if (assessment) {
+      structuredDiagnosis =
+        (assessment.structuredDiagnosis as StructuredDiagnosis | null) ?? null;
+      valueAtStake =
+        parseReportSpec(assessment.report?.reportSpec)?.valueAtStake ?? null;
+    }
   }
-
-  const assessment = await findAssessmentById(assessmentSessionId);
-  if (!assessment) {
-    return;
-  }
-
-  const structuredDiagnosis =
-    (assessment.structuredDiagnosis as StructuredDiagnosis | null) ?? null;
-  const reportSpec = assessment.report?.reportSpec;
-  const valueAtStake = parseReportSpec(reportSpec)?.valueAtStake ?? null;
-
-  const leadScore = resolveLeadScoreFromAssessment({
-    reportSpec,
-    structuredDiagnosis,
-    valueAtStake,
-  });
 
   if (!leadScore) {
     return;
@@ -76,8 +105,8 @@ async function enrichLeadWithPurchaseProbability(
 
   const probability = computePurchaseProbability({
     leadScore,
-    diagnosis: structuredDiagnosis,
-    valueAtStake,
+    diagnosis: structuredDiagnosis ?? null,
+    valueAtStake: valueAtStake ?? null,
   });
 
   await updateLeadPurchaseProbability(leadId, {
@@ -86,14 +115,66 @@ async function enrichLeadWithPurchaseProbability(
   });
 }
 
-export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
+async function recordSystemStatusChange(
+  leadId: string,
+  fromStatus: string,
+  toStatus: string,
+): Promise<void> {
+  await createLeadActivity({
+    consultationRequestId: leadId,
+    staffUserId: null,
+    type: "status_change",
+    detail: `${fromStatus}→${toStatus}`,
+  });
+}
+
+export type AssignLeadOptions = {
+  notifyExpert?: boolean;
+};
+
+async function sendExpertNewLeadSms(expertPhone: string): Promise<void> {
+  const settings = await getLeadSettings();
+  try {
+    const sender = await createSmsSenderFromSettings();
+    await sender.sendMessage(expertPhone, settings.expertNewLeadSms);
+  } catch (error) {
+    console.error("[lead-assignment] failed to notify expert via SMS:", error);
+  }
+}
+
+export async function notifyAssignedExpertOfLead(leadId: string): Promise<void> {
+  const lead = await findConsultationRequestById(leadId);
+  if (!lead?.assignedToId) {
+    return;
+  }
+
+  const expert = await findStaffUserById(lead.assignedToId);
+  if (!expert?.phone) {
+    console.warn(
+      "[lead-assignment] assigned expert missing phone; skip SMS",
+      lead.assignedToId,
+    );
+    return;
+  }
+
+  await sendExpertNewLeadSms(expert.phone);
+}
+
+export async function autoAssignAndNotifyLead(
+  leadId: string,
+  options?: AssignLeadOptions,
+): Promise<void> {
   const settings = await getLeadSettings();
   if (!settings.autoAssignEnabled) {
     return;
   }
 
   const lead = await findConsultationRequestById(leadId);
-  if (!lead || lead.assignedToId) {
+  if (!lead) {
+    return;
+  }
+
+  if (lead.assignedToId) {
     return;
   }
 
@@ -108,20 +189,22 @@ export async function autoAssignAndNotifyLead(leadId: string): Promise<void> {
     return;
   }
 
-  try {
-    const sender = await createSmsSenderFromSettings();
-    await sender.sendMessage(expert.phone, settings.expertNewLeadSms);
-  } catch (error) {
-    console.error("[lead-assignment] failed to notify expert via SMS:", error);
+  if (options?.notifyExpert === false) {
+    return;
   }
+
+  await sendExpertNewLeadSms(expert.phone);
 }
+
+export type FinalizeNewLeadOptions = {
+  assessmentSessionId?: string | null;
+  mode?: FinalizeNewLeadMode;
+  notifyExpert?: boolean;
+};
 
 export async function finalizeNewLead(
   leadId: string,
-  options?: {
-    assessmentSessionId?: string | null;
-    mode?: FinalizeNewLeadMode;
-  },
+  options?: FinalizeNewLeadOptions,
 ): Promise<void> {
   const mode = options?.mode ?? "immediate";
 
@@ -132,7 +215,9 @@ export async function finalizeNewLead(
     );
     const settings = await getLeadSettings();
     if (mode === "immediate" && settings.autoAssignEnabled) {
-      await autoAssignAndNotifyLead(leadId);
+      await autoAssignAndNotifyLead(leadId, {
+        notifyExpert: options?.notifyExpert,
+      });
     }
   } catch (error) {
     console.error("[lead-assignment] finalizeNewLead failed:", error);
@@ -141,25 +226,53 @@ export async function finalizeNewLead(
 
 export function runFinalizeNewLead(
   leadId: string,
-  options?: {
-    assessmentSessionId?: string | null;
-    mode?: FinalizeNewLeadMode;
-  },
+  options?: FinalizeNewLeadOptions,
 ): void {
   void finalizeNewLead(leadId, options).catch((error) => {
     console.error("[lead-assignment] runFinalizeNewLead failed:", error);
   });
 }
 
-function computeSystemAssignScheduledFor(delayHours: number): Date {
-  const delayMs = delayHours * 60 * 60 * 1000;
-  return new Date(Date.now() + delayMs);
+async function finalizeConsultationUpgrade(
+  leadId: string,
+  assessmentSessionId: string | null | undefined,
+  previousStatus: string | null | undefined,
+  nextStatus: string,
+): Promise<void> {
+  if (
+    previousStatus &&
+    previousStatus !== nextStatus &&
+    ASSESSMENT_PIPELINE_STATUSES.includes(
+      previousStatus as (typeof ASSESSMENT_PIPELINE_STATUSES)[number],
+    )
+  ) {
+    await recordSystemStatusChange(leadId, previousStatus, nextStatus);
+  }
+
+  await enrichLeadWithPurchaseProbability(leadId, assessmentSessionId);
+
+  const lead = await findConsultationRequestById(leadId);
+  if (!lead) {
+    return;
+  }
+
+  const settings = await getLeadSettings();
+  if (!lead.assignedToId) {
+    if (settings.autoAssignEnabled) {
+      await autoAssignAndNotifyLead(leadId, { notifyExpert: true });
+    }
+    return;
+  }
+
+  // Consultation request: always notify the assigned expert (even if soft-assigned at start).
+  await notifyAssignedExpertOfLead(leadId);
 }
 
 export async function upgradeExistingLeadToDirect(
   leadId: string,
   input: CreateConsultationRequestInput,
 ): Promise<{ id: string; createdAt: Date }> {
+  const before = await findConsultationRequestById(leadId);
   const updated = await upgradeConsultationRequestToDirect(leadId, {
     name: input.name,
     email: input.email,
@@ -168,10 +281,12 @@ export async function upgradeExistingLeadToDirect(
     reportId: input.reportId,
   });
 
-  await finalizeNewLead(updated.id, {
-    assessmentSessionId: input.assessmentSessionId,
-    mode: "immediate",
-  });
+  await finalizeConsultationUpgrade(
+    updated.id,
+    input.assessmentSessionId,
+    before?.status,
+    updated.status,
+  );
 
   return { id: updated.id, createdAt: updated.createdAt };
 }
@@ -180,6 +295,7 @@ export async function upgradeExistingLeadToMessenger(
   leadId: string,
   input: CreateConsultationRequestInput,
 ): Promise<{ id: string; createdAt: Date }> {
+  const before = await findConsultationRequestById(leadId);
   const updated = await upgradeConsultationRequestToMessenger(leadId, {
     name: input.name,
     email: input.email,
@@ -188,24 +304,115 @@ export async function upgradeExistingLeadToMessenger(
     reportId: input.reportId,
   });
 
-  await finalizeNewLead(updated.id, {
-    assessmentSessionId: input.assessmentSessionId,
-    mode: "immediate",
-  });
+  await finalizeConsultationUpgrade(
+    updated.id,
+    input.assessmentSessionId,
+    before?.status,
+    updated.status,
+  );
 
   return { id: updated.id, createdAt: updated.createdAt };
 }
 
-export async function createSystemLeadIfEligible(input: {
+/**
+ * Soft-assign a system lead when an assessment starts.
+ * Creates status=assessment_in_progress and assigns round-robin without expert SMS
+ * (experts must not call while the user is mid-test).
+ */
+export async function createLeadOnAssessmentStart(input: {
+  assessmentSessionId: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+}): Promise<void> {
+  const existing = await findConsultationRequestByAssessmentSessionId(
+    input.assessmentSessionId,
+  );
+  if (existing) {
+    return;
+  }
+
+  const name = input.name.trim() || "کاربر";
+
+  const lead = await createConsultationRequest({
+    name,
+    phone: input.phone ?? undefined,
+    email: input.email ?? undefined,
+    assessmentSessionId: input.assessmentSessionId,
+    source: "system",
+    status: "assessment_in_progress",
+  });
+
+  await finalizeNewLead(lead.id, {
+    assessmentSessionId: input.assessmentSessionId,
+    mode: "immediate",
+    notifyExpert: false,
+  });
+}
+
+export function hookLeadOnAssessmentStart(input: {
+  assessmentSessionId: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+}): void {
+  void createLeadOnAssessmentStart(input).catch((error) => {
+    console.error("[lead-assignment] createLeadOnAssessmentStart failed:", error);
+  });
+}
+
+/**
+ * On assessment finish: move the session lead to assessment_completed (when still
+ * in the assessment pipeline) and enrich purchase probability. No longer creates
+ * hot-only delayed system leads.
+ */
+export async function transitionLeadOnAssessmentComplete(input: {
   assessmentSessionId: string;
   reportId: string;
   leadScore?: ExpertViewSpec["leadScore"];
   structuredDiagnosis?: StructuredDiagnosis | null;
   valueAtStake?: ValueAtStakeSpec | null;
 }): Promise<void> {
-  const settings = await getLeadSettings();
-  if (!settings.autoAssignEnabled) {
+  const existing = await findConsultationRequestByAssessmentSessionId(
+    input.assessmentSessionId,
+  );
+
+  if (!existing) {
+    const assessment = await findAssessmentById(input.assessmentSessionId);
+    if (!assessment) {
+      return;
+    }
+
+    const lead = await createConsultationRequest({
+      name:
+        assessment.user.name?.trim() || assessment.organization.businessName,
+      phone: assessment.user.phone ?? undefined,
+      email: assessment.user.email ?? undefined,
+      assessmentSessionId: input.assessmentSessionId,
+      reportId: input.reportId,
+      source: "system",
+      status: "assessment_completed",
+    });
+
+    await finalizeNewLead(lead.id, {
+      assessmentSessionId: input.assessmentSessionId,
+      mode: "immediate",
+      notifyExpert: false,
+    });
     return;
+  }
+
+  const { transitioned, fromStatus } =
+    await transitionLeadToAssessmentCompleted(existing.id, input.reportId);
+
+  if (transitioned && fromStatus) {
+    await recordSystemStatusChange(
+      existing.id,
+      fromStatus,
+      "assessment_completed",
+    );
+  } else {
+    await attachReportToLeadIfMissing(existing.id, input.reportId);
   }
 
   const leadScore =
@@ -217,41 +424,116 @@ export async function createSystemLeadIfEligible(input: {
         )
       : null);
 
-  if (!leadScore || !isHotLead(leadScore)) {
-    return;
-  }
-
-  const existing = await findConsultationRequestByAssessmentSessionId(
+  await enrichLeadWithPurchaseProbability(
+    existing.id,
     input.assessmentSessionId,
+    {
+      leadScore,
+      structuredDiagnosis: input.structuredDiagnosis ?? null,
+      valueAtStake: input.valueAtStake ?? null,
+    },
   );
-  if (existing) {
-    return;
+}
+
+/** @deprecated Use transitionLeadOnAssessmentComplete — kept for call-site clarity. */
+export async function createSystemLeadIfEligible(input: {
+  assessmentSessionId: string;
+  reportId: string;
+  leadScore?: ExpertViewSpec["leadScore"];
+  structuredDiagnosis?: StructuredDiagnosis | null;
+  valueAtStake?: ValueAtStakeSpec | null;
+}): Promise<void> {
+  await transitionLeadOnAssessmentComplete(input);
+}
+
+export async function markAssessmentLeadIncomplete(
+  assessmentSessionId: string,
+): Promise<boolean> {
+  const existing = await findConsultationRequestByAssessmentSessionId(
+    assessmentSessionId,
+  );
+  if (!existing) {
+    return false;
   }
 
-  const assessment = await findAssessmentById(input.assessmentSessionId);
-  if (!assessment) {
-    return;
+  const { transitioned, fromStatus } =
+    await transitionLeadToAssessmentIncomplete(existing.id);
+
+  if (transitioned && fromStatus) {
+    await recordSystemStatusChange(
+      existing.id,
+      fromStatus,
+      "assessment_incomplete",
+    );
   }
 
-  const probability = computePurchaseProbability({
-    leadScore,
-    diagnosis: input.structuredDiagnosis ?? null,
-    valueAtStake: input.valueAtStake ?? null,
-  });
+  return transitioned;
+}
 
-  await createConsultationRequest({
-    name: assessment.user.name?.trim() || assessment.organization.businessName,
-    phone: assessment.user.phone ?? undefined,
-    email: assessment.user.email ?? undefined,
-    assessmentSessionId: input.assessmentSessionId,
-    reportId: input.reportId,
-    source: "system",
-    purchaseProbabilityPercent: probability.percent,
-    purchaseProbabilityBand: probability.band,
-    assignScheduledFor: computeSystemAssignScheduledFor(
-      settings.systemAssignDelayHours,
-    ),
+export function hookLeadOnAssessmentAbandoned(
+  assessmentSessionId: string,
+): void {
+  void markAssessmentLeadIncomplete(assessmentSessionId).catch((error) => {
+    console.error(
+      "[lead-assignment] markAssessmentLeadIncomplete failed:",
+      error,
+    );
   });
+}
+
+function resolveAssessmentLastActivity(input: {
+  updatedAt: Date;
+  startedAt: Date;
+  answers: { answeredAt: Date }[];
+}): Date {
+  let latest = input.updatedAt.getTime() > input.startedAt.getTime()
+    ? input.updatedAt
+    : input.startedAt;
+
+  for (const answer of input.answers) {
+    if (answer.answeredAt.getTime() > latest.getTime()) {
+      latest = answer.answeredAt;
+    }
+  }
+
+  return latest;
+}
+
+/**
+ * Cron: move stale assessment_in_progress leads to assessment_incomplete.
+ * Abandoned assessments are moved immediately (no inactivity wait).
+ */
+export async function processStaleAssessmentLeads(): Promise<number> {
+  const settings = await getLeadSettings();
+  const staleBefore = new Date(
+    Date.now() - settings.assessmentIncompleteAfterHours * 60 * 60 * 1000,
+  );
+
+  const candidates = await findAssessmentInProgressLeadsForStaleCheck();
+  let processed = 0;
+
+  for (const lead of candidates) {
+    const session = lead.assessmentSession;
+    if (!session) {
+      continue;
+    }
+
+    const shouldMove =
+      session.status === "abandoned" ||
+      ((session.status === "started" || session.status === "in_progress") &&
+        resolveAssessmentLastActivity(session) < staleBefore);
+
+    if (!shouldMove) {
+      continue;
+    }
+
+    const moved = await markAssessmentLeadIncomplete(session.id);
+    if (moved) {
+      processed += 1;
+    }
+  }
+
+  return processed;
 }
 
 export async function processDueSystemLeadAssignments(): Promise<number> {
@@ -279,7 +561,17 @@ export function hookSystemLeadDetection(input: {
   structuredDiagnosis?: StructuredDiagnosis | null;
   valueAtStake?: ValueAtStakeSpec | null;
 }): void {
-  void createSystemLeadIfEligible(input).catch((error) => {
-    console.error("[lead-assignment] system lead detection failed:", error);
+  void transitionLeadOnAssessmentComplete(input).catch((error) => {
+    console.error("[lead-assignment] assessment complete transition failed:", error);
   });
+}
+
+export function hookLeadOnAssessmentComplete(input: {
+  assessmentSessionId: string;
+  reportId: string;
+  leadScore?: ExpertViewSpec["leadScore"];
+  structuredDiagnosis?: StructuredDiagnosis | null;
+  valueAtStake?: ValueAtStakeSpec | null;
+}): void {
+  hookSystemLeadDetection(input);
 }

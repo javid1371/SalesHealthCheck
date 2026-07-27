@@ -51,7 +51,30 @@ function formatSmsDate(iso: string): string {
 
 function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
   const stages = [
-    { key: "new", label: "جدید", count: funnel.new, color: "bg-sky-500" },
+    {
+      key: "assessmentInProgress",
+      label: "در حال تست",
+      count: funnel.assessmentInProgress,
+      color: "bg-rose-500",
+    },
+    {
+      key: "assessmentIncomplete",
+      label: "پیگیری تکمیل",
+      count: funnel.assessmentIncomplete,
+      color: "bg-orange-500",
+    },
+    {
+      key: "assessmentCompleted",
+      label: "تست تکمیل",
+      count: funnel.assessmentCompleted,
+      color: "bg-teal-500",
+    },
+    {
+      key: "new",
+      label: "درخواست مشاوره",
+      count: funnel.new,
+      color: "bg-sky-500",
+    },
     {
       key: "contacted",
       label: "تماس",
@@ -106,7 +129,7 @@ function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
           ) : null,
         )}
       </div>
-      <div className="grid gap-3 sm:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {stages.map((stage) => (
           <div key={stage.key} className="text-center">
             <div className="flex items-center justify-center gap-1.5">

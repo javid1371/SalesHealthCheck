@@ -352,6 +352,9 @@ describe("getAdminDashboard", () => {
       staleNewLeads: 1,
     });
     expect(dashboard.leadStatusFunnel).toEqual({
+      assessmentInProgress: 0,
+      assessmentIncomplete: 0,
+      assessmentCompleted: 0,
       new: 5,
       contacted: 4,
       meetingScheduled: 2,

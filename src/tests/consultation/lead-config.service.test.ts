@@ -4,6 +4,7 @@ vi.mock("@/lib/env", () => ({
   env: {
     leadAutoAssignEnabled: true,
     leadSystemAssignDelayHours: 24,
+    leadAssessmentIncompleteAfterHours: 24,
   },
 }));
 
@@ -43,6 +44,7 @@ describe("lead-config.service", () => {
       expertNewLeadSms: DEFAULT_EXPERT_NEW_LEAD_SMS,
       maxOpenLeadsPerExpert: 30,
       hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
     });
   });
 
@@ -53,6 +55,7 @@ describe("lead-config.service", () => {
       { key: "expert_new_lead_sms", value: "لید جدید" },
       { key: "max_open_leads_per_expert", value: "15" },
       { key: "hot_lead_direct_assignee_id", value: "expert-1" },
+      { key: "assessment_incomplete_after_hours", value: "48" },
     ]);
 
     const { getLeadSettings } = await import(
@@ -65,6 +68,7 @@ describe("lead-config.service", () => {
       expertNewLeadSms: "لید جدید",
       maxOpenLeadsPerExpert: 15,
       hotLeadDirectAssigneeId: "expert-1",
+      assessmentIncompleteAfterHours: 48,
     });
   });
 

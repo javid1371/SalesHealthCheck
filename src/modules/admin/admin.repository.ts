@@ -6,6 +6,9 @@ import type { AdminAssessmentFilter } from "./admin.types";
 export { STALE_NEW_LEAD_HOURS };
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
   "new",
   "contacted",
   "meeting_scheduled",

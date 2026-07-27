@@ -1,14 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const repoMock = vi.hoisted(() => ({
+  ASSESSMENT_PIPELINE_STATUSES: [
+    "assessment_in_progress",
+    "assessment_incomplete",
+    "assessment_completed",
+  ],
   assignLeadToExpertIfUnassigned: vi.fn(),
+  attachReportToLeadIfMissing: vi.fn(),
   clearAssignScheduledFor: vi.fn(),
   createConsultationRequest: vi.fn(),
+  createLeadActivity: vi.fn(),
+  findAssessmentInProgressLeadsForStaleCheck: vi.fn(),
   findConsultationRequestByAssessmentSessionId: vi.fn(),
   findConsultationRequestById: vi.fn(),
   findDueSystemLeadsForAssignment: vi.fn(),
+  transitionLeadToAssessmentCompleted: vi.fn(),
+  transitionLeadToAssessmentIncomplete: vi.fn(),
   updateLeadPurchaseProbability: vi.fn(),
   upgradeConsultationRequestToDirect: vi.fn(),
+  upgradeConsultationRequestToMessenger: vi.fn(),
 }));
 
 const assessmentMock = vi.hoisted(() => ({
@@ -17,15 +28,21 @@ const assessmentMock = vi.hoisted(() => ({
 
 const staffMock = vi.hoisted(() => ({
   pickNextSalesExpert: vi.fn(),
+  findStaffUserById: vi.fn(),
 }));
 
 const smsMock = vi.hoisted(() => ({
   sendMessage: vi.fn(),
 }));
 
+const leadConfigMock = vi.hoisted(() => ({
+  getLeadSettings: vi.fn(),
+}));
+
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 vi.mock("@/modules/assessment/assessment.repository", () => assessmentMock);
 vi.mock("@/modules/staff/staff.repository", () => staffMock);
+vi.mock("@/modules/consultation/lead-config.service", () => leadConfigMock);
 vi.mock("@/modules/auth/sms/kavenegar", () => ({
   createSmsSenderFromSettings: async () => ({ sendMessage: smsMock.sendMessage }),
 }));
@@ -33,31 +50,57 @@ vi.mock("@/modules/auth/sms/kavenegar", () => ({
 describe("lead-assignment.service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubEnv("LEAD_AUTO_ASSIGN_ENABLED", "true");
-    vi.stubEnv("LEAD_SYSTEM_ASSIGN_DELAY_HOURS", "24");
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+    });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
       assignedToId: null,
       assessmentSessionId: null,
+      status: "new",
     });
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
     assessmentMock.findAssessmentById.mockResolvedValue({
       user: { name: "Test User", phone: "09121111111", email: "test@example.com" },
       organization: { businessName: "Test Biz" },
+      structuredDiagnosis: null,
+      report: null,
     });
-    repoMock.createConsultationRequest.mockResolvedValue({ id: "system-lead-1" });
+    repoMock.createConsultationRequest.mockResolvedValue({
+      id: "system-lead-1",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
     staffMock.pickNextSalesExpert.mockResolvedValue({
+      id: "expert-1",
+      phone: "09121111111",
+      name: "Expert One",
+    });
+    staffMock.findStaffUserById.mockResolvedValue({
       id: "expert-1",
       phone: "09121111111",
       name: "Expert One",
     });
     repoMock.assignLeadToExpertIfUnassigned.mockResolvedValue(true);
     repoMock.clearAssignScheduledFor.mockResolvedValue({});
+    repoMock.createLeadActivity.mockResolvedValue({ id: "activity-1" });
+    repoMock.transitionLeadToAssessmentCompleted.mockResolvedValue({
+      transitioned: true,
+      fromStatus: "assessment_in_progress",
+    });
+    repoMock.transitionLeadToAssessmentIncomplete.mockResolvedValue({
+      transitioned: true,
+      fromStatus: "assessment_in_progress",
+    });
+    repoMock.findAssessmentInProgressLeadsForStaleCheck.mockResolvedValue([]);
     smsMock.sendMessage.mockResolvedValue({});
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
     vi.resetModules();
   });
 
@@ -80,8 +123,14 @@ describe("lead-assignment.service", () => {
   });
 
   it("skips assignment when feature flag is disabled", async () => {
-    vi.stubEnv("LEAD_AUTO_ASSIGN_ENABLED", "false");
-    vi.resetModules();
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: false,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+    });
 
     const { autoAssignAndNotifyLead } = await import(
       "@/modules/consultation/lead-assignment.service"
@@ -93,81 +142,400 @@ describe("lead-assignment.service", () => {
     expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("createSystemLeadIfEligible skips cold assessments", async () => {
-    const { createSystemLeadIfEligible } = await import(
+  it("createLeadOnAssessmentStart creates in-progress lead and soft-assigns without SMS", async () => {
+    const { createLeadOnAssessmentStart } = await import(
       "@/modules/consultation/lead-assignment.service"
     );
 
-    await createSystemLeadIfEligible({
+    await createLeadOnAssessmentStart({
       assessmentSessionId: "assessment-1",
-      reportId: "report-1",
-      leadScore: "cold",
+      name: "Test User",
+      phone: "09121111111",
+      email: "test@example.com",
+    });
+
+    expect(repoMock.createConsultationRequest).toHaveBeenCalledWith({
+      name: "Test User",
+      phone: "09121111111",
+      email: "test@example.com",
+      assessmentSessionId: "assessment-1",
+      source: "system",
+      status: "assessment_in_progress",
+    });
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalled();
+    expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalledWith(
+      "system-lead-1",
+      "expert-1",
+    );
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart dedupes existing leads", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "existing-lead",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-1",
+      name: "Test User",
+      phone: "09121111111",
     });
 
     expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("createSystemLeadIfEligible skips warm assessments", async () => {
-    const { createSystemLeadIfEligible } = await import(
+  it("transitionLeadOnAssessmentComplete moves in-progress lead to completed", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "existing-lead",
+      status: "assessment_in_progress",
+    });
+
+    const { transitionLeadOnAssessmentComplete } = await import(
       "@/modules/consultation/lead-assignment.service"
     );
 
-    await createSystemLeadIfEligible({
+    await transitionLeadOnAssessmentComplete({
       assessmentSessionId: "assessment-1",
       reportId: "report-1",
       leadScore: "warm",
     });
 
+    expect(repoMock.transitionLeadToAssessmentCompleted).toHaveBeenCalledWith(
+      "existing-lead",
+      "report-1",
+    );
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "existing-lead",
+      staffUserId: null,
+      type: "status_change",
+      detail: "assessment_in_progress→assessment_completed",
+    });
     expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("createSystemLeadIfEligible dedupes existing leads", async () => {
+  it("transitionLeadOnAssessmentComplete moves incomplete lead to completed", async () => {
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
-      id: "existing-lead",
+      id: "incomplete-lead",
+      status: "assessment_incomplete",
+    });
+    repoMock.transitionLeadToAssessmentCompleted.mockResolvedValue({
+      transitioned: true,
+      fromStatus: "assessment_incomplete",
     });
 
-    const { createSystemLeadIfEligible } = await import(
+    const { transitionLeadOnAssessmentComplete } = await import(
       "@/modules/consultation/lead-assignment.service"
     );
 
-    await createSystemLeadIfEligible({
+    await transitionLeadOnAssessmentComplete({
       assessmentSessionId: "assessment-1",
       reportId: "report-1",
-      leadScore: "hot",
+      leadScore: "cold",
     });
 
-    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.transitionLeadToAssessmentCompleted).toHaveBeenCalledWith(
+      "incomplete-lead",
+      "report-1",
+    );
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "incomplete-lead",
+      staffUserId: null,
+      type: "status_change",
+      detail: "assessment_incomplete→assessment_completed",
+    });
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("createSystemLeadIfEligible schedules assignment without immediate assign", async () => {
-    const { createSystemLeadIfEligible } = await import(
+  it("transitionLeadOnAssessmentComplete does not regress CRM statuses", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "crm-lead",
+      status: "contacted",
+    });
+    repoMock.transitionLeadToAssessmentCompleted.mockResolvedValue({
+      transitioned: false,
+      fromStatus: "contacted",
+    });
+
+    const { transitionLeadOnAssessmentComplete } = await import(
       "@/modules/consultation/lead-assignment.service"
     );
 
-    const before = Date.now();
-    await createSystemLeadIfEligible({
+    await transitionLeadOnAssessmentComplete({
       assessmentSessionId: "assessment-1",
       reportId: "report-1",
       leadScore: "hot",
     });
-    const after = Date.now();
+
+    expect(repoMock.attachReportToLeadIfMissing).toHaveBeenCalledWith(
+      "crm-lead",
+      "report-1",
+    );
+    expect(repoMock.createLeadActivity).not.toHaveBeenCalled();
+  });
+
+  it("transitionLeadOnAssessmentComplete creates completed lead when start lead is missing", async () => {
+    const { transitionLeadOnAssessmentComplete } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await transitionLeadOnAssessmentComplete({
+      assessmentSessionId: "assessment-1",
+      reportId: "report-1",
+      leadScore: "cold",
+    });
 
     expect(repoMock.createConsultationRequest).toHaveBeenCalledWith(
       expect.objectContaining({
+        assessmentSessionId: "assessment-1",
+        reportId: "report-1",
         source: "system",
-        assignScheduledFor: expect.any(Date),
+        status: "assessment_completed",
+      }),
+    );
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("upgradeExistingLeadToDirect sets new status path and notifies assigned expert", async () => {
+    repoMock.findConsultationRequestById.mockImplementation(async () => ({
+      id: "existing-lead",
+      status: "assessment_completed",
+      assignedToId: "expert-1",
+      assessmentSessionId: "assessment-1",
+    }));
+    repoMock.upgradeConsultationRequestToDirect.mockResolvedValue({
+      id: "existing-lead",
+      status: "new",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const { upgradeExistingLeadToDirect } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    const result = await upgradeExistingLeadToDirect("existing-lead", {
+      name: "Direct User",
+      phone: "09123456789",
+      assessmentSessionId: "assessment-1",
+    });
+
+    expect(result.id).toBe("existing-lead");
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "existing-lead",
+      staffUserId: null,
+      type: "status_change",
+      detail: "assessment_completed→new",
+    });
+    expect(staffMock.findStaffUserById).toHaveBeenCalledWith("expert-1");
+    expect(smsMock.sendMessage).toHaveBeenCalledWith(
+      "09121111111",
+      "لید جدید داری\nچک کن",
+    );
+  });
+
+  it.each([
+    "assessment_in_progress",
+    "assessment_incomplete",
+  ] as const)(
+    "upgradeExistingLeadToDirect from %s records status change and notifies expert",
+    async (fromStatus) => {
+      repoMock.findConsultationRequestById.mockImplementation(async () => ({
+        id: "pipeline-lead",
+        status: fromStatus,
+        assignedToId: "expert-1",
+        assessmentSessionId: "assessment-1",
+      }));
+      repoMock.upgradeConsultationRequestToDirect.mockResolvedValue({
+        id: "pipeline-lead",
+        status: "new",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      });
+
+      const { upgradeExistingLeadToDirect } = await import(
+        "@/modules/consultation/lead-assignment.service"
+      );
+
+      await upgradeExistingLeadToDirect("pipeline-lead", {
+        name: "Consult User",
+        phone: "09123456789",
+        assessmentSessionId: "assessment-1",
+      });
+
+      expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+        consultationRequestId: "pipeline-lead",
+        staffUserId: null,
+        type: "status_change",
+        detail: `${fromStatus}→new`,
+      });
+      expect(smsMock.sendMessage).toHaveBeenCalledWith(
+        "09121111111",
+        "لید جدید داری\nچک کن",
+      );
+    },
+  );
+
+  it("upgradeExistingLeadToMessenger notifies assigned expert on consultation upgrade", async () => {
+    repoMock.findConsultationRequestById.mockImplementation(async () => ({
+      id: "messenger-lead",
+      status: "assessment_in_progress",
+      assignedToId: "expert-1",
+      assessmentSessionId: "assessment-1",
+    }));
+    repoMock.upgradeConsultationRequestToMessenger.mockResolvedValue({
+      id: "messenger-lead",
+      status: "new",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const { upgradeExistingLeadToMessenger } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await upgradeExistingLeadToMessenger("messenger-lead", {
+      name: "Messenger User",
+      phone: "09123456789",
+      assessmentSessionId: "assessment-1",
+    });
+
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "messenger-lead",
+      staffUserId: null,
+      type: "status_change",
+      detail: "assessment_in_progress→new",
+    });
+    expect(smsMock.sendMessage).toHaveBeenCalled();
+  });
+
+  it("processStaleAssessmentLeads moves abandoned and stale in-progress leads", async () => {
+    const staleDate = new Date(Date.now() - 30 * 60 * 60 * 1000);
+    repoMock.findAssessmentInProgressLeadsForStaleCheck.mockResolvedValue([
+      {
+        id: "lead-abandoned",
+        status: "assessment_in_progress",
+        updatedAt: new Date(),
+        assessmentSession: {
+          id: "assessment-abandoned",
+          status: "abandoned",
+          updatedAt: new Date(),
+          startedAt: new Date(),
+          answers: [],
+        },
+      },
+      {
+        id: "lead-stale",
+        status: "assessment_in_progress",
+        updatedAt: staleDate,
+        assessmentSession: {
+          id: "assessment-stale",
+          status: "in_progress",
+          updatedAt: staleDate,
+          startedAt: staleDate,
+          answers: [{ answeredAt: staleDate }],
+        },
+      },
+      {
+        id: "lead-fresh",
+        status: "assessment_in_progress",
+        updatedAt: new Date(),
+        assessmentSession: {
+          id: "assessment-fresh",
+          status: "in_progress",
+          updatedAt: new Date(),
+          startedAt: new Date(),
+          answers: [{ answeredAt: new Date() }],
+        },
+      },
+    ]);
+    repoMock.findConsultationRequestByAssessmentSessionId.mockImplementation(
+      async (assessmentSessionId: string) => ({
+        id: `lead-for-${assessmentSessionId}`,
+        status: "assessment_in_progress",
       }),
     );
 
-    const call = repoMock.createConsultationRequest.mock.calls[0][0];
-    const scheduledAt = call.assignScheduledFor.getTime();
-    const expectedMin = before + 24 * 60 * 60 * 1000;
-    const expectedMax = after + 24 * 60 * 60 * 1000;
-    expect(scheduledAt).toBeGreaterThanOrEqual(expectedMin);
-    expect(scheduledAt).toBeLessThanOrEqual(expectedMax);
+    const { processStaleAssessmentLeads } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
 
-    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
-    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+    const processed = await processStaleAssessmentLeads();
+
+    expect(processed).toBe(2);
+    expect(repoMock.transitionLeadToAssessmentIncomplete).toHaveBeenCalledTimes(
+      2,
+    );
+  });
+
+  it("markAssessmentLeadIncomplete transitions only in-progress leads", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "lead-1",
+      status: "assessment_in_progress",
+    });
+
+    const { markAssessmentLeadIncomplete } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    const moved = await markAssessmentLeadIncomplete("assessment-1");
+
+    expect(moved).toBe(true);
+    expect(repoMock.transitionLeadToAssessmentIncomplete).toHaveBeenCalledWith(
+      "lead-1",
+    );
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: null,
+      type: "status_change",
+      detail: "assessment_in_progress→assessment_incomplete",
+    });
+  });
+
+  it("markAssessmentLeadIncomplete is a no-op outside assessment_in_progress", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "lead-crm",
+      status: "contacted",
+    });
+    repoMock.transitionLeadToAssessmentIncomplete.mockResolvedValue({
+      transitioned: false,
+      fromStatus: "contacted",
+    });
+
+    const { markAssessmentLeadIncomplete } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    const moved = await markAssessmentLeadIncomplete("assessment-1");
+
+    expect(moved).toBe(false);
+    expect(repoMock.createLeadActivity).not.toHaveBeenCalled();
+  });
+
+  it("createSystemLeadIfEligible delegates to assessment-complete transition", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "existing-lead",
+      status: "assessment_in_progress",
+    });
+
+    const { createSystemLeadIfEligible } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createSystemLeadIfEligible({
+      assessmentSessionId: "assessment-1",
+      reportId: "report-1",
+      leadScore: "hot",
+    });
+
+    expect(repoMock.transitionLeadToAssessmentCompleted).toHaveBeenCalledWith(
+      "existing-lead",
+      "report-1",
+    );
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
   });
 
   it("processDueSystemLeadAssignments assigns due leads and clears schedule", async () => {

@@ -1,4 +1,9 @@
-import type { LeadSource, PurchaseProbability, SalesModel } from "@prisma/client";
+import type {
+  LeadSource,
+  LeadStatus,
+  PurchaseProbability,
+  SalesModel,
+} from "@prisma/client";
 import type { AdminSession, SalesExpertSession, UserSession } from "@/lib/session";
 import type { StructuredReport } from "@/types/report";
 import type { ReportSpec, ExpertViewSpec } from "@/types/report-spec";
@@ -220,6 +225,7 @@ export interface CreateConsultationRequestInput {
   assessmentSessionId?: string;
   reportId?: string;
   source?: LeadSource;
+  status?: LeadStatus;
   purchaseProbabilityPercent?: number;
   purchaseProbabilityBand?: PurchaseProbability;
   assignScheduledFor?: Date;

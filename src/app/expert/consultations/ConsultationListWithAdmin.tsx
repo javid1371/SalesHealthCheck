@@ -17,7 +17,10 @@ import type { ConsultationListItem } from "@/modules/consultation/consultation.t
 import type { LeadStatus } from "@prisma/client";
 
 const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
-  { value: "new", label: "جدید" },
+  { value: "assessment_in_progress", label: "در حال انجام تست" },
+  { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
+  { value: "assessment_completed", label: "تست تکمیل‌شده" },
+  { value: "new", label: "درخواست مشاوره" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },
@@ -45,7 +48,10 @@ export function ConsultationListWithAdmin({
 }: ConsultationListWithAdminProps) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkStatus, setBulkStatus] = useState<LeadStatus>("contacted");
+  const [bulkStatus, setBulkStatus] = useState<LeadStatus>("new");
+  const bulkStatusOptions = STATUS_OPTIONS.filter(
+    (option) => option.value !== "assessment_in_progress",
+  );
   const [bulkAssigneeId, setBulkAssigneeId] = useState("");
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualName, setManualName] = useState("");
@@ -245,7 +251,7 @@ export function ConsultationListWithAdmin({
               }
               disabled={loading}
             >
-              {STATUS_OPTIONS.map((option) => (
+              {bulkStatusOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -349,9 +355,16 @@ export function ConsultationListWithAdmin({
                   </td>
                 ) : null}
                 <td className="px-4 py-3">
-                  <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
-                    {item.statusLabel}
-                  </span>
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
+                      {item.statusLabel}
+                    </span>
+                    {item.status === "assessment_in_progress" ? (
+                      <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-800">
+                        تماس نگیرید
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   {item.slaReason ? (

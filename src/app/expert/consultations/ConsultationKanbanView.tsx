@@ -7,6 +7,7 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { ApiClientError } from "@/lib/api-client";
 import { updateConsultationLeadRequest } from "@/lib/expert-client";
 import type { ConsultationListItem } from "@/modules/consultation/consultation.types";
+import { isManualStatusTransitionAllowed } from "@/modules/consultation/lead-status";
 import type { LeadStatus } from "@prisma/client";
 
 const KANBAN_COLUMNS: Array<{
@@ -14,7 +15,26 @@ const KANBAN_COLUMNS: Array<{
   label: string;
   color: string;
 }> = [
-  { status: "new", label: "جدید", color: "border-sky-200 bg-sky-50/60" },
+  {
+    status: "assessment_in_progress",
+    label: "در حال انجام تست",
+    color: "border-rose-200 bg-rose-50/60",
+  },
+  {
+    status: "assessment_incomplete",
+    label: "پیگیری تکمیل تست",
+    color: "border-orange-200 bg-orange-50/60",
+  },
+  {
+    status: "assessment_completed",
+    label: "تست تکمیل‌شده",
+    color: "border-teal-200 bg-teal-50/60",
+  },
+  {
+    status: "new",
+    label: "درخواست مشاوره",
+    color: "border-sky-200 bg-sky-50/60",
+  },
   {
     status: "contacted",
     label: "تماس گرفته‌شده",
@@ -77,9 +97,27 @@ export function ConsultationKanbanView({
     }));
   }, [requests]);
 
+  function canDropOnto(status: LeadStatus): boolean {
+    if (!draggingId) {
+      return false;
+    }
+    const lead = requests.find((item) => item.id === draggingId);
+    if (!lead) {
+      return false;
+    }
+    return isManualStatusTransitionAllowed(lead.status, status);
+  }
+
   async function moveLead(leadId: string, newStatus: LeadStatus) {
     const lead = requests.find((item) => item.id === leadId);
     if (!lead || lead.status === newStatus) {
+      return;
+    }
+
+    if (!isManualStatusTransitionAllowed(lead.status, newStatus)) {
+      setError("ورود دستی به وضعیت «در حال انجام تست» مجاز نیست.");
+      setDraggingId(null);
+      setDropTargetStatus(null);
       return;
     }
 
@@ -129,16 +167,31 @@ export function ConsultationKanbanView({
   }
 
   function handleDragOver(event: React.DragEvent, status: LeadStatus) {
+    if (!canDropOnto(status)) {
+      return;
+    }
     event.preventDefault();
     setDropTargetStatus(status);
   }
 
   function handleDrop(event: React.DragEvent, status: LeadStatus) {
     event.preventDefault();
-    const leadId = event.dataTransfer.getData("text/plain");
-    if (leadId) {
-      void moveLead(leadId, status);
+    const leadId = event.dataTransfer.getData("text/plain") || draggingId;
+    const lead = leadId
+      ? requests.find((item) => item.id === leadId)
+      : undefined;
+    if (!leadId || !lead) {
+      setDraggingId(null);
+      setDropTargetStatus(null);
+      return;
     }
+    if (!isManualStatusTransitionAllowed(lead.status, status)) {
+      setError("ورود دستی به وضعیت «در حال انجام تست» مجاز نیست.");
+      setDraggingId(null);
+      setDropTargetStatus(null);
+      return;
+    }
+    void moveLead(leadId, status);
   }
 
   return (
@@ -152,8 +205,16 @@ export function ConsultationKanbanView({
             className={`min-w-[17rem] flex-1 rounded-2xl border p-3 transition-colors ${
               column.color
             } ${
-              dropTargetStatus === column.status && draggingId
+              dropTargetStatus === column.status &&
+              draggingId &&
+              canDropOnto(column.status)
                 ? "ring-2 ring-emerald-500 ring-offset-2"
+                : ""
+            } ${
+              draggingId &&
+              column.status === "assessment_in_progress" &&
+              !canDropOnto(column.status)
+                ? "opacity-70"
                 : ""
             }`}
             onDragOver={(event) => handleDragOver(event, column.status)}
@@ -188,11 +249,13 @@ export function ConsultationKanbanView({
                     className={`cursor-grab rounded-xl border border-zinc-200 bg-white p-3 shadow-sm active:cursor-grabbing ${
                       draggingId === item.id ? "opacity-50" : ""
                     } ${
-                      item.sla.severity === "red"
-                        ? "border-red-200"
-                        : item.sla.severity === "amber"
-                          ? "border-amber-200"
-                          : ""
+                      item.status === "assessment_in_progress"
+                        ? "border-rose-300"
+                        : item.sla.severity === "red"
+                          ? "border-red-200"
+                          : item.sla.severity === "amber"
+                            ? "border-amber-200"
+                            : ""
                     }`}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -215,6 +278,11 @@ export function ConsultationKanbanView({
                     ) : null}
 
                     <div className="flex flex-wrap gap-1.5">
+                      {item.status === "assessment_in_progress" ? (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
+                          تماس نگیرید
+                        </span>
+                      ) : null}
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
                           item.source === "system"

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { processDueSystemLeadAssignments } from "@/modules/consultation/lead-assignment.service";
+import {
+  processDueSystemLeadAssignments,
+  processStaleAssessmentLeads,
+} from "@/modules/consultation/lead-assignment.service";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +26,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const processed = await processDueSystemLeadAssignments();
-  return NextResponse.json({ processed });
+  const [processed, staleMoved] = await Promise.all([
+    processDueSystemLeadAssignments(),
+    processStaleAssessmentLeads(),
+  ]);
+  return NextResponse.json({ processed, staleMoved });
 }

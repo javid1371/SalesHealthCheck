@@ -54,6 +54,9 @@ enum StaffRole {
 }
 
 enum LeadStatus {
+  assessment_in_progress
+  assessment_incomplete
+  assessment_completed
   new
   contacted
   meeting_scheduled

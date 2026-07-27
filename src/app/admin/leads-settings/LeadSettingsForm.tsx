@@ -25,6 +25,8 @@ export function LeadSettingsForm({
   const [systemAssignDelayHours, setSystemAssignDelayHours] = useState(
     String(settings.systemAssignDelayHours),
   );
+  const [assessmentIncompleteAfterHours, setAssessmentIncompleteAfterHours] =
+    useState(String(settings.assessmentIncompleteAfterHours));
   const [expertNewLeadSms, setExpertNewLeadSms] = useState(
     settings.expertNewLeadSms,
   );
@@ -48,6 +50,10 @@ export function LeadSettingsForm({
       await updateLeadSettingsRequest({
         autoAssignEnabled,
         systemAssignDelayHours: Number.parseInt(systemAssignDelayHours, 10),
+        assessmentIncompleteAfterHours: Number.parseInt(
+          assessmentIncompleteAfterHours,
+          10,
+        ),
         expertNewLeadSms,
         maxOpenLeadsPerExpert: Number.parseInt(maxOpenLeadsPerExpert, 10),
         hotLeadDirectAssigneeId: hotLeadDirectAssigneeId.trim() || null,
@@ -94,6 +100,24 @@ export function LeadSettingsForm({
             />
             <p className="mt-1 text-xs text-zinc-500">
               برای لیدهای hot شناسایی‌شده از Health Check؛ ۰ یعنی فوری.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-zinc-700">
+              آستانه بی‌فعالیتی تست (ساعت)
+            </label>
+            <input
+              type="number"
+              min={0}
+              value={assessmentIncompleteAfterHours}
+              onChange={(e) =>
+                setAssessmentIncompleteAfterHours(e.target.value)
+              }
+              className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              بعد از این مدت بدون فعالیت، لید «در حال انجام تست» به «پیگیری تکمیل
+              تست» می‌رود.
             </p>
           </div>
           <div>

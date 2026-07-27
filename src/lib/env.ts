@@ -146,4 +146,14 @@ export const env = {
   get leadSystemAssignDelayHours(): number {
     return parsePositiveInt(process.env.LEAD_SYSTEM_ASSIGN_DELAY_HOURS, 24);
   },
+  /**
+   * Hours of assessment inactivity before an in-progress lead moves to
+   * assessment_incomplete; default 24.
+   */
+  get leadAssessmentIncompleteAfterHours(): number {
+    return parsePositiveInt(
+      process.env.LEAD_ASSESSMENT_INCOMPLETE_AFTER_HOURS,
+      24,
+    );
+  },
 } as const;

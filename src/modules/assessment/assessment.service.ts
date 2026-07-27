@@ -230,6 +230,16 @@ export async function startAssessment(
       resultToken,
     });
 
+    const { hookLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+    hookLeadOnAssessmentStart({
+      assessmentSessionId: session.id,
+      name: validated.user.name?.trim() || organization.businessName,
+      phone: user.phone,
+      email: validated.user.email ?? user.email,
+    });
+
     const { hookAssessmentStarted } = await import("@/modules/sms-funnel/hooks");
     hookAssessmentStarted(user.id, session.id);
 
@@ -566,11 +576,11 @@ export async function finishAssessment(
       type: "assessment_completed",
     });
 
-    const { createSystemLeadIfEligible } = await import(
+    const { transitionLeadOnAssessmentComplete } = await import(
       "@/modules/consultation/lead-assignment.service"
     );
     try {
-      await createSystemLeadIfEligible({
+      await transitionLeadOnAssessmentComplete({
         assessmentSessionId: assessmentId,
         reportId: report.id,
         leadScore: reportSpec?.expertView?.leadScore,
@@ -578,7 +588,10 @@ export async function finishAssessment(
         valueAtStake,
       });
     } catch (error) {
-      console.error("[lead-assignment] system lead detection failed:", error);
+      console.error(
+        "[lead-assignment] assessment complete transition failed:",
+        error,
+      );
     }
 
     return buildFinishResponse(assessmentId, assessment.resultToken, report.id);

@@ -56,9 +56,13 @@ import {
   LEAD_ACTIVITY_LABELS,
 } from "./lead-activity";
 import { computeLeadSlaFlags, slaReasonLabel } from "./lead-sla";
+import { isManualStatusTransitionAllowed } from "./lead-status";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
-  new: "جدید",
+  assessment_in_progress: "در حال انجام تست",
+  assessment_incomplete: "پیگیری تکمیل تست",
+  assessment_completed: "تست تکمیل‌شده",
+  new: "درخواست مشاوره",
   contacted: "تماس گرفته‌شده",
   meeting_scheduled: "جلسه تنظیم‌شده",
   closed_won: "بسته — موفق",
@@ -664,6 +668,18 @@ export async function updateConsultationLeadStatus(
     );
   }
 
+  if (
+    input.status !== undefined &&
+    input.status !== existing.status &&
+    !isManualStatusTransitionAllowed(existing.status, input.status)
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "ورود دستی به وضعیت «در حال انجام تست» مجاز نیست.",
+      400,
+    );
+  }
+
   const staffUserId =
     access.adminSession?.staffUserId ??
     access.salesExpertSession?.staffUserId ??
@@ -717,6 +733,12 @@ export async function bulkUpdateLeads(
     const timestampUpdates = resolveStatusTimestamps(row, input.status);
 
     if (input.status !== undefined) {
+      if (
+        input.status !== row.status &&
+        !isManualStatusTransitionAllowed(row.status, input.status)
+      ) {
+        continue;
+      }
       updateInput.status = input.status;
     }
 

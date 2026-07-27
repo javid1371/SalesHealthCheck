@@ -20,6 +20,7 @@ import {
 import { createConsultationRequest, findConsultationRequestByAssessmentSessionId } from "@/modules/consultation/consultation.repository";
 import {
   finalizeNewLead,
+  hookLeadOnAssessmentAbandoned,
   upgradeExistingLeadToMessenger,
 } from "@/modules/consultation/lead-assignment.service";
 import { generateReportChartImage } from "@/modules/report/report-image.service";
@@ -199,6 +200,12 @@ async function sendMainMenu(
   });
 }
 
+function markAbandonedAssessmentLeads(assessmentIds: string[]): void {
+  for (const assessmentId of assessmentIds) {
+    hookLeadOnAssessmentAbandoned(assessmentId);
+  }
+}
+
 async function abandonConversationAssessment(
   conversation: BotConversationRecord,
 ): Promise<void> {
@@ -209,6 +216,7 @@ async function abandonConversationAssessment(
       (assessment.status === "started" || assessment.status === "in_progress")
     ) {
       await abandonAssessment(conversation.assessmentId);
+      markAbandonedAssessmentLeads([conversation.assessmentId]);
     }
   }
 }
@@ -250,7 +258,10 @@ async function freshStartToMainMenu(
     return;
   }
 
-  await abandonInProgressAssessmentsForUser(conversation.userId);
+  const abandonedIds = await abandonInProgressAssessmentsForUser(
+    conversation.userId,
+  );
+  markAbandonedAssessmentLeads(abandonedIds);
   const reset = await resetConversation(conversation, { preserveUser: true });
 
   await client.sendMessage({
@@ -887,7 +898,10 @@ async function handleMenuCallback(
   switch (data) {
     case MENU_CALLBACKS.newAssessment:
       if (conversation.userId) {
-        await abandonInProgressAssessmentsForUser(conversation.userId);
+        const abandonedIds = await abandonInProgressAssessmentsForUser(
+          conversation.userId,
+        );
+        markAbandonedAssessmentLeads(abandonedIds);
       }
       await updateConversation(conversation.id, {
         state: "awaiting_business_name",
@@ -958,7 +972,10 @@ async function handleResetCommand(
   const conversation = await findOrCreateConversation(platform, chatId);
 
   if (conversation.userId) {
-    await abandonInProgressAssessmentsForUser(conversation.userId);
+    const abandonedIds = await abandonInProgressAssessmentsForUser(
+      conversation.userId,
+    );
+    markAbandonedAssessmentLeads(abandonedIds);
   }
 
   await resetConversation(conversation);

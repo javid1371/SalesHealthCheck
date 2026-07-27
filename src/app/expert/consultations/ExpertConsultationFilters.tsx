@@ -9,7 +9,10 @@ import { Select } from "@/components/ui/Select";
 
 const STATUS_OPTIONS = [
   { value: "", label: "همه وضعیت‌ها" },
-  { value: "new", label: "جدید" },
+  { value: "assessment_in_progress", label: "در حال انجام تست" },
+  { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
+  { value: "assessment_completed", label: "تست تکمیل‌شده" },
+  { value: "new", label: "درخواست مشاوره" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },

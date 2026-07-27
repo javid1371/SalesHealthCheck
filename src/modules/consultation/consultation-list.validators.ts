@@ -9,6 +9,9 @@ import type {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 const LEAD_STATUSES: LeadStatus[] = [
+  "assessment_in_progress",
+  "assessment_incomplete",
+  "assessment_completed",
   "new",
   "contacted",
   "meeting_scheduled",
