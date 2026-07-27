@@ -25,6 +25,7 @@ import {
   findConsultationRequestById,
   findConsultationRequests,
   findConsultationRequestsByIds,
+  findConsultationRequestsForKanban,
   findLeadsNeedingFollowUp,
   updateConsultationLead,
 } from "./consultation.repository";
@@ -622,6 +623,47 @@ export async function listConsultationRequests(
       pageSize: filter.pageSize,
       total,
       totalPages,
+    },
+  };
+}
+
+/** Kanban board: all matching leads with lean payload (no 100-row cap). */
+export async function listConsultationRequestsForKanban(
+  filter: Omit<ConsultationListFilter, "page" | "pageSize">,
+  access?: ConsultationsAccessInput,
+): Promise<ConsultationListResponse> {
+  const baseFilter: ConsultationListFilter = {
+    ...filter,
+    page: 1,
+    pageSize: 1,
+  };
+  const effectiveFilter = access
+    ? resolveListFilter(baseFilter, access)
+    : baseFilter;
+
+  if (effectiveFilter.assignedToId === "__none__") {
+    return {
+      requests: [],
+      pagination: {
+        page: 1,
+        pageSize: 0,
+        total: 0,
+        totalPages: 0,
+      },
+    };
+  }
+
+  const { page: _page, pageSize: _pageSize, ...listFilter } = effectiveFilter;
+  const requests = await findConsultationRequestsForKanban(listFilter);
+  const total = requests.length;
+
+  return {
+    requests: requests.map(toConsultationListItem),
+    pagination: {
+      page: 1,
+      pageSize: total,
+      total,
+      totalPages: total === 0 ? 0 : 1,
     },
   };
 }

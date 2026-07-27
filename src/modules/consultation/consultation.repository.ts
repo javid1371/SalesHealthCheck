@@ -432,16 +432,26 @@ function buildConsultationWhere(
   return where;
 }
 
-const consultationInclude = {
+/** Lean relations for list/kanban — avoid loading heavy report JSON blobs. */
+const consultationListInclude = {
   assessmentSession: {
-    include: {
-      organization: true,
-      user: true,
-      overallScore: true,
+    select: {
+      id: true,
+      resultToken: true,
+      organization: {
+        select: { businessName: true },
+      },
+      user: {
+        select: { phone: true },
+      },
+      overallScore: {
+        select: { percentage: true },
+      },
     },
   },
-  report: true,
-  assignedTo: true,
+  assignedTo: {
+    select: { id: true, name: true },
+  },
 } as const;
 
 const consultationDetailInclude = {
@@ -479,40 +489,57 @@ export async function countConsultationRequests(filter: ConsultationListFilter) 
   });
 }
 
+async function hydrateConsultationListRows(ids: string[]) {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const rows = await db.consultationRequest.findMany({
+    where: { id: { in: ids } },
+    include: consultationListInclude,
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+}
+
 export async function findConsultationRequests(filter: ConsultationListFilter) {
+  // Rank with a light query first — never join report/org for every lead just to paginate.
+  const rankingRows = await db.consultationRequest.findMany({
+    where: buildConsultationWhere(filter),
+    select: { id: true, status: true, createdAt: true },
+  });
+  rankingRows.sort(compareLeadsByCallQueuePriority);
+
+  const start = (filter.page - 1) * filter.pageSize;
+  const pageIds = rankingRows
+    .slice(start, start + filter.pageSize)
+    .map((row) => row.id);
+
+  return hydrateConsultationListRows(pageIds);
+}
+
+/** Full board payload for Kanban (lean joins, no artificial page cap). */
+export async function findConsultationRequestsForKanban(
+  filter: Omit<ConsultationListFilter, "page" | "pageSize">,
+) {
   const rows = await db.consultationRequest.findMany({
     where: buildConsultationWhere(filter),
-    include: consultationInclude,
-    orderBy: { createdAt: "desc" },
+    include: consultationListInclude,
   });
-
   rows.sort(compareLeadsByCallQueuePriority);
-  const start = (filter.page - 1) * filter.pageSize;
-  return rows.slice(start, start + filter.pageSize);
+  return rows;
 }
 
 export async function findAllConsultationRequests(
   filter: Omit<ConsultationListFilter, "page" | "pageSize">,
 ) {
-  const rows = await db.consultationRequest.findMany({
-    where: buildConsultationWhere(filter),
-    include: consultationInclude,
-    orderBy: { createdAt: "desc" },
-  });
-
-  rows.sort(compareLeadsByCallQueuePriority);
-  return rows;
+  return findConsultationRequestsForKanban(filter);
 }
 
 export async function findConsultationRequestsByIds(ids: string[]) {
-  if (ids.length === 0) {
-    return [];
-  }
-
-  return db.consultationRequest.findMany({
-    where: { id: { in: ids } },
-    include: consultationInclude,
-  });
+  return hydrateConsultationListRows(ids);
 }
 
 export async function findConsultationRequestById(id: string) {
@@ -561,7 +588,7 @@ export async function updateConsultationLead(
   return db.consultationRequest.update({
     where: { id },
     data,
-    include: consultationInclude,
+    include: consultationListInclude,
   });
 }
 
@@ -579,7 +606,7 @@ export async function createManualConsultationRequest(input: {
       message: input.message,
       source: "direct",
     },
-    include: consultationInclude,
+    include: consultationListInclude,
   });
 }
 
@@ -676,7 +703,7 @@ export async function findLeadsNeedingFollowUp(
       nextFollowUpAt: { lte: byDate },
       status: { in: OPEN_LEAD_STATUSES },
     },
-    include: consultationInclude,
+    include: consultationListInclude,
     orderBy: { nextFollowUpAt: "asc" },
     take: limit,
   });

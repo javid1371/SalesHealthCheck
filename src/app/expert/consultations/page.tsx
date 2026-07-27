@@ -8,7 +8,10 @@ import {
   readAdminSession,
   readSalesExpertSession,
 } from "@/lib/session";
-import { listConsultationRequests } from "@/modules/consultation/consultation.service";
+import {
+  listConsultationRequests,
+  listConsultationRequestsForKanban,
+} from "@/modules/consultation/consultation.service";
 import { validateConsultationListFilter } from "@/modules/consultation/consultation-list.validators";
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import { ExpertNav } from "@/app/expert/ExpertNav";
@@ -16,8 +19,6 @@ import { ExpertConsultationFilters } from "./ExpertConsultationFilters";
 import { ConsultationListWithAdmin } from "./ConsultationListWithAdmin";
 import { ConsultationKanbanView } from "./ConsultationKanbanView";
 import { ConsultationViewToggle } from "./ConsultationViewToggle";
-
-const KANBAN_PAGE_SIZE = 100;
 
 interface ExpertConsultationsPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -55,15 +56,14 @@ export default async function ExpertConsultationsPage({
   const filter = validateConsultationListFilter(urlSearchParams);
   const view =
     urlSearchParams.get("view") === "kanban" ? "kanban" : ("list" as const);
-  const listFilter =
-    view === "kanban"
-      ? { ...filter, status: undefined, page: 1, pageSize: KANBAN_PAGE_SIZE }
-      : filter;
   const access = { adminSession, salesExpertSession };
-  const { requests, pagination } = await listConsultationRequests(
-    listFilter,
-    access,
-  );
+  const { requests, pagination } =
+    view === "kanban"
+      ? await listConsultationRequestsForKanban(
+          { ...filter, status: undefined },
+          access,
+        )
+      : await listConsultationRequests(filter, access);
 
   const exportQueryParams = new URLSearchParams(urlSearchParams);
   exportQueryParams.delete("page");
@@ -107,9 +107,6 @@ export default async function ExpertConsultationsPage({
         {pagination.total.toLocaleString("fa-IR")} درخواست
         {view === "list" && pagination.totalPages > 1
           ? ` — صفحه ${pagination.page.toLocaleString("fa-IR")} از ${pagination.totalPages.toLocaleString("fa-IR")}`
-          : null}
-        {view === "kanban" && pagination.total > KANBAN_PAGE_SIZE
-          ? ` — نمایش ${KANBAN_PAGE_SIZE.toLocaleString("fa-IR")} مورد اول`
           : null}
       </p>
 

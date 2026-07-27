@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { ApiClientError } from "@/lib/api-client";
 import { updateConsultationLeadRequest } from "@/lib/expert-client";
@@ -71,6 +71,9 @@ export function ConsultationKanbanView({
 }: ConsultationKanbanViewProps) {
   const router = useRouter();
   const [requests, setRequests] = useState(initialRequests);
+  useEffect(() => {
+    setRequests(initialRequests);
+  }, [initialRequests]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetStatus, setDropTargetStatus] = useState<LeadStatus | null>(
     null,
