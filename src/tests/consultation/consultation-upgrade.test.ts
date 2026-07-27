@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const repoMock = vi.hoisted(() => ({
   createConsultationRequest: vi.fn(),
   findConsultationRequestByAssessmentSessionId: vi.fn(),
+  findConsultationRequestByUserId: vi.fn(),
   upgradeConsultationRequestToDirect: vi.fn(),
 }));
 
@@ -36,6 +37,7 @@ describe("submitConsultationRequest upgrade", () => {
       id: "existing-system-lead",
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
     });
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
     leadAssignmentMock.upgradeExistingLeadToDirect.mockResolvedValue({
       id: "existing-system-lead",
       createdAt: new Date("2026-01-01T00:00:00.000Z"),

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const repoMock = vi.hoisted(() => ({
   createConsultationRequest: vi.fn(),
   findConsultationRequestByAssessmentSessionId: vi.fn(),
+  findConsultationRequestByUserId: vi.fn(),
 }));
 
 const leadAssignmentMock = vi.hoisted(() => ({
@@ -34,6 +35,7 @@ describe("submitConsultationRequest access control", () => {
       userId: "user-1",
     });
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
     repoMock.createConsultationRequest.mockResolvedValue({
       id: "lead-1",
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
