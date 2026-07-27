@@ -13,7 +13,8 @@ import { countCompletedAssessments } from "@/modules/assessment/assessment.repos
 /** Hide the live count until there are enough completions to feel credible. */
 const MIN_COMPLETED_TO_SHOW = 10;
 
-export const revalidate = 300;
+/** Avoid build-time prerender — this page queries Postgres for the live count. */
+export const dynamic = "force-dynamic";
 
 const TRUST_BULLETS = [
   "اگه فروش داری ولی نمی‌دونی مشکل از کجاست، برای توئه",
