@@ -13,7 +13,7 @@ export function AdminLogoutButton() {
     setLoading(true);
     try {
       await adminLogoutRequest();
-      router.push("/admin/login");
+      router.push("/login");
       router.refresh();
     } catch {
       setLoading(false);

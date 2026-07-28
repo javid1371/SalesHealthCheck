@@ -19,7 +19,7 @@ import { SmsStepEditor } from "./SmsStepEditor";
 export default async function AdminSmsFunnelPage() {
   const session = await readAdminSession();
   if (!session) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const [sequences, settings, metrics, recentSmsMessages, optOuts] =

@@ -10,11 +10,8 @@ import type {
   AdminFullConversionFunnel,
   AdminLeadStatusFunnel,
 } from "@/modules/admin/admin.types";
-import {
-  CALL_OUTCOME_LABELS,
-  CALL_OUTCOMES,
-} from "@/modules/consultation/lead-activity";
 import { AdminNav } from "../AdminNav";
+import { ExpertPerformanceTable } from "./ExpertPerformanceTable";
 
 function toDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -29,12 +26,15 @@ function KpiCard({
   suffix,
   highlight,
   href,
+  valueDisplay,
 }: {
   label: string;
   value: number;
   suffix?: string;
   highlight?: "amber" | "red";
   href?: string;
+  /** Override numeric formatting (e.g. "—", "۳ روز") */
+  valueDisplay?: string;
 }) {
   const valueColor =
     highlight === "red"
@@ -47,10 +47,16 @@ function KpiCard({
     <>
       <p className="text-sm text-zinc-600">{label}</p>
       <p className={`mt-2 text-3xl font-semibold ${valueColor}`}>
-        {value.toLocaleString("fa-IR")}
-        {suffix ? (
-          <span className="text-lg font-normal text-zinc-600">{suffix}</span>
-        ) : null}
+        {valueDisplay ?? (
+          <>
+            {value.toLocaleString("fa-IR")}
+            {suffix ? (
+              <span className="text-lg font-normal text-zinc-600">
+                {suffix}
+              </span>
+            ) : null}
+          </>
+        )}
       </p>
     </>
   );
@@ -68,13 +74,6 @@ function KpiCard({
   }
 
   return <Card className="text-center">{content}</Card>;
-}
-
-function formatSmsDate(iso: string): string {
-  return new Intl.DateTimeFormat("fa-IR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(iso));
 }
 
 function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
@@ -161,7 +160,9 @@ function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
         {stages.map((stage) => (
           <div key={stage.key} className="text-center">
             <div className="flex items-center justify-center gap-1.5">
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${stage.color}`} />
+              <span
+                className={`inline-block h-2.5 w-2.5 rounded-full ${stage.color}`}
+              />
               <p className="text-sm text-zinc-600">{stage.label}</p>
             </div>
             <p className="mt-1 text-xl font-semibold text-zinc-900">
@@ -182,6 +183,51 @@ function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
   );
 }
 
+function AttractionFunnelCard({
+  started,
+  completed,
+  consultations,
+  completedRate,
+  consultationRate,
+}: {
+  started: number;
+  completed: number;
+  consultations: number;
+  completedRate: number;
+  consultationRate: number;
+}) {
+  return (
+    <Card>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="text-center">
+          <p className="text-sm text-zinc-600">شروع</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">
+            {started.toLocaleString("fa-IR")}
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-sm text-zinc-600">تکمیل</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">
+            {completed.toLocaleString("fa-IR")}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {completedRate.toLocaleString("fa-IR")}٪ از شروع
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-sm text-zinc-600">مشاوره</p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">
+            {consultations.toLocaleString("fa-IR")}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {consultationRate.toLocaleString("fa-IR")}٪ از تکمیل
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function FullConversionFunnelSection({
   funnel,
 }: {
@@ -192,7 +238,7 @@ function FullConversionFunnelSection({
   return (
     <section className="mb-8">
       <h2 className="mb-1 text-lg font-semibold text-zinc-900">
-        قیف کامل تبدیل
+        جزئیات قیف تبدیل
       </h2>
       <p className="mb-4 text-sm text-zinc-500">
         از بازدید فرود تا ثبت مشاوره — هر بازدیدکننده/کاربر یک‌بار در هر مرحله
@@ -270,7 +316,7 @@ function FullConversionFunnelSection({
 export default async function AdminDashboardPage() {
   const session = await readAdminSession();
   if (!session) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const dashboard = await getAdminDashboard();
@@ -280,18 +326,16 @@ export default async function AdminDashboardPage() {
     "/expert/consultations?onlyPendingAssignment=true";
   const consultationsOverdueHref =
     "/expert/consultations?onlyOverdueFollowUp=true";
-  const consultationsStatusNewHref = "/expert/consultations?status=new";
-  const consultationsStaleNewHref =
-    "/expert/consultations?onlyStaleNew=true";
-  const consultationsCallQueueHref =
-    "/expert/consultations?excludeAssessmentInProgress=true";
-  const consultationsHotUnassignedHref =
-    "/expert/consultations?onlyHot=true&onlyUnassigned=true";
+
+  const avgDaysDisplay =
+    dashboard.salesMetrics.avgDaysToFirstContact === null
+      ? "—"
+      : `${dashboard.salesMetrics.avgDaysToFirstContact.toLocaleString("fa-IR")} روز`;
 
   return (
     <PageLayout
       title="پنل ادمین — داشبورد"
-      subtitle="نمای کلی KPIها، قیف تبدیل و عملکرد کارشناس‌ها."
+      subtitle="نظارت مدیریتی: نرخ‌ها، قیف‌ها و عملکرد تیم."
       showBack
       backHref="/"
       maxWidth="5xl"
@@ -299,301 +343,221 @@ export default async function AdminDashboardPage() {
     >
       <AdminNav />
 
-      {dashboard.urgentLeads.length > 0 ||
-      dashboard.leadKpis.highProbabilityUnassigned > 0 ||
-      dashboard.leadKpis.staleNewLeads > 0 ||
-      dashboard.leadKpis.overdueFollowUps > 0 ? (
-        <section className="mb-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-zinc-900">لیدهای فوری</h2>
-            <div className="flex flex-wrap gap-2">
-              <LinkButton
-                href={consultationsCallQueueHref}
-                variant="secondary"
-                size="sm"
-              >
-                صف تماس
-              </LinkButton>
-              <LinkButton href="/expert/consultations" variant="secondary" size="sm">
-                همه لیدها
-              </LinkButton>
-            </div>
-          </div>
-          <Card className="border-amber-200 bg-amber-50/50">
-            <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <Link
-                href={consultationsHotUnassignedHref}
-                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
-              >
-                <p className="text-sm text-zinc-600">احتمال بالا — بدون تخصیص</p>
-                <p className="mt-1 text-2xl font-semibold text-amber-800">
-                  {dashboard.leadKpis.highProbabilityUnassigned.toLocaleString(
-                    "fa-IR",
-                  )}
-                </p>
-              </Link>
-              <Link
-                href={consultationsStaleNewHref}
-                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
-              >
-                <p className="text-sm text-zinc-600">لید جدید کهنه</p>
-                <p className="mt-1 text-2xl font-semibold text-amber-800">
-                  {dashboard.leadKpis.staleNewLeads.toLocaleString("fa-IR")}
-                </p>
-              </Link>
-              <Link
-                href={consultationsOverdueHref}
-                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
-              >
-                <p className="text-sm text-zinc-600">پیگیری عقب‌افتاده</p>
-                <p className="mt-1 text-2xl font-semibold text-red-700">
-                  {dashboard.leadKpis.overdueFollowUps.toLocaleString("fa-IR")}
-                </p>
-              </Link>
-            </div>
-            {dashboard.urgentLeads.length > 0 ? (
-              <ul className="divide-y divide-amber-200/80 border-t border-amber-200/80">
-                {dashboard.urgentLeads.map((lead) => (
-                  <li
-                    key={lead.id}
-                    className={`flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-3 ${
-                      lead.severity === "red"
-                        ? "rounded-lg bg-red-50/80 px-2"
-                        : ""
-                    }`}
-                  >
-                    <div>
-                      <Link
-                        href={lead.detailUrl}
-                        className="font-medium text-emerald-800 hover:text-emerald-900"
-                      >
-                        {lead.name}
-                      </Link>
-                      <p className="text-xs text-zinc-600">
-                        <span
-                          className={`ml-1 rounded-full px-2 py-0.5 font-medium ${
-                            lead.severity === "red"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
-                        >
-                          {lead.reason}
-                        </span>
-                      </p>
-                    </div>
-                    <Link
-                      href={lead.detailUrl}
-                      className="text-xs font-medium text-emerald-700 hover:text-emerald-800"
-                    >
-                      جزئیات ←
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Card>
-        </section>
-      ) : null}
-
       <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">KPIهای لید</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900">کارت امتیاز</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <KpiCard
-            label="لید جدید این هفته"
+            label="ورودی هفته"
             value={dashboard.leadKpis.newThisWeek}
             href={consultationsNewThisWeekHref}
           />
           <KpiCard
-            label="در صف تخصیص"
-            value={dashboard.leadKpis.pendingAssignment}
-            highlight={
-              dashboard.leadKpis.pendingAssignment > 0 ? "amber" : undefined
-            }
-            href={consultationsPendingAssignmentHref}
+            label="نرخ تکمیل ارزیابی"
+            value={dashboard.funnel.completedRate}
+            suffix="٪"
           />
           <KpiCard
-            label="پیگیری عقب‌افتاده"
-            value={dashboard.leadKpis.overdueFollowUps}
-            highlight={
-              dashboard.leadKpis.overdueFollowUps > 0 ? "red" : undefined
-            }
-            href={consultationsOverdueHref}
+            label="نرخ مشاوره از تکمیل"
+            value={dashboard.funnel.consultationRate}
+            suffix="٪"
           />
           <KpiCard
             label="نرخ بستن"
             value={dashboard.leadKpis.closeRate}
             suffix="٪"
           />
+          <KpiCard
+            label="میانگین روز تا اولین تماس"
+            value={dashboard.salesMetrics.avgDaysToFirstContact ?? 0}
+            valueDisplay={avgDaysDisplay}
+          />
+          <KpiCard
+            label="سلامت تیم — عقب‌افتاده"
+            value={dashboard.leadKpis.overdueFollowUps}
+            highlight={
+              dashboard.leadKpis.overdueFollowUps > 0 ? "red" : undefined
+            }
+            href={consultationsOverdueHref}
+          />
         </div>
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-900">قیف وضعیت لید</h2>
-          <div className="flex flex-wrap gap-3 text-sm text-zinc-500">
-            <span>
-              مستقیم:{" "}
-              {dashboard.leadSourceBreakdown.direct.toLocaleString("fa-IR")}
-            </span>
-            <span>
-              سیستم:{" "}
-              {dashboard.leadSourceBreakdown.system.toLocaleString("fa-IR")}
-            </span>
-            <span>
-              پیام‌رسان:{" "}
-              {dashboard.leadSourceBreakdown.messenger.toLocaleString("fa-IR")}
-            </span>
-          </div>
-        </div>
-        <LeadStatusFunnelBar funnel={dashboard.leadStatusFunnel} />
-      </section>
-
-      <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">متریک‌های فروش</h2>
-        <div className="mb-4 grid gap-4 sm:grid-cols-2">
-          <Card className="text-center">
-            <p className="text-sm text-zinc-600">میانگین روز تا اولین تماس</p>
-            <p className="mt-2 text-3xl font-semibold text-zinc-900">
-              {dashboard.salesMetrics.avgDaysToFirstContact === null
-                ? "—"
-                : `${dashboard.salesMetrics.avgDaysToFirstContact.toLocaleString("fa-IR")} روز`}
-            </p>
-          </Card>
-          <Card className="text-center">
-            <p className="text-sm text-zinc-600">میانگین روز تا بستن</p>
-            <p className="mt-2 text-3xl font-semibold text-zinc-900">
-              {dashboard.salesMetrics.avgDaysToClose === null
-                ? "—"
-                : `${dashboard.salesMetrics.avgDaysToClose.toLocaleString("fa-IR")} روز`}
-            </p>
-          </Card>
-        </div>
-        {dashboard.salesMetrics.avgDaysToFirstContact === null &&
-        dashboard.salesMetrics.avgDaysToClose === null ? (
-          <Card className="mb-4 text-center">
-            <p className="text-sm text-zinc-600">
-              هنوز داده کافی برای محاسبه میانگین زمان ثبت نشده است.
-            </p>
-          </Card>
+        {dashboard.leadKpis.pendingAssignment > 0 ? (
+          <p className="mt-3 text-sm text-zinc-600">
+            صف تخصیص:{" "}
+            <Link
+              href={consultationsPendingAssignmentHref}
+              className="font-medium text-amber-800 hover:text-amber-900"
+            >
+              {dashboard.leadKpis.pendingAssignment.toLocaleString("fa-IR")} لید
+            </Link>
+          </p>
         ) : null}
-        <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-              <tr>
-                <th className="px-4 py-3 font-medium text-zinc-700">منبع</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">کل لید</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">بسته — موفق</th>
-                <th className="px-4 py-3 font-medium text-zinc-700">نرخ تبدیل</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {dashboard.salesMetrics.sourceConversion.map((row) => (
-                <tr key={row.source} className="hover:bg-zinc-50/80">
-                  <td className="px-4 py-3 font-medium text-zinc-900">
-                    {row.sourceLabel}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {row.total.toLocaleString("fa-IR")}
-                  </td>
-                  <td className="px-4 py-3 text-emerald-700">
-                    {row.closedWon.toLocaleString("fa-IR")}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-600">
-                    {row.conversionRate.toLocaleString("fa-IR")}٪
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">KPIها</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <KpiCard
-            label="نفر شروع‌کننده این هفته"
-            value={dashboard.kpis.usersStartedThisWeek}
-          />
-          <KpiCard
-            label="نفر تکمیل‌کننده این هفته"
-            value={dashboard.kpis.usersCompletedThisWeek}
-          />
-          <KpiCard
-            label="نرخ تکمیل نفر"
-            value={dashboard.kpis.userCompletionRate}
-            suffix="٪"
-          />
-          <KpiCard
-            label="نفر تأییدشده این هفته"
-            value={dashboard.kpis.usersVerifiedThisWeek}
-          />
-          <KpiCard
-            label="لید بحرانی (نفر)"
-            value={dashboard.kpis.usersCriticalLeads}
-          />
-          <KpiCard
-            label="درخواست مشاوره جدید (نفر)"
-            value={dashboard.kpis.usersNewConsultations}
-            href={consultationsStatusNewHref}
-          />
-        </div>
-        <div className="mt-4 space-y-1 text-sm text-zinc-500">
-          <p>
-            عملیاتی — تعداد ارزیابی این هفته:{" "}
-            <span className="font-medium text-zinc-700">
-              {dashboard.kpis.assessmentsThisWeek.toLocaleString("fa-IR")}
-            </span>
-          </p>
-          <p>
-            عملیاتی — تعداد ارزیابی این ماه:{" "}
-            <span className="font-medium text-zinc-700">
-              {dashboard.kpis.assessmentsThisMonth.toLocaleString("fa-IR")}
-            </span>
-          </p>
-        </div>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="mb-1 text-lg font-semibold text-zinc-900">
-          قیف تبدیل
-        </h2>
-        <p className="mb-4 text-sm text-zinc-500">
-          از ابتدا — هر نفر یک‌بار شمرده می‌شود
-        </p>
-        <Card>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="text-center">
-              <p className="text-sm text-zinc-600">نفر شروع‌کننده</p>
-              <p className="mt-1 text-2xl font-semibold text-zinc-900">
-                {dashboard.funnel.started.toLocaleString("fa-IR")}
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-zinc-600">نفر تکمیل‌کننده</p>
-              <p className="mt-1 text-2xl font-semibold text-zinc-900">
-                {dashboard.funnel.completed.toLocaleString("fa-IR")}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {dashboard.funnel.completedRate.toLocaleString("fa-IR")}٪ از
-                نفر شروع‌کننده
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-zinc-600">نفر درخواست مشاوره</p>
-              <p className="mt-1 text-2xl font-semibold text-zinc-900">
-                {dashboard.funnel.consultations.toLocaleString("fa-IR")}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {dashboard.funnel.consultationRate.toLocaleString("fa-IR")}٪ از
-                نفر تکمیل‌کننده
-              </p>
-            </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <h2 className="mb-1 text-lg font-semibold text-zinc-900">
+              قیف جذب
+            </h2>
+            <p className="mb-4 text-sm text-zinc-500">
+              شروع → تکمیل → مشاوره (هر نفر یک‌بار)
+            </p>
+            <AttractionFunnelCard
+              started={dashboard.funnel.started}
+              completed={dashboard.funnel.completed}
+              consultations={dashboard.funnel.consultations}
+              completedRate={dashboard.funnel.completedRate}
+              consultationRate={dashboard.funnel.consultationRate}
+            />
           </div>
-        </Card>
+          <div>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-900">
+                  قیف فروش
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">وضعیت فعلی لیدها</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+                <span>
+                  مستقیم:{" "}
+                  {dashboard.leadSourceBreakdown.direct.toLocaleString("fa-IR")}
+                </span>
+                <span>
+                  سیستم:{" "}
+                  {dashboard.leadSourceBreakdown.system.toLocaleString("fa-IR")}
+                </span>
+                <span>
+                  پیام‌رسان:{" "}
+                  {dashboard.leadSourceBreakdown.messenger.toLocaleString(
+                    "fa-IR",
+                  )}
+                </span>
+              </div>
+            </div>
+            <LeadStatusFunnelBar funnel={dashboard.leadStatusFunnel} />
+          </div>
+        </div>
       </section>
 
       <FullConversionFunnelSection funnel={dashboard.fullConversionFunnel} />
+
+      <section className="mb-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">
+              عملکرد کارشناسان
+            </h2>
+            <p className="mt-1 text-sm text-zinc-600">
+              لیدهای باز، تماس ۷ روز و نرخ وصل علاقه‌مند — جزئیات نتیجه تماس را
+              باز کنید.
+            </p>
+          </div>
+          <LinkButton href="/admin/staff" variant="secondary" size="sm">
+            مدیریت کاربران
+          </LinkButton>
+        </div>
+        <ExpertPerformanceTable rows={dashboard.expertPerformance} />
+      </section>
+
+      <section className="mb-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+              تبدیل بر اساس منبع
+            </h2>
+            <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                  <tr>
+                    <th className="px-4 py-3 font-medium text-zinc-700">منبع</th>
+                    <th className="px-4 py-3 font-medium text-zinc-700">کل</th>
+                    <th className="px-4 py-3 font-medium text-zinc-700">موفق</th>
+                    <th className="px-4 py-3 font-medium text-zinc-700">نرخ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {dashboard.salesMetrics.sourceConversion.map((row) => (
+                    <tr key={row.source} className="hover:bg-zinc-50/80">
+                      <td className="px-4 py-3 font-medium text-zinc-900">
+                        {row.sourceLabel}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-600">
+                        {row.total.toLocaleString("fa-IR")}
+                      </td>
+                      <td className="px-4 py-3 text-emerald-700">
+                        {row.closedWon.toLocaleString("fa-IR")}
+                      </td>
+                      <td className="px-4 py-3 text-zinc-600">
+                        {row.conversionRate.toLocaleString("fa-IR")}٪
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {dashboard.salesMetrics.avgDaysToClose !== null ? (
+              <p className="mt-3 text-sm text-zinc-500">
+                میانگین روز تا بستن:{" "}
+                <span className="font-medium text-zinc-700">
+                  {dashboard.salesMetrics.avgDaysToClose.toLocaleString("fa-IR")}{" "}
+                  روز
+                </span>
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <h2 className="mb-1 text-lg font-semibold text-zinc-900">
+              دلایل باخت ۳۰ روز اخیر
+            </h2>
+            <p className="mb-4 text-sm text-zinc-600">
+              لیدهای بسته — ناموفق به تفکیک دلیل.
+            </p>
+            {dashboard.lostReasonBreakdownLast30Days.every(
+              (row) => row.count === 0,
+            ) ? (
+              <Card className="text-center">
+                <p className="text-zinc-600">
+                  در ۳۰ روز اخیر باخت ثبت‌شده‌ای نیست.
+                </p>
+              </Card>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                    <tr>
+                      <th className="px-4 py-3 font-medium text-zinc-700">
+                        دلیل
+                      </th>
+                      <th className="px-4 py-3 font-medium text-zinc-700">
+                        تعداد
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {dashboard.lostReasonBreakdownLast30Days
+                      .filter((row) => row.count > 0)
+                      .map((row) => (
+                        <tr
+                          key={row.reason ?? "unknown"}
+                          className="hover:bg-zinc-50/80"
+                        >
+                          <td className="px-4 py-3 font-medium text-zinc-900">
+                            {row.reasonLabel}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-600">
+                            {row.count.toLocaleString("fa-IR")}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -644,250 +608,30 @@ export default async function AdminDashboardPage() {
         </Card>
       </section>
 
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            عملکرد کارشناس‌ها
-          </h2>
-          <LinkButton href="/admin/staff" variant="secondary" size="sm">
-            مدیریت کاربران
-          </LinkButton>
-        </div>
-
-        {dashboard.expertPerformance.length === 0 ? (
-          <Card className="text-center">
-            <p className="text-zinc-600">هنوز کارشناس فعالی ثبت نشده است.</p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-700">کارشناس</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    لید تخصیص‌یافته
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">باز</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    بسته — موفق
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    بسته — ناموفق
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    نرخ بستن
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    پیگیری عقب‌افتاده
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    لید جدید این هفته
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {dashboard.expertPerformance.map((row) => (
-                  <tr key={row.staffUserId} className="hover:bg-zinc-50/80">
-                    <td className="px-4 py-3 font-medium text-zinc-900">
-                      {row.name}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.assigned.toLocaleString("fa-IR")}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.open.toLocaleString("fa-IR")}
-                    </td>
-                    <td className="px-4 py-3 text-emerald-700">
-                      {row.closedWon.toLocaleString("fa-IR")}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.closedLost.toLocaleString("fa-IR")}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.winRate.toLocaleString("fa-IR")}٪
-                    </td>
-                    <td
-                      className={`px-4 py-3 ${
-                        row.overdueFollowUpOpen > 0
-                          ? "font-medium text-red-700"
-                          : "text-zinc-600"
-                      }`}
-                    >
-                      {row.overdueFollowUpOpen.toLocaleString("fa-IR")}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.newThisWeek.toLocaleString("fa-IR")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            نتایج تماس ۷ روز اخیر
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            شمارش ثبت تماس‌ها به تفکیک کارشناس و نتیجه.
-          </p>
-        </div>
-
-        {dashboard.expertCallOutcomesLast7Days.length === 0 ? (
-          <Card className="text-center">
-            <p className="text-zinc-600">هنوز کارشناس فعالی ثبت نشده است.</p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-700">کارشناس</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">کل</th>
-                  {CALL_OUTCOMES.map((outcome) => (
-                    <th
-                      key={outcome}
-                      className="px-4 py-3 font-medium text-zinc-700"
-                    >
-                      {CALL_OUTCOME_LABELS[outcome]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {dashboard.expertCallOutcomesLast7Days.map((row) => (
-                  <tr key={row.staffUserId} className="hover:bg-zinc-50/80">
-                    <td className="px-4 py-3 font-medium text-zinc-900">
-                      {row.name}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.totalCalls.toLocaleString("fa-IR")}
-                    </td>
-                    {CALL_OUTCOMES.map((outcome) => (
-                      <td key={outcome} className="px-4 py-3 text-zinc-600">
-                        {row.byOutcome[outcome].toLocaleString("fa-IR")}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            دلایل باخت ۳۰ روز اخیر
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            تعداد لیدهای بسته — ناموفق به تفکیک دلیل باخت.
-          </p>
-        </div>
-
-        {dashboard.lostReasonBreakdownLast30Days.every(
-          (row) => row.count === 0,
-        ) ? (
-          <Card className="text-center">
-            <p className="text-zinc-600">
-              در ۳۰ روز اخیر باخت ثبت‌شده‌ای نیست.
-            </p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-700">دلیل</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">تعداد</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {dashboard.lostReasonBreakdownLast30Days.map((row) => (
-                  <tr
-                    key={row.reason ?? "unknown"}
-                    className="hover:bg-zinc-50/80"
-                  >
-                    <td className="px-4 py-3 font-medium text-zinc-900">
-                      {row.reasonLabel}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.count.toLocaleString("fa-IR")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-900">پیام‌های اخیر</h2>
-          <LinkButton href="/admin/sms-funnel" variant="secondary" size="sm">
-            مدیریت قیف پیامکی
-          </LinkButton>
-        </div>
-        {dashboard.recentSmsMessages.length === 0 ? (
-          <Card className="text-center">
-            <p className="text-zinc-600">هنوز پیامی ثبت نشده است.</p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-700">مرحله</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">موبایل</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">وضعیت</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">زمان</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {dashboard.recentSmsMessages.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-zinc-700">{row.stepKey}</td>
-                    <td
-                      className="px-4 py-3 font-mono text-xs text-zinc-600"
-                      dir="ltr"
-                    >
-                      {row.phone}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">{row.status}</td>
-                    <td className="px-4 py-3 text-zinc-500">
-                      {formatSmsDate(row.sentAt ?? row.scheduledFor)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
       <div className="flex flex-wrap gap-3">
-        <Link
-          href="/admin/assessments"
-          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
-        >
-          مشاهده همه ارزیابی‌ها ←
-        </Link>
-        <Link
-          href={consultationsCallQueueHref}
-          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
-        >
-          صف تماس ←
-        </Link>
         <Link
           href="/expert/consultations"
           className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
         >
-          مشاهده همه لیدها ←
+          همه لیدها ←
+        </Link>
+        <Link
+          href="/admin/assessments"
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        >
+          ارزیابی‌ها ←
+        </Link>
+        <Link
+          href="/admin/leads-settings"
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        >
+          تنظیمات لید ←
+        </Link>
+        <Link
+          href="/admin/sms-funnel"
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        >
+          قیف پیامکی ←
         </Link>
       </div>
     </PageLayout>

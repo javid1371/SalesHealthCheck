@@ -13,6 +13,11 @@ const repoMock = vi.hoisted(() => ({
   findConsultationNotes: vi.fn(),
   countLeadsNeedingFollowUp: vi.fn(),
   findLeadsNeedingFollowUp: vi.fn(),
+  countOverdueFollowUps: vi.fn(),
+  findOverdueFollowUps: vi.fn(),
+  countFollowUpsDueInRange: vi.fn(),
+  findFollowUpsDueInRange: vi.fn(),
+  findNewLeadsForDashboard: vi.fn(),
   countClosedLeadsSince: vi.fn(),
   bulkUpdateConsultationLeads: vi.fn(),
   createManualConsultationRequest: vi.fn(),
@@ -1019,21 +1024,91 @@ describe("addLeadNote", () => {
 describe("getExpertDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    repoMock.countOverdueFollowUps.mockResolvedValue(3);
+    repoMock.countFollowUpsDueInRange.mockResolvedValue(2);
     repoMock.countConsultationRequests.mockResolvedValue(5);
-    repoMock.countLeadsNeedingFollowUp.mockResolvedValue(2);
-    repoMock.countClosedLeadsSince.mockResolvedValue(1);
-    repoMock.findLeadsNeedingFollowUp.mockResolvedValue([baseRow]);
+    repoMock.findOverdueFollowUps.mockResolvedValue([
+      {
+        ...baseRow,
+        id: "overdue-1",
+        nextFollowUpAt: new Date("2026-06-01T08:00:00Z"),
+      },
+    ]);
+    repoMock.findFollowUpsDueInRange.mockResolvedValue([baseRow]);
+    repoMock.findNewLeadsForDashboard.mockResolvedValue([
+      {
+        ...baseRow,
+        id: "new-1",
+        createdAt: new Date("2026-05-01T10:00:00Z"),
+      },
+    ]);
   });
 
-  it("returns KPI counts and follow-up rows", async () => {
+  it("returns priority KPIs and queue rows", async () => {
     const dashboard = await getExpertDashboard("expert-1");
 
-    expect(dashboard.kpis.assignedTotal).toBe(5);
-    expect(dashboard.kpis.followUpDue).toBe(2);
-    expect(dashboard.kpis.closedThisMonth).toBe(1);
+    expect(dashboard.kpis.overdueFollowUp).toBe(3);
+    expect(dashboard.kpis.followUpDueToday).toBe(2);
+    expect(dashboard.kpis.newLeads).toBe(5);
+    expect(dashboard.kpis.teamQueue).toBe(5);
+    expect(dashboard.overdueFollowUps).toHaveLength(1);
     expect(dashboard.todayFollowUps).toHaveLength(1);
+    expect(dashboard.newLeadRows).toHaveLength(1);
     expect(dashboard.todayFollowUps[0]?.detailUrl).toBe(
       "/expert/consultations/lead-1",
     );
+    expect(dashboard.overdueFollowUps[0]?.assignedToName).toBe("Expert User");
+    expect(repoMock.countOverdueFollowUps).toHaveBeenCalledWith(
+      "expert-1",
+      expect.any(Date),
+    );
+    expect(repoMock.countFollowUpsDueInRange).toHaveBeenCalledWith(
+      "expert-1",
+      expect.any(Date),
+      expect.any(Date),
+    );
+    expect(repoMock.findNewLeadsForDashboard).toHaveBeenCalledWith(
+      "expert-1",
+      10,
+    );
+    expect(repoMock.countConsultationRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedToId: "expert-1", status: "new" }),
+    );
+    expect(repoMock.countConsultationRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ onlyTeamQueue: true }),
+    );
+  });
+
+  it("omits assignee filter for team-wide admin view", async () => {
+    await getExpertDashboard();
+
+    expect(repoMock.countOverdueFollowUps).toHaveBeenCalledWith(
+      undefined,
+      expect.any(Date),
+    );
+    expect(repoMock.findOverdueFollowUps).toHaveBeenCalledWith(
+      undefined,
+      expect.any(Date),
+      10,
+    );
+    expect(repoMock.countFollowUpsDueInRange).toHaveBeenCalledWith(
+      undefined,
+      expect.any(Date),
+      expect.any(Date),
+    );
+    expect(repoMock.findFollowUpsDueInRange).toHaveBeenCalledWith(
+      undefined,
+      expect.any(Date),
+      expect.any(Date),
+      10,
+    );
+    expect(repoMock.findNewLeadsForDashboard).toHaveBeenCalledWith(
+      undefined,
+      10,
+    );
+    const newLeadsCountCall = repoMock.countConsultationRequests.mock.calls.find(
+      (call) => call[0]?.status === "new",
+    );
+    expect(newLeadsCountCall?.[0]).not.toHaveProperty("assignedToId");
   });
 });

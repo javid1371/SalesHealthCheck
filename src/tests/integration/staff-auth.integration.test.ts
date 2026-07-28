@@ -11,6 +11,7 @@ import {
 } from "@/modules/consultation/consultation.service";
 import {
   authenticateStaff,
+  authenticateStaffByCredentials,
   createStaffUserByAdmin,
 } from "@/modules/staff/staff.service";
 import {
@@ -104,8 +105,27 @@ describe("staff auth and lead pipeline (integration)", () => {
       phone: expertPhone,
       password: expertPassword,
     });
-
     expect(authenticatedExpert.staffUserId).toBe(expert.id);
+
+    const unifiedExpertLogin = await authenticateStaffByCredentials({
+      phone: expertPhone,
+      password: expertPassword,
+    });
+    expect(unifiedExpertLogin).toEqual({
+      role: "sales_expert",
+      staffUserId: expert.id,
+      name: expert.name,
+    });
+
+    const unifiedAdminLogin = await authenticateStaffByCredentials({
+      phone: adminPhone,
+      password: "AdminPass123",
+    });
+    expect(unifiedAdminLogin).toEqual({
+      role: "admin",
+      staffUserId: admin.id,
+      name: admin.name,
+    });
 
     const { start, finish } = await createCompletedAssessment(102);
     const consultation = await submitConsultationRequest({

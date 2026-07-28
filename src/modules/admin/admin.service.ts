@@ -1,4 +1,4 @@
-import type { AssessmentStatus, LeadStatus } from "@prisma/client";
+import type { AssessmentStatus } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { verifyConfiguredPassword } from "@/lib/password-auth";
@@ -30,7 +30,6 @@ import {
   findLeadsWithClose,
   countOverdueFollowUpsByAssignee,
   countNewLeadsThisWeekByAssignee,
-  findUrgentLeads,
   groupCallLogsByStaffAndOutcomeSince,
   groupClosedLostByReasonSince,
   STALE_NEW_LEAD_HOURS,
@@ -50,19 +49,16 @@ import type {
   AdminAssessmentListItem,
   AdminAssessmentsResponse,
   AdminDashboardData,
-  AdminExpertCallOutcomeRow,
   AdminExpertPerformanceRow,
   AdminLeadStatusFunnel,
   AdminLeadSourceBreakdown,
   AdminLeadSourceConversionRow,
   AdminLostReasonBreakdownRow,
   AdminSalesMetrics,
-  AdminUrgentLeadRow,
 } from "./admin.types";
 import {
   getSmsFunnelAdminMetrics,
   getFullConversionFunnelMetrics,
-  listRecentSmsMessages,
 } from "@/modules/sms-funnel/funnel.repository";
 import { validateAdminLoginRequest } from "./admin.validators";
 
@@ -222,16 +218,6 @@ function percent(part: number, total: number): number {
   return Math.round((part / total) * 100);
 }
 
-const OPEN_LEAD_STATUSES: LeadStatus[] = [
-  "assessment_in_progress",
-  "assessment_incomplete",
-  "assessment_completed",
-  "new",
-  "contacted",
-  "meeting_scheduled",
-  "unreachable",
-];
-
 function buildLeadStatusFunnel(
   rows: Awaited<ReturnType<typeof countLeadsByStatus>>,
 ): AdminLeadStatusFunnel {
@@ -339,63 +325,6 @@ function buildSalesMetrics(
   };
 }
 
-function classifyUrgentLeadSeverity(
-  lead: Awaited<ReturnType<typeof findUrgentLeads>>[number],
-  now: Date,
-): "amber" | "red" {
-  if (
-    lead.nextFollowUpAt &&
-    lead.nextFollowUpAt < now &&
-    OPEN_LEAD_STATUSES.includes(lead.status)
-  ) {
-    return "red";
-  }
-
-  return "amber";
-}
-
-function classifyUrgentLeadReason(
-  lead: Awaited<ReturnType<typeof findUrgentLeads>>[number],
-  staleThreshold: Date,
-  now: Date,
-): string {
-  if (
-    lead.nextFollowUpAt &&
-    lead.nextFollowUpAt < now &&
-    OPEN_LEAD_STATUSES.includes(lead.status)
-  ) {
-    return "پیگیری عقب‌افتاده";
-  }
-
-  if (!lead.assignedToId && lead.purchaseProbabilityBand === "high") {
-    return "احتمال بالا — بدون تخصیص";
-  }
-
-  if (lead.status === "new" && lead.createdAt < staleThreshold) {
-    return "لید جدید کهنه";
-  }
-
-  return "نیازمند توجه";
-}
-
-function mapUrgentLeads(
-  leads: Awaited<ReturnType<typeof findUrgentLeads>>,
-  staleNewLeadHours: number,
-): AdminUrgentLeadRow[] {
-  const now = new Date();
-  const staleThreshold = new Date(
-    now.getTime() - staleNewLeadHours * 60 * 60 * 1000,
-  );
-
-  return leads.map((lead) => ({
-    id: lead.id,
-    name: lead.name,
-    reason: classifyUrgentLeadReason(lead, staleThreshold, now),
-    severity: classifyUrgentLeadSeverity(lead, now),
-    detailUrl: `/expert/consultations/${lead.id}`,
-  }));
-}
-
 function emptyCallOutcomeCounts(): Record<
   (typeof CALL_OUTCOMES)[number],
   number
@@ -447,9 +376,10 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     closeRows,
     overdueByAssignee,
     newThisWeekByAssignee,
-    urgentLeadRows,
     callLogGroups,
     closedLostReasonGroups,
+    fullConversionFunnel,
+    smsFunnel,
   ] = await Promise.all([
     countUsersStartedInRange(weekStart),
     countUsersCompletedInRange(weekStart),
@@ -475,9 +405,10 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     findLeadsWithClose(),
     countOverdueFollowUpsByAssignee(),
     countNewLeadsThisWeekByAssignee(weekStart),
-    findUrgentLeads(10, staleNewLeadHours),
     groupCallLogsByStaffAndOutcomeSince(callOutcomesSince),
     groupClosedLostByReasonSince(lostReasonsSince),
+    getFullConversionFunnelMetrics(),
+    getSmsFunnelAdminMetrics(),
   ]);
 
   const leadStatusFunnel = buildLeadStatusFunnel(leadStatusGroups);
@@ -497,18 +428,28 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     newThisWeekByAssignee.map((row) => [row.assignedToId!, row._count.id]),
   );
 
-  const expertStats = new Map<
-    string,
-    { assigned: number; closedWon: number; closedLost: number; open: number }
-  >();
+  type ExpertLeadStats = {
+    assigned: number;
+    closedWon: number;
+    closedLost: number;
+    open: number;
+    contactedOpen: number;
+    meetingScheduledOpen: number;
+  };
+
+  const emptyExpertLeadStats = (): ExpertLeadStats => ({
+    assigned: 0,
+    closedWon: 0,
+    closedLost: 0,
+    open: 0,
+    contactedOpen: 0,
+    meetingScheduledOpen: 0,
+  });
+
+  const expertStats = new Map<string, ExpertLeadStats>();
 
   for (const expert of salesExperts) {
-    expertStats.set(expert.id, {
-      assigned: 0,
-      closedWon: 0,
-      closedLost: 0,
-      open: 0,
-    });
+    expertStats.set(expert.id, emptyExpertLeadStats());
   }
 
   for (const row of leadGroups) {
@@ -516,12 +457,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
       continue;
     }
 
-    const stats = expertStats.get(row.assignedToId) ?? {
-      assigned: 0,
-      closedWon: 0,
-      closedLost: 0,
-      open: 0,
-    };
+    const stats = expertStats.get(row.assignedToId) ?? emptyExpertLeadStats();
 
     stats.assigned += row._count.id;
 
@@ -531,47 +467,14 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
       stats.closedLost += row._count.id;
     } else {
       stats.open += row._count.id;
+      if (row.status === "contacted") {
+        stats.contactedOpen += row._count.id;
+      } else if (row.status === "meeting_scheduled") {
+        stats.meetingScheduledOpen += row._count.id;
+      }
     }
 
     expertStats.set(row.assignedToId, stats);
-  }
-
-  const expertPerformance: AdminExpertPerformanceRow[] = salesExperts.map(
-    (expert) => {
-      const stats = expertStats.get(expert.id) ?? {
-        assigned: 0,
-        closedWon: 0,
-        closedLost: 0,
-        open: 0,
-      };
-      const closedTotal = stats.closedWon + stats.closedLost;
-
-      return {
-        staffUserId: expert.id,
-        name: expert.name,
-        ...stats,
-        winRate: percent(stats.closedWon, closedTotal),
-        overdueFollowUpOpen: overdueByAssigneeMap.get(expert.id) ?? 0,
-        newThisWeek: newThisWeekByAssigneeMap.get(expert.id) ?? 0,
-      };
-    },
-  );
-
-  for (const [staffUserId, stats] of expertStats.entries()) {
-    if (salesExperts.some((expert) => expert.id === staffUserId)) {
-      continue;
-    }
-
-    const closedTotal = stats.closedWon + stats.closedLost;
-
-    expertPerformance.push({
-      staffUserId,
-      name: "کارشناس (غیرفعال)",
-      ...stats,
-      winRate: percent(stats.closedWon, closedTotal),
-      overdueFollowUpOpen: overdueByAssigneeMap.get(staffUserId) ?? 0,
-      newThisWeek: newThisWeekByAssigneeMap.get(staffUserId) ?? 0,
-    });
   }
 
   const callOutcomeByExpert = new Map<
@@ -588,24 +491,56 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     callOutcomeByExpert.set(row.staffUserId, counts);
   }
 
-  const expertCallOutcomesLast7Days: AdminExpertCallOutcomeRow[] =
-    salesExperts.map((expert) => {
-      const byOutcome =
-        callOutcomeByExpert.get(expert.id) ?? emptyCallOutcomeCounts();
-      const totalCalls = CALL_OUTCOMES.reduce(
-        (sum, outcome) => sum + byOutcome[outcome],
-        0,
-      );
-      return {
-        staffUserId: expert.id,
-        name: expert.name,
+  function buildExpertPerformanceRow(
+    staffUserId: string,
+    name: string,
+    stats: ExpertLeadStats,
+  ): AdminExpertPerformanceRow {
+    const closedTotal = stats.closedWon + stats.closedLost;
+    const byOutcome =
+      callOutcomeByExpert.get(staffUserId) ?? emptyCallOutcomeCounts();
+    const totalCalls = CALL_OUTCOMES.reduce(
+      (sum, outcome) => sum + byOutcome[outcome],
+      0,
+    );
+
+    return {
+      staffUserId,
+      name,
+      ...stats,
+      winRate: percent(stats.closedWon, closedTotal),
+      overdueFollowUpOpen: overdueByAssigneeMap.get(staffUserId) ?? 0,
+      newThisWeek: newThisWeekByAssigneeMap.get(staffUserId) ?? 0,
+      totalCalls,
+      connectedInterestedRate: percent(
+        byOutcome.connected_interested,
         totalCalls,
-        byOutcome,
-      };
-    });
+      ),
+      byOutcome,
+    };
+  }
+
+  const expertPerformance: AdminExpertPerformanceRow[] = salesExperts.map(
+    (expert) =>
+      buildExpertPerformanceRow(
+        expert.id,
+        expert.name,
+        expertStats.get(expert.id) ?? emptyExpertLeadStats(),
+      ),
+  );
+
+  for (const [staffUserId, stats] of expertStats.entries()) {
+    if (salesExperts.some((expert) => expert.id === staffUserId)) {
+      continue;
+    }
+
+    expertPerformance.push(
+      buildExpertPerformanceRow(staffUserId, "کارشناس (غیرفعال)", stats),
+    );
+  }
 
   for (const [staffUserId, byOutcome] of callOutcomeByExpert.entries()) {
-    if (salesExperts.some((expert) => expert.id === staffUserId)) {
+    if (expertPerformance.some((row) => row.staffUserId === staffUserId)) {
       continue;
     }
     const totalCalls = CALL_OUTCOMES.reduce(
@@ -615,12 +550,13 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     if (totalCalls === 0) {
       continue;
     }
-    expertCallOutcomesLast7Days.push({
-      staffUserId,
-      name: "کارشناس (غیرفعال)",
-      totalCalls,
-      byOutcome,
-    });
+    expertPerformance.push(
+      buildExpertPerformanceRow(
+        staffUserId,
+        "کارشناس (غیرفعال)",
+        emptyExpertLeadStats(),
+      ),
+    );
   }
 
   const lostReasonCounts = new Map(
@@ -662,7 +598,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
         usersCompletedAllTime,
       ),
     },
-    fullConversionFunnel: await getFullConversionFunnelMetrics(),
+    fullConversionFunnel,
     leadKpis: {
       newThisWeek: newLeadsThisWeek,
       pendingAssignment,
@@ -674,20 +610,8 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     leadStatusFunnel,
     leadSourceBreakdown,
     salesMetrics,
-    urgentLeads: mapUrgentLeads(urgentLeadRows, staleNewLeadHours),
     expertPerformance,
-    expertCallOutcomesLast7Days,
     lostReasonBreakdownLast30Days,
-    smsFunnel: await getSmsFunnelAdminMetrics(),
-    recentSmsMessages: (await listRecentSmsMessages(10)).map((row) => ({
-      id: row.id,
-      phone: row.phone,
-      sequenceKey: row.sequenceKey,
-      stepKey: row.stepKey,
-      status: row.status,
-      scheduledFor: row.scheduledFor.toISOString(),
-      sentAt: row.sentAt?.toISOString() ?? null,
-      createdAt: row.createdAt.toISOString(),
-    })),
+    smsFunnel,
   };
 }

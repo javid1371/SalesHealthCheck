@@ -47,7 +47,6 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
     findLeadsWithClose: vi.fn(),
     countOverdueFollowUpsByAssignee: vi.fn(),
     countNewLeadsThisWeekByAssignee: vi.fn(),
-    findUrgentLeads: vi.fn(),
     groupCallLogsByStaffAndOutcomeSince: vi.fn(),
     groupClosedLostByReasonSince: vi.fn(),
   };
@@ -56,7 +55,6 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
 vi.mock("@/modules/sms-funnel/funnel.repository", () => ({
   getSmsFunnelAdminMetrics: vi.fn(),
   getFullConversionFunnelMetrics: vi.fn(),
-  listRecentSmsMessages: vi.fn(),
 }));
 
 vi.mock("@/modules/consultation/lead-config.service", () => ({
@@ -101,14 +99,12 @@ import {
   findLeadsWithClose,
   countOverdueFollowUpsByAssignee,
   countNewLeadsThisWeekByAssignee,
-  findUrgentLeads,
   groupCallLogsByStaffAndOutcomeSince,
   groupClosedLostByReasonSince,
 } from "@/modules/admin/admin.repository";
 import {
   getSmsFunnelAdminMetrics,
   getFullConversionFunnelMetrics,
-  listRecentSmsMessages,
 } from "@/modules/sms-funnel/funnel.repository";
 import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 
@@ -226,6 +222,16 @@ describe("getAdminDashboard", () => {
       },
       {
         assignedToId: "expert-1",
+        status: "contacted",
+        _count: { id: 1 },
+      },
+      {
+        assignedToId: "expert-1",
+        status: "meeting_scheduled",
+        _count: { id: 1 },
+      },
+      {
+        assignedToId: "expert-1",
         status: "closed_won",
         _count: { id: 2 },
       },
@@ -274,17 +280,6 @@ describe("getAdminDashboard", () => {
     vi.mocked(countNewLeadsThisWeekByAssignee).mockResolvedValue([
       { assignedToId: "expert-1", _count: { id: 2 } },
     ] as never);
-    vi.mocked(findUrgentLeads).mockResolvedValue([
-      {
-        id: "lead-1",
-        name: "Urgent Lead",
-        status: "new",
-        purchaseProbabilityBand: "high",
-        nextFollowUpAt: null,
-        createdAt: new Date("2026-01-01"),
-        assignedToId: null,
-      },
-    ] as never);
     vi.mocked(groupCallLogsByStaffAndOutcomeSince).mockResolvedValue([
       {
         staffUserId: "expert-1",
@@ -321,7 +316,6 @@ describe("getAdminDashboard", () => {
       ],
       domainDropOff: [],
     });
-    vi.mocked(listRecentSmsMessages).mockResolvedValue([]);
   });
 
   it("aggregates user-centric KPIs, funnel, and expert performance", async () => {
@@ -369,20 +363,17 @@ describe("getAdminDashboard", () => {
       {
         staffUserId: "expert-1",
         name: "Expert One",
-        assigned: 5,
-        open: 3,
+        assigned: 7,
+        open: 5,
+        contactedOpen: 1,
+        meetingScheduledOpen: 1,
         closedWon: 2,
         closedLost: 0,
         winRate: 100,
         overdueFollowUpOpen: 1,
         newThisWeek: 2,
-      },
-    ]);
-    expect(dashboard.expertCallOutcomesLast7Days).toEqual([
-      {
-        staffUserId: "expert-1",
-        name: "Expert One",
         totalCalls: 5,
+        connectedInterestedRate: 40,
         byOutcome: {
           no_answer: 3,
           busy: 0,
@@ -407,7 +398,6 @@ describe("getAdminDashboard", () => {
     ]);
     expect(getLeadSettings).toHaveBeenCalled();
     expect(countStaleNewLeads).toHaveBeenCalledWith(24);
-    expect(findUrgentLeads).toHaveBeenCalledWith(10, 24);
     expect(dashboard.leadKpis).toEqual({
       newThisWeek: 7,
       pendingAssignment: 2,
@@ -459,17 +449,7 @@ describe("getAdminDashboard", () => {
         },
       ],
     });
-    expect(dashboard.urgentLeads).toEqual([
-      {
-        id: "lead-1",
-        name: "Urgent Lead",
-        reason: "احتمال بالا — بدون تخصیص",
-        severity: "amber",
-        detailUrl: "/expert/consultations/lead-1",
-      },
-    ]);
     expect(dashboard.smsFunnel.smsSent).toBe(12);
-    expect(dashboard.recentSmsMessages).toEqual([]);
   });
 
   it("returns zero completion rates when no users have started", async () => {

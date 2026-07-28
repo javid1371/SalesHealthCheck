@@ -7,6 +7,7 @@ import { AdminLogoutButton } from "@/app/admin/assessments/AdminLogoutButton";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "داشبورد" },
+  { href: "/expert/dashboard", label: "نمای کارشناس" },
   { href: "/admin/assessments", label: "ارزیابی‌ها" },
   { href: "/admin/sms-funnel", label: "قیف پیامکی" },
   { href: "/admin/leads-settings", label: "تنظیمات لید" },

@@ -9,9 +9,9 @@ import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { ApiClientError } from "@/lib/api-client";
-import { salesExpertLoginRequest } from "@/lib/expert-client";
+import { staffLoginRequest } from "@/lib/staff-client";
 
-export function ExpertLoginClient() {
+export function LoginClient() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -24,8 +24,8 @@ export function ExpertLoginClient() {
     setError(null);
 
     try {
-      await salesExpertLoginRequest(phone.trim(), password);
-      router.push("/expert/dashboard");
+      const result = await staffLoginRequest(phone.trim(), password);
+      router.push(result.redirectTo);
       router.refresh();
     } catch (err) {
       setError(
@@ -39,8 +39,8 @@ export function ExpertLoginClient() {
 
   return (
     <PageLayout
-      title="ورود کارشناس فروش"
-      subtitle="برای مشاهده درخواست‌های مشاوره، شماره موبایل و رمز عبور خود را وارد کنید."
+      title="ورود کارکنان"
+      subtitle="برای ورود به پنل ادمین یا کارشناس، شماره موبایل و رمز عبور خود را وارد کنید."
       showBack
       backHref="/"
       maxWidth="md"
@@ -48,9 +48,9 @@ export function ExpertLoginClient() {
     >
       <Card>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <FieldLabel label="شماره موبایل" htmlFor="expert-phone" required>
+          <FieldLabel label="شماره موبایل" htmlFor="staff-phone" required>
             <Input
-              id="expert-phone"
+              id="staff-phone"
               type="tel"
               autoComplete="tel"
               inputMode="numeric"
@@ -63,9 +63,9 @@ export function ExpertLoginClient() {
             />
           </FieldLabel>
 
-          <FieldLabel label="رمز عبور" htmlFor="expert-password" required>
+          <FieldLabel label="رمز عبور" htmlFor="staff-password" required>
             <Input
-              id="expert-password"
+              id="staff-password"
               type="password"
               autoComplete="current-password"
               value={password}

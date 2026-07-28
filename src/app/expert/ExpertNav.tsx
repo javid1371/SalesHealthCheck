@@ -8,25 +8,21 @@ import { LinkButton } from "@/components/ui/LinkButton";
 import { ExpertLogoutButton } from "@/app/expert/consultations/ExpertLogoutButton";
 import { AdminLogoutButton } from "@/app/admin/assessments/AdminLogoutButton";
 
-const CALL_QUEUE_HREF =
-  "/expert/consultations?excludeAssessmentInProgress=true";
-
 const NAV_ITEMS = [
   {
     href: "/expert/dashboard",
-    label: "داشبورد",
-    matchPath: "/expert/dashboard",
+    label: "امروز",
+    kind: "today" as const,
   },
   {
     href: "/expert/consultations",
     label: "لیدهای من",
-    matchPath: "/expert/consultations",
+    kind: "mine" as const,
   },
   {
-    href: CALL_QUEUE_HREF,
-    label: "صف تماس",
-    matchPath: "/expert/consultations",
-    callQueue: true,
+    href: "/expert/consultations?onlyTeamQueue=true",
+    label: "صف تیم",
+    kind: "team" as const,
   },
 ] as const;
 
@@ -37,19 +33,20 @@ interface ExpertNavProps {
 function ExpertNavLinks() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isCallQueueActive =
+  const isTeamQueueActive =
     pathname.startsWith("/expert/consultations") &&
-    searchParams.get("excludeAssessmentInProgress") === "true";
+    searchParams.get("onlyTeamQueue") === "true";
 
   return (
     <div className="flex flex-wrap gap-1">
       {NAV_ITEMS.map((item) => {
         const isActive =
-          "callQueue" in item && item.callQueue
-            ? isCallQueueActive
-            : item.matchPath === "/expert/dashboard"
-              ? pathname === item.matchPath
-              : pathname.startsWith(item.matchPath) && !isCallQueueActive;
+          item.kind === "today"
+            ? pathname === "/expert/dashboard"
+            : item.kind === "team"
+              ? isTeamQueueActive
+              : pathname.startsWith("/expert/consultations") &&
+                !isTeamQueueActive;
 
         return (
           <Link
@@ -88,25 +85,43 @@ function ExpertNavLinksFallback() {
 
 export function ExpertNav({ isAdmin = false }: ExpertNavProps) {
   return (
-    <nav
-      className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-4"
-      aria-label="ناوبری پنل کارشناس"
-    >
-      <Suspense fallback={<ExpertNavLinksFallback />}>
-        <ExpertNavLinks />
-      </Suspense>
-      <div className="flex flex-wrap items-center gap-2">
-        {isAdmin ? (
-          <>
-            <LinkButton href="/admin/dashboard" variant="secondary" size="sm">
-              پنل ادمین
-            </LinkButton>
-            <AdminLogoutButton />
-          </>
-        ) : (
-          <ExpertLogoutButton />
-        )}
-      </div>
-    </nav>
+    <div className="mb-6">
+      {isAdmin ? (
+        <div
+          className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm"
+          role="status"
+        >
+          <p className="font-medium text-amber-950">
+            در حال مشاهده نمای کارشناس به‌عنوان ادمین
+          </p>
+          <Link
+            href="/admin/dashboard"
+            className="font-medium text-amber-900 underline-offset-2 hover:underline"
+          >
+            بازگشت به پنل ادمین
+          </Link>
+        </div>
+      ) : null}
+      <nav
+        className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-4"
+        aria-label="ناوبری پنل کارشناس"
+      >
+        <Suspense fallback={<ExpertNavLinksFallback />}>
+          <ExpertNavLinks />
+        </Suspense>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin ? (
+            <>
+              <LinkButton href="/admin/dashboard" variant="secondary" size="sm">
+                پنل ادمین
+              </LinkButton>
+              <AdminLogoutButton />
+            </>
+          ) : (
+            <ExpertLogoutButton />
+          )}
+        </div>
+      </nav>
+    </div>
   );
 }

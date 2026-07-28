@@ -136,16 +136,23 @@ export interface ExpertDashboardFollowUpRow {
   statusLabel: string;
   nextFollowUpAt: string | null;
   detailUrl: string;
+  assignedToName: string | null;
+  /** True when status is `new` and older than the stale-new threshold. */
+  isStaleNew?: boolean;
 }
 
 export interface ExpertDashboardData {
   kpis: {
-    assignedTotal: number;
+    overdueFollowUp: number;
+    followUpDueToday: number;
     newLeads: number;
-    followUpDue: number;
-    closedThisMonth: number;
+    /** Unassigned open leads (team claim queue); always system-wide. */
+    teamQueue: number;
   };
+  overdueFollowUps: ExpertDashboardFollowUpRow[];
   todayFollowUps: ExpertDashboardFollowUpRow[];
+  /** New leads, oldest first (stale / never-contacted surface). */
+  newLeadRows: ExpertDashboardFollowUpRow[];
 }
 
 export interface ConsultationLeadDetail {

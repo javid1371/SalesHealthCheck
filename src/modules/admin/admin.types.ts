@@ -113,17 +113,6 @@ export interface AdminSmsFunnelMetrics {
   consultationStarts: number;
 }
 
-export interface AdminSmsMessageRow {
-  id: string;
-  phone: string;
-  sequenceKey: string;
-  stepKey: string;
-  status: string;
-  scheduledFor: string;
-  sentAt: string | null;
-  createdAt: string;
-}
-
 export interface AdminExpertPerformanceRow {
   staffUserId: string;
   name: string;
@@ -131,15 +120,14 @@ export interface AdminExpertPerformanceRow {
   closedWon: number;
   closedLost: number;
   open: number;
+  contactedOpen: number;
+  meetingScheduledOpen: number;
   winRate: number;
   overdueFollowUpOpen: number;
   newThisWeek: number;
-}
-
-export interface AdminExpertCallOutcomeRow {
-  staffUserId: string;
-  name: string;
+  /** Call logs in the last 7 days */
   totalCalls: number;
+  connectedInterestedRate: number;
   byOutcome: Record<CallOutcome, number>;
 }
 
@@ -190,14 +178,6 @@ export interface AdminSalesMetrics {
   sourceConversion: AdminLeadSourceConversionRow[];
 }
 
-export interface AdminUrgentLeadRow {
-  id: string;
-  name: string;
-  reason: string;
-  detailUrl: string;
-  severity: "amber" | "red";
-}
-
 export interface AdminDashboardData {
   kpis: AdminDashboardKpis;
   funnel: AdminDashboardFunnel;
@@ -206,10 +186,7 @@ export interface AdminDashboardData {
   leadStatusFunnel: AdminLeadStatusFunnel;
   leadSourceBreakdown: AdminLeadSourceBreakdown;
   salesMetrics: AdminSalesMetrics;
-  urgentLeads: AdminUrgentLeadRow[];
   expertPerformance: AdminExpertPerformanceRow[];
-  expertCallOutcomesLast7Days: AdminExpertCallOutcomeRow[];
   lostReasonBreakdownLast30Days: AdminLostReasonBreakdownRow[];
   smsFunnel: AdminSmsFunnelMetrics;
-  recentSmsMessages: AdminSmsMessageRow[];
 }

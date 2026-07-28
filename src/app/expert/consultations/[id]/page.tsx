@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
@@ -26,7 +25,7 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
   const salesExpertSession = await readSalesExpertSession();
 
   if (!adminSession && !salesExpertSession) {
-    redirect("/expert/login");
+    redirect("/login");
   }
 
   const { id } = await params;
@@ -71,226 +70,202 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
     getConsultationLeadSmsHistory(id, access),
   ]);
 
-  return (
-    <PageLayout
-      title={`لید — ${lead.name}`}
-      subtitle="جزئیات تماس، خلاصه ارزیابی و پیگیری."
-      showBack
-      backHref="/expert/consultations"
-      maxWidth="5xl"
-      footer="minimal"
-    >
-      <ExpertNav isAdmin={Boolean(adminSession)} />
+  const leadSummary = (
+    <section aria-labelledby="lead-summary-heading" className="space-y-4">
+      <h2
+        id="lead-summary-heading"
+        className="text-lg font-semibold text-zinc-900"
+      >
+        خلاصه لید
+      </h2>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <p className="text-sm text-zinc-600">وضعیت</p>
-          <p className="mt-1 font-semibold text-zinc-900">{lead.statusLabel}</p>
-          {lead.status === "closed_lost" && lead.lostReasonLabel ? (
-            <p className="mt-1 text-sm text-zinc-600">
-              دلیل باخت: {lead.lostReasonLabel}
-              {lead.lostNote ? ` — ${lead.lostNote}` : ""}
-            </p>
-          ) : null}
-        </Card>
-        <Card>
-          <p className="text-sm text-zinc-600">منبع</p>
-          <p className="mt-1 font-semibold text-zinc-900">{lead.sourceLabel}</p>
-        </Card>
-        <Card>
-          <p className="text-sm text-zinc-600">احتمال خرید</p>
-          <p className="mt-1 font-semibold text-zinc-900">
-            {lead.purchaseProbabilityLabel ?? "—"}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-sm text-zinc-600">تخصیص</p>
-          {lead.pendingAssignment ? (
-            <div className="mt-1">
-              <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-sm font-semibold text-sky-800">
-                در صف تخصیص
-              </span>
-              {lead.assignScheduledFor ? (
-                <p className="mt-1 text-sm text-zinc-600">
-                  تخصیص خودکار: {lead.assignScheduledFor}
-                </p>
-              ) : null}
-            </div>
-          ) : (
-            <p className="mt-1 font-semibold text-zinc-900">
-              {lead.assignedToName ?? "—"}
-            </p>
-          )}
-        </Card>
-        <Card>
-          <p className="text-sm text-zinc-600">پیگیری بعدی</p>
-          <p className="mt-1 font-semibold text-zinc-900">
-            {lead.nextFollowUpAt ?? "—"}
-          </p>
-        </Card>
-        <Card>
-          <p className="text-sm text-zinc-600">آخرین تماس</p>
-          <p className="mt-1 font-semibold text-zinc-900">
-            {lead.lastCallOutcomeLabel ?? "—"}
-          </p>
-          {lead.lastCalledAt ? (
-            <p className="mt-1 text-sm text-zinc-600">{lead.lastCalledAt}</p>
-          ) : null}
-        </Card>
-      </div>
+      {lead.sla.severity !== "none" ? (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm ${
+            lead.sla.severity === "red"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {lead.slaReason}
+        </div>
+      ) : null}
 
-      <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          اطلاعات تماس
-        </h2>
-        <Card>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-zinc-600">نام</dt>
-              <dd className="font-medium text-zinc-900">{lead.name}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-zinc-600">موبایل</dt>
-              <dd className="font-medium text-zinc-900" dir="ltr">
-                {lead.phone ?? lead.assessmentUserPhone ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-zinc-600">ایمیل</dt>
-              <dd className="font-medium text-zinc-900" dir="ltr">
-                {lead.email ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-zinc-600">کسب‌وکار</dt>
-              <dd className="font-medium text-zinc-900">
-                {lead.businessName ?? "—"}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-sm text-zinc-600">پیام</dt>
-              <dd className="text-zinc-800">{lead.message ?? "—"}</dd>
-            </div>
-          </dl>
-        </Card>
-      </section>
+      <Card>
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-sm text-zinc-600">نام</dt>
+            <dd className="font-medium text-zinc-900">{lead.name}</dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">موبایل</dt>
+            <dd className="font-medium text-zinc-900" dir="ltr">
+              {lead.phone ?? lead.assessmentUserPhone ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">ایمیل</dt>
+            <dd className="font-medium text-zinc-900" dir="ltr">
+              {lead.email ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">کسب‌وکار</dt>
+            <dd className="font-medium text-zinc-900">
+              {lead.businessName ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">منبع</dt>
+            <dd className="font-medium text-zinc-900">{lead.sourceLabel}</dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">احتمال خرید</dt>
+            <dd className="font-medium text-zinc-900">
+              {lead.purchaseProbabilityLabel ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">وضعیت</dt>
+            <dd className="font-medium text-zinc-900">{lead.statusLabel}</dd>
+            {lead.status === "closed_lost" && lead.lostReasonLabel ? (
+              <p className="mt-1 text-sm text-zinc-600">
+                دلیل باخت: {lead.lostReasonLabel}
+                {lead.lostNote ? ` — ${lead.lostNote}` : ""}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">تخصیص</dt>
+            <dd className="font-medium text-zinc-900">
+              {lead.pendingAssignment ? (
+                <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-sm font-semibold text-sky-800">
+                  در صف تخصیص
+                </span>
+              ) : (
+                (lead.assignedToName ?? "—")
+              )}
+            </dd>
+            {lead.pendingAssignment && lead.assignScheduledFor ? (
+              <p className="mt-1 text-sm text-zinc-600">
+                تخصیص خودکار: {lead.assignScheduledFor}
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">پیگیری بعدی</dt>
+            <dd className="font-medium text-zinc-900">
+              {lead.nextFollowUpAt ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm text-zinc-600">آخرین تماس</dt>
+            <dd className="font-medium text-zinc-900">
+              {lead.lastCallOutcomeLabel ?? "—"}
+            </dd>
+            {lead.lastCalledAt ? (
+              <p className="mt-1 text-sm text-zinc-600">{lead.lastCalledAt}</p>
+            ) : null}
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <dt className="text-sm text-zinc-600">پیام</dt>
+            <dd className="text-zinc-800">{lead.message ?? "—"}</dd>
+          </div>
+        </dl>
+      </Card>
 
       {(lead.overallScorePercentage != null || lead.healthLevel) && (
-        <section className="mb-8">
-          <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+        <Card>
+          <h3 className="mb-3 text-base font-semibold text-zinc-900">
             خلاصه ارزیابی
-          </h2>
-          <Card>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {lead.overallScorePercentage != null ? (
-                <div>
-                  <p className="text-sm text-zinc-600">امتیاز کلی</p>
-                  <p className="text-xl font-semibold text-zinc-900">
-                    {lead.overallScorePercentage}٪
-                  </p>
-                </div>
-              ) : null}
-              {lead.healthLevel ? (
-                <div>
-                  <p className="text-sm text-zinc-600">سطح سلامت</p>
-                  <p className="text-xl font-semibold text-zinc-900">
-                    {lead.healthLevel}
-                  </p>
-                </div>
-              ) : null}
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {lead.overallScorePercentage != null ? (
+              <div>
+                <p className="text-sm text-zinc-600">امتیاز کلی</p>
+                <p className="text-xl font-semibold text-zinc-900">
+                  {lead.overallScorePercentage}٪
+                </p>
+              </div>
+            ) : null}
+            {lead.healthLevel ? (
+              <div>
+                <p className="text-sm text-zinc-600">سطح سلامت</p>
+                <p className="text-xl font-semibold text-zinc-900">
+                  {lead.healthLevel}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {lead.bottlenecks.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-sm font-medium text-zinc-700">
+                گلوگاه‌های اصلی
+              </p>
+              <ul className="list-inside list-disc space-y-1 text-sm text-zinc-600">
+                {lead.bottlenecks.map((item, index) => (
+                  <li key={`${item.title}-${index}`}>{item.title}</li>
+                ))}
+              </ul>
             </div>
+          ) : null}
 
-            {lead.bottlenecks.length > 0 ? (
-              <div className="mt-4">
-                <p className="mb-2 text-sm font-medium text-zinc-700">
-                  گلوگاه‌های اصلی
-                </p>
-                <ul className="list-inside list-disc space-y-1 text-sm text-zinc-600">
-                  {lead.bottlenecks.map((item, index) => (
-                    <li key={`${item.title}-${index}`}>{item.title}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {lead.diagnoses.length > 0 ? (
-              <div className="mt-4">
-                <p className="mb-2 text-sm font-medium text-zinc-700">
-                  تشخیص‌ها
-                </p>
-                <ul className="list-inside list-disc space-y-1 text-sm text-zinc-600">
-                  {lead.diagnoses.map((item, index) => (
-                    <li key={`${item.title}-${index}`}>{item.title}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </Card>
-        </section>
+          {lead.diagnoses.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-sm font-medium text-zinc-700">
+                تشخیص‌ها
+              </p>
+              <ul className="list-inside list-disc space-y-1 text-sm text-zinc-600">
+                {lead.diagnoses.map((item, index) => (
+                  <li key={`${item.title}-${index}`}>{item.title}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </Card>
       )}
 
-      <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">لینک‌ها</h2>
-        <div className="flex flex-wrap gap-3">
-          {lead.expertViewUrl ? (
-            <LinkButton href={lead.expertViewUrl} variant="secondary" size="sm">
-              نمای فروش
-            </LinkButton>
-          ) : null}
-          {lead.reportUrl ? (
-            <LinkButton href={lead.reportUrl} variant="secondary" size="sm">
-              گزارش کامل
-            </LinkButton>
-          ) : null}
-          {lead.resultUrl ? (
-            <LinkButton href={lead.resultUrl} variant="secondary" size="sm">
-              خلاصه نتیجه
-            </LinkButton>
-          ) : null}
-          {adminSession && lead.adminAssessmentUrl ? (
-            <LinkButton
-              href={lead.adminAssessmentUrl}
-              variant="secondary"
-              size="sm"
-            >
-              جزئیات ادمین
-            </LinkButton>
-          ) : null}
-        </div>
-      </section>
+      <div className="flex flex-wrap gap-3">
+        {lead.expertViewUrl ? (
+          <LinkButton href={lead.expertViewUrl} variant="secondary" size="sm">
+            نمای فروش
+          </LinkButton>
+        ) : null}
+        {lead.reportUrl ? (
+          <LinkButton href={lead.reportUrl} variant="secondary" size="sm">
+            گزارش کامل
+          </LinkButton>
+        ) : null}
+        {lead.resultUrl ? (
+          <LinkButton href={lead.resultUrl} variant="secondary" size="sm">
+            خلاصه نتیجه
+          </LinkButton>
+        ) : null}
+        {adminSession && lead.adminAssessmentUrl ? (
+          <LinkButton
+            href={lead.adminAssessmentUrl}
+            variant="secondary"
+            size="sm"
+          >
+            جزئیات ادمین
+          </LinkButton>
+        ) : null}
+      </div>
+    </section>
+  );
 
-      <LeadDetailClient
-        leadId={lead.id}
-        initialStatus={lead.status}
-        initialAssignedToId={lead.assignedToId}
-        initialNextFollowUpAtIso={lead.nextFollowUpAtIso}
-        initialAdminProbabilityOverridePercent={lead.adminProbabilityOverridePercent}
-        initialLostReason={lead.lostReason}
-        initialLostNote={lead.lostNote}
-        isAdmin={Boolean(adminSession)}
-        currentStaffUserId={currentStaffUserId}
-        canTransfer={canTransfer}
-        canClaim={canClaim}
-        assigneeOptions={assigneeOptions}
-      />
-
+  const historyExtras = (
+    <>
       <LeadSmsHistoryPanel history={smsHistory} />
 
-      <section className="mt-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+      <section aria-labelledby="lead-timeline-heading">
+        <h3
+          id="lead-timeline-heading"
+          className="mb-4 text-base font-semibold text-zinc-900"
+        >
           خط زمانی
-        </h2>
-        {lead.sla.severity !== "none" ? (
-          <div
-            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-              lead.sla.severity === "red"
-                ? "border-red-200 bg-red-50 text-red-800"
-                : "border-amber-200 bg-amber-50 text-amber-800"
-            }`}
-          >
-            {lead.slaReason}
-          </div>
-        ) : null}
+        </h3>
         {lead.timeline.length === 0 ? (
           <Card className="text-center">
             <p className="text-zinc-600">هنوز رویدادی ثبت نشده است.</p>
@@ -330,6 +305,38 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
           </ul>
         )}
       </section>
+    </>
+  );
+
+  return (
+    <PageLayout
+      title={`لید — ${lead.name}`}
+      subtitle="اقدام بعدی، خلاصه لید و تاریخچه پیگیری."
+      showBack
+      backHref="/expert/consultations"
+      maxWidth="5xl"
+      footer="minimal"
+    >
+      <ExpertNav isAdmin={Boolean(adminSession)} />
+
+      <LeadDetailClient
+        leadId={lead.id}
+        initialStatus={lead.status}
+        initialAssignedToId={lead.assignedToId}
+        initialNextFollowUpAtIso={lead.nextFollowUpAtIso}
+        initialAdminProbabilityOverridePercent={
+          lead.adminProbabilityOverridePercent
+        }
+        initialLostReason={lead.lostReason}
+        initialLostNote={lead.lostNote}
+        isAdmin={Boolean(adminSession)}
+        currentStaffUserId={currentStaffUserId}
+        canTransfer={canTransfer}
+        canClaim={canClaim}
+        assigneeOptions={assigneeOptions}
+        leadSummary={leadSummary}
+        historyExtras={historyExtras}
+      />
     </PageLayout>
   );
 }

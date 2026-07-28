@@ -73,6 +73,71 @@ function envPasswordConfiguredForRole(role: StaffRole): boolean {
   return Boolean(env.salesExpertPassword || env.salesExpertPasswordHash);
 }
 
+async function tryEnvBootstrapForRole(
+  role: StaffRole,
+  password: string,
+): Promise<AuthenticatedStaff | null> {
+  const roleCount = await countStaffUsersByRole(role);
+  if (roleCount > 0) {
+    return null;
+  }
+
+  if (!envPasswordConfiguredForRole(role)) {
+    return null;
+  }
+
+  if (!verifyEnvPasswordForRole(role, password)) {
+    return null;
+  }
+
+  return { role };
+}
+
+export async function authenticateStaffByCredentials(
+  body: unknown,
+): Promise<AuthenticatedStaff> {
+  const { phone, password } = validateStaffLoginRequest(body);
+  const staffUser = await findStaffUserByPhone(phone);
+
+  if (staffUser) {
+    if (!staffUser.isActive) {
+      throw new AppError(
+        "UNAUTHORIZED",
+        "حساب کاربری غیرفعال است.",
+        401,
+      );
+    }
+
+    if (!verifyStaffPassword(password, staffUser.passwordHash)) {
+      throw new AppError("UNAUTHORIZED", "رمز عبور نادرست است.", 401);
+    }
+
+    await touchLastLogin(staffUser.id);
+
+    return {
+      role: staffUser.role,
+      staffUserId: staffUser.id,
+      name: staffUser.name,
+    };
+  }
+
+  // Bootstrap from env when no StaffUser exists for that role (admin first, then expert).
+  const adminBootstrap = await tryEnvBootstrapForRole("admin", password);
+  if (adminBootstrap) {
+    return adminBootstrap;
+  }
+
+  const expertBootstrap = await tryEnvBootstrapForRole(
+    "sales_expert",
+    password,
+  );
+  if (expertBootstrap) {
+    return expertBootstrap;
+  }
+
+  throw new AppError("UNAUTHORIZED", "رمز عبور نادرست است.", 401);
+}
+
 export async function authenticateStaff(
   role: StaffRole,
   body: unknown,

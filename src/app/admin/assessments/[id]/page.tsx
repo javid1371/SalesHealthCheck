@@ -38,7 +38,7 @@ export default async function AdminAssessmentDetailPage({
 }: AdminAssessmentDetailPageProps) {
   const adminSession = await readAdminSession();
   if (!adminSession) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const { id: assessmentId } = await params;

@@ -10,6 +10,6 @@ export async function POST(request: Request) {
       staffUserId: staff.staffUserId,
       name: staff.name,
     });
-    return { ok: true };
+    return { ok: true, role: staff.role, redirectTo: "/admin/dashboard" };
   });
 }

@@ -1,5 +1,5 @@
-import { ExpertLoginClient } from "./ExpertLoginClient";
+import { redirect } from "next/navigation";
 
 export default function ExpertLoginPage() {
-  return <ExpertLoginClient />;
+  redirect("/login");
 }

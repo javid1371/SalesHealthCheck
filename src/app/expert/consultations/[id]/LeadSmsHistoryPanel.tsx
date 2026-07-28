@@ -9,10 +9,10 @@ export function LeadSmsHistoryPanel({ history }: LeadSmsHistoryPanelProps) {
   const { activeEnrollments, messages } = history;
 
   return (
-    <section className="mt-8 mb-8">
-      <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+    <section>
+      <h3 className="mb-4 text-base font-semibold text-zinc-900">
         تاریخچه پیامک قیف
-      </h2>
+      </h3>
 
       {activeEnrollments.length > 0 ? (
         <div className="mb-4 space-y-2">

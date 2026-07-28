@@ -9,7 +9,7 @@ import { LeadSettingsForm } from "./LeadSettingsForm";
 export default async function AdminLeadSettingsPage() {
   const session = await readAdminSession();
   if (!session) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const [settings, staffUsers] = await Promise.all([

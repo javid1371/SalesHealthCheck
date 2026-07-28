@@ -40,7 +40,7 @@ export default async function ExpertConsultationsPage({
   const salesExpertSession = await readSalesExpertSession();
 
   if (!adminSession && !salesExpertSession) {
-    redirect("/expert/login");
+    redirect("/login");
   }
 
   const rawParams = await searchParams;

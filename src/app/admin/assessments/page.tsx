@@ -30,7 +30,7 @@ export default async function AdminAssessmentsPage({
 }: AdminAssessmentsPageProps) {
   const session = await readAdminSession();
   if (!session) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const rawParams = await searchParams;

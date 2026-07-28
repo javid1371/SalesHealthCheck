@@ -3,44 +3,188 @@ import { redirect } from "next/navigation";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/LinkButton";
+import { cn } from "@/lib/utils";
 import {
   readAdminSession,
   readSalesExpertSession,
 } from "@/lib/session";
+import type { ExpertDashboardFollowUpRow } from "@/modules/consultation/consultation.types";
 import { getExpertDashboard } from "@/modules/consultation/consultation.service";
 import { ExpertNav } from "../ExpertNav";
 
-function KpiCard({
+function PriorityKpiCard({
   label,
   value,
   href,
+  tone = "default",
 }: {
   label: string;
   value: number;
-  href?: string;
+  href: string;
+  tone?: "default" | "danger" | "accent";
 }) {
-  const content = (
-    <>
-      <p className="text-sm text-zinc-600">{label}</p>
-      <p className="mt-2 text-3xl font-semibold text-zinc-900">
+  return (
+    <Card
+      as={Link}
+      href={href}
+      padding="compact"
+      className={cn(
+        "text-center transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700",
+        tone === "danger" &&
+          "border border-red-200 bg-red-50 hover:bg-red-100/80",
+        tone === "accent" &&
+          "border border-amber-200 bg-amber-50 hover:bg-amber-100/80",
+        tone === "default" && "hover:bg-zinc-50",
+      )}
+    >
+      <p
+        className={cn(
+          "text-sm",
+          tone === "danger" && "text-red-800",
+          tone === "accent" && "text-amber-900",
+          tone === "default" && "text-zinc-600",
+        )}
+      >
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 text-3xl font-semibold",
+          tone === "danger" && "text-red-900",
+          tone === "accent" && "text-amber-950",
+          tone === "default" && "text-zinc-900",
+        )}
+      >
         {value.toLocaleString("fa-IR")}
       </p>
-    </>
+    </Card>
   );
+}
 
-  if (href) {
+function PriorityLeadTable({
+  rows,
+  emptyMessage,
+  showAssignee,
+}: {
+  rows: ExpertDashboardFollowUpRow[];
+  emptyMessage: string;
+  showAssignee: boolean;
+}) {
+  if (rows.length === 0) {
     return (
-      <Card
-        as={Link}
-        href={href}
-        className="text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
-      >
-        {content}
+      <Card className="text-center" padding="compact">
+        <p className="text-zinc-600">{emptyMessage}</p>
       </Card>
     );
   }
 
-  return <Card className="text-center">{content}</Card>;
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+          <tr>
+            <th className="px-4 py-3 font-medium text-zinc-700">نام</th>
+            <th className="px-4 py-3 font-medium text-zinc-700">کسب‌وکار</th>
+            {showAssignee ? (
+              <th className="px-4 py-3 font-medium text-zinc-700">کارشناس</th>
+            ) : null}
+            <th className="px-4 py-3 font-medium text-zinc-700">وضعیت</th>
+            <th className="px-4 py-3 font-medium text-zinc-700">پیگیری بعدی</th>
+            <th
+              className="px-4 py-3 font-medium text-zinc-700"
+              aria-label="عملیات"
+            />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100">
+          {rows.map((row) => (
+            <tr key={row.id} className="hover:bg-zinc-50/80">
+              <td className="px-4 py-3 font-medium text-zinc-900">
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {row.name}
+                  {row.isStaleNew ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                      کهنه
+                    </span>
+                  ) : null}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-zinc-600">
+                {row.businessName ?? "—"}
+              </td>
+              {showAssignee ? (
+                <td className="px-4 py-3 text-zinc-600">
+                  {row.assignedToName ?? "بدون تخصیص"}
+                </td>
+              ) : null}
+              <td className="px-4 py-3">
+                <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
+                  {row.statusLabel}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-zinc-600">
+                {row.nextFollowUpAt ?? "—"}
+              </td>
+              <td className="px-4 py-3">
+                <Link
+                  href={row.detailUrl}
+                  className="font-medium text-emerald-700 hover:text-emerald-800"
+                >
+                  جزئیات
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PrioritySection({
+  title,
+  href,
+  linkLabel,
+  totalCount,
+  rows,
+  emptyMessage,
+  showAssignee,
+  tone = "default",
+}: {
+  title: string;
+  href: string;
+  linkLabel: string;
+  totalCount: number;
+  rows: ExpertDashboardFollowUpRow[];
+  emptyMessage: string;
+  showAssignee: boolean;
+  tone?: "default" | "danger";
+}) {
+  return (
+    <section className="mb-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2
+          className={cn(
+            "text-lg font-semibold",
+            tone === "danger" ? "text-red-900" : "text-zinc-900",
+          )}
+        >
+          {title}
+          <span className="mr-2 text-base font-normal text-zinc-500">
+            ({totalCount.toLocaleString("fa-IR")})
+          </span>
+        </h2>
+        <LinkButton href={href} variant="secondary" size="sm">
+          {linkLabel}
+        </LinkButton>
+      </div>
+      <PriorityLeadTable
+        rows={rows}
+        emptyMessage={emptyMessage}
+        showAssignee={showAssignee}
+      />
+    </section>
+  );
 }
 
 export default async function ExpertDashboardPage() {
@@ -48,146 +192,115 @@ export default async function ExpertDashboardPage() {
   const salesExpertSession = await readSalesExpertSession();
 
   if (!adminSession && !salesExpertSession) {
-    redirect("/expert/login");
+    redirect("/login");
   }
 
-  if (adminSession && !salesExpertSession) {
-    redirect("/admin/dashboard");
-  }
-
+  const isAdminView = Boolean(adminSession);
   const staffUserId = salesExpertSession?.staffUserId;
-  if (!staffUserId) {
-    redirect("/expert/login");
+
+  if (!isAdminView && !staffUserId) {
+    redirect("/login");
   }
 
-  const dashboard = await getExpertDashboard(staffUserId);
+  // Admin sees team-wide queue; expert sees only their assigned leads.
+  const dashboard = await getExpertDashboard(
+    isAdminView ? undefined : staffUserId,
+  );
   const expertName = salesExpertSession?.name;
 
   return (
     <PageLayout
-      title={expertName ? `سلام ${expertName}` : "داشبورد کارشناس"}
-      subtitle="خلاصه لیدهای تخصیص‌یافته و پیگیری‌های امروز."
+      title={
+        isAdminView
+          ? "نمای کارشناس"
+          : expertName
+            ? `سلام ${expertName}`
+            : "داشبورد کارشناس"
+      }
+      subtitle={
+        isAdminView
+          ? "صف اولویت تیمی — پیگیری‌ها و لیدها در کل سیستم."
+          : "صف کار امروز — اول عقب‌افتاده‌ها، بعد پیگیری امروز و لیدهای جدید."
+      }
       showBack
       backHref="/"
       maxWidth="5xl"
       footer="minimal"
     >
-      <ExpertNav isAdmin={Boolean(adminSession)} />
+      <ExpertNav isAdmin={isAdminView} />
 
       <section className="mb-8">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">KPIها</h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+          اولویت امروز
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            label="لید تخصیص‌یافته"
-            value={dashboard.kpis.assignedTotal}
-            href="/expert/consultations"
+          <PriorityKpiCard
+            label="پیگیری عقب‌افتاده"
+            value={dashboard.kpis.overdueFollowUp}
+            href="/expert/consultations?onlyOverdueFollowUp=true"
+            tone="danger"
           />
-          <KpiCard
-            label="لید جدید"
-            value={dashboard.kpis.newLeads}
-            href="/expert/consultations?status=new"
-          />
-          <KpiCard
-            label="نیازمند پیگیری امروز"
-            value={dashboard.kpis.followUpDue}
+          <PriorityKpiCard
+            label="پیگیری امروز"
+            value={dashboard.kpis.followUpDueToday}
             href="/expert/consultations?onlyFollowUpDueToday=true"
           />
-          <KpiCard
-            label="بسته‌شده این ماه"
-            value={dashboard.kpis.closedThisMonth}
+          <PriorityKpiCard
+            label="لید جدید / کهنه"
+            value={dashboard.kpis.newLeads}
+            href="/expert/consultations?status=new"
+            tone="accent"
+          />
+          <PriorityKpiCard
+            label="صف تیم (بدون تخصیص)"
+            value={dashboard.kpis.teamQueue}
+            href="/expert/consultations?onlyTeamQueue=true"
           />
         </div>
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            پیگیری‌های امروز
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <LinkButton
-              href="/expert/consultations?onlyFollowUpDueToday=true"
-              variant="secondary"
-              size="sm"
-            >
-              مشاهده پیگیری‌های امروز
-            </LinkButton>
-            <LinkButton
-              href="/expert/consultations?excludeAssessmentInProgress=true"
-              variant="secondary"
-              size="sm"
-            >
-              صف تماس
-            </LinkButton>
-            <LinkButton href="/expert/consultations" variant="secondary" size="sm">
-              همه لیدها
-            </LinkButton>
-            <LinkButton
-              href="/expert/consultations?onlyTeamQueue=true"
-              variant="secondary"
-              size="sm"
-            >
-              صف تیم
-            </LinkButton>
-          </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <LinkButton
+            href="/expert/consultations?excludeAssessmentInProgress=true"
+            variant="secondary"
+            size="sm"
+          >
+            صف تماس
+          </LinkButton>
+          <LinkButton href="/expert/consultations" variant="secondary" size="sm">
+            همه لیدها
+          </LinkButton>
         </div>
-
-        {dashboard.todayFollowUps.length === 0 ? (
-          <Card className="text-center">
-            <p className="text-zinc-600">
-              امروز لیدی برای پیگیری ثبت نشده است.
-            </p>
-          </Card>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
-                <tr>
-                  <th className="px-4 py-3 font-medium text-zinc-700">نام</th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    کسب‌وکار
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    وضعیت
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700">
-                    پیگیری بعدی
-                  </th>
-                  <th className="px-4 py-3 font-medium text-zinc-700" aria-label="عملیات" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {dashboard.todayFollowUps.map((row) => (
-                  <tr key={row.id} className="hover:bg-zinc-50/80">
-                    <td className="px-4 py-3 font-medium text-zinc-900">
-                      {row.name}
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.businessName ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-zinc-700">
-                        {row.statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-600">
-                      {row.nextFollowUpAt ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        href={row.detailUrl}
-                        className="font-medium text-emerald-700 hover:text-emerald-800"
-                      >
-                        جزئیات
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
+
+      <PrioritySection
+        title="پیگیری‌های عقب‌افتاده"
+        href="/expert/consultations?onlyOverdueFollowUp=true"
+        linkLabel="مشاهده همه عقب‌افتاده‌ها"
+        totalCount={dashboard.kpis.overdueFollowUp}
+        rows={dashboard.overdueFollowUps}
+        emptyMessage="پیگیری عقب‌افتاده‌ای ندارید."
+        showAssignee={isAdminView}
+        tone="danger"
+      />
+
+      <PrioritySection
+        title="پیگیری‌های امروز"
+        href="/expert/consultations?onlyFollowUpDueToday=true"
+        linkLabel="مشاهده پیگیری‌های امروز"
+        totalCount={dashboard.kpis.followUpDueToday}
+        rows={dashboard.todayFollowUps}
+        emptyMessage="برای امروز پیگیری باقی‌مانده‌ای ثبت نشده است."
+        showAssignee={isAdminView}
+      />
+
+      <PrioritySection
+        title="لیدهای جدید (قدیمی‌ترین اول)"
+        href="/expert/consultations?status=new"
+        linkLabel="مشاهده لیدهای جدید"
+        totalCount={dashboard.kpis.newLeads}
+        rows={dashboard.newLeadRows}
+        emptyMessage="لید جدیدی در صف نیست."
+        showAssignee={isAdminView}
+      />
     </PageLayout>
   );
 }

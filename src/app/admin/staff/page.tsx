@@ -10,7 +10,7 @@ import { StaffRow } from "./StaffRow";
 export default async function AdminStaffPage() {
   const session = await readAdminSession();
   if (!session) {
-    redirect("/admin/login");
+    redirect("/login");
   }
 
   const users = await listStaffUsers();

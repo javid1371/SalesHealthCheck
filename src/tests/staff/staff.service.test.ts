@@ -29,6 +29,7 @@ vi.mock("@/modules/staff/staff.repository", () => repoMock);
 
 import {
   authenticateStaff,
+  authenticateStaffByCredentials,
   createStaffUserByAdmin,
   resetStaffUserPasswordByAdmin,
   setStaffUserActiveByAdmin,
@@ -57,6 +58,115 @@ const expertUser = {
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
 };
+
+describe("authenticateStaffByCredentials", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    envMock.adminPassword = "admin-secret";
+    envMock.salesExpertPassword = "expert-secret";
+  });
+
+  it("authenticates active staff user and returns role from StaffUser", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(expertUser);
+    repoMock.touchLastLogin.mockResolvedValue(expertUser);
+
+    const result = await authenticateStaffByCredentials({
+      phone: "09222222222",
+      password: "expert-pass",
+    });
+
+    expect(result).toEqual({
+      role: "sales_expert",
+      staffUserId: "expert-1",
+      name: "Expert User",
+    });
+    expect(repoMock.touchLastLogin).toHaveBeenCalledWith("expert-1");
+  });
+
+  it("authenticates admin staff user without requiring a role in the request", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(adminUser);
+    repoMock.touchLastLogin.mockResolvedValue(adminUser);
+
+    const result = await authenticateStaffByCredentials({
+      phone: "09111111111",
+      password: "admin-pass",
+    });
+
+    expect(result).toEqual({
+      role: "admin",
+      staffUserId: "admin-1",
+      name: "Admin User",
+    });
+  });
+
+  it("falls back to admin env password before expert when no staff users exist", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(null);
+    repoMock.countStaffUsersByRole.mockResolvedValue(0);
+
+    const result = await authenticateStaffByCredentials({
+      phone: "09111111111",
+      password: "admin-secret",
+    });
+
+    expect(result).toEqual({ role: "admin" });
+  });
+
+  it("falls back to expert env password when admin bootstrap is unavailable", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(null);
+    repoMock.countStaffUsersByRole.mockImplementation(async (role: string) =>
+      role === "admin" ? 1 : 0,
+    );
+
+    const result = await authenticateStaffByCredentials({
+      phone: "09222222222",
+      password: "expert-secret",
+    });
+
+    expect(result).toEqual({ role: "sales_expert" });
+  });
+
+  it("rejects login when staff users exist but phone is unknown", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(null);
+    repoMock.countStaffUsersByRole.mockResolvedValue(1);
+
+    await expect(
+      authenticateStaffByCredentials({
+        phone: "09111111111",
+        password: "admin-secret",
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+  });
+
+  it("rejects inactive staff users without revealing role", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue({
+      ...expertUser,
+      isActive: false,
+    });
+
+    await expect(
+      authenticateStaffByCredentials({
+        phone: "09222222222",
+        password: "expert-pass",
+      }),
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+      message: "حساب کاربری غیرفعال است.",
+    });
+  });
+
+  it("rejects wrong password for an existing staff user", async () => {
+    repoMock.findStaffUserByPhone.mockResolvedValue(adminUser);
+
+    await expect(
+      authenticateStaffByCredentials({
+        phone: "09111111111",
+        password: "wrong-password",
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    expect(repoMock.touchLastLogin).not.toHaveBeenCalled();
+  });
+});
 
 describe("authenticateStaff", () => {
   beforeEach(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
@@ -62,6 +62,8 @@ interface LeadDetailClientProps {
   canTransfer: boolean;
   canClaim?: boolean;
   assigneeOptions: AssigneeOption[];
+  leadSummary?: ReactNode;
+  historyExtras?: ReactNode;
 }
 
 export function LeadDetailClient({
@@ -77,6 +79,8 @@ export function LeadDetailClient({
   canTransfer,
   canClaim = false,
   assigneeOptions,
+  leadSummary,
+  historyExtras,
 }: LeadDetailClientProps) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
@@ -107,6 +111,7 @@ export function LeadDetailClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(true);
 
   const transferOptions = assigneeOptions.filter(
     (option) =>
@@ -329,291 +334,207 @@ export function LeadDetailClient({
             برداشتن سرنخ
           </Button>
         </Card>
+        {leadSummary}
+        {historyExtras ? (
+          <details
+            className="rounded-2xl border border-zinc-200 bg-white"
+            open={historyOpen}
+            onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer select-none px-5 py-4 text-lg font-semibold text-zinc-900">
+              تاریخچه
+            </summary>
+            <div className="space-y-6 border-t border-zinc-200 px-5 py-5">
+              {historyExtras}
+            </div>
+          </details>
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <Card>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          پیگیری لید
+      <section aria-labelledby="lead-next-action-heading">
+        <h2
+          id="lead-next-action-heading"
+          className="mb-4 text-lg font-semibold text-zinc-900"
+        >
+          اقدام بعدی
         </h2>
-        <form onSubmit={handleUpdateLead} className="grid gap-4 sm:grid-cols-2">
-          <FieldLabel label="وضعیت" htmlFor="lead-status">
-            <Select
-              id="lead-status"
-              value={status}
-              onChange={(event) => {
-                const nextStatus = event.target.value as LeadStatus;
-                setStatus(nextStatus);
-                if (nextStatus !== "closed_lost") {
-                  setLostReason(initialLostReason ?? "");
-                  setLostNote(initialLostNote ?? "");
-                }
-              }}
-              disabled={loading}
+        <div className="space-y-4">
+          <Card>
+            <h3 className="mb-4 text-base font-semibold text-zinc-900">
+              وضعیت و پیگیری
+            </h3>
+            <form
+              onSubmit={handleUpdateLead}
+              className="grid gap-4 sm:grid-cols-2"
             >
-              {STATUS_OPTIONS.filter(
-                (option) =>
-                  option.value !== "assessment_in_progress" ||
-                  status === "assessment_in_progress",
-              ).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </FieldLabel>
-
-          {status === "closed_lost" ? (
-            <>
-              <FieldLabel label="دلیل باخت" htmlFor="lead-lost-reason">
+              <FieldLabel label="وضعیت" htmlFor="lead-status">
                 <Select
-                  id="lead-lost-reason"
-                  value={lostReason}
-                  onChange={(event) =>
-                    setLostReason(event.target.value as LostReason | "")
-                  }
+                  id="lead-status"
+                  value={status}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value as LeadStatus;
+                    setStatus(nextStatus);
+                    if (nextStatus !== "closed_lost") {
+                      setLostReason(initialLostReason ?? "");
+                      setLostNote(initialLostNote ?? "");
+                    }
+                  }}
                   disabled={loading}
-                  required
                 >
-                  <option value="">انتخاب دلیل</option>
-                  {LOST_REASONS.map((reason) => (
-                    <option key={reason} value={reason}>
-                      {LOST_REASON_LABELS[reason]}
+                  {STATUS_OPTIONS.filter(
+                    (option) =>
+                      option.value !== "assessment_in_progress" ||
+                      status === "assessment_in_progress",
+                  ).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </Select>
               </FieldLabel>
 
-              {lostReason === "other" ? (
-                <div className="sm:col-span-2">
-                  <FieldLabel
-                    label="توضیح باخت (اختیاری)"
-                    htmlFor="lead-lost-note"
-                  >
-                    <textarea
-                      id="lead-lost-note"
-                      rows={2}
-                      className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      value={lostNote}
-                      onChange={(event) => setLostNote(event.target.value)}
-                      disabled={loading}
-                      placeholder="توضیح کوتاه دربارهٔ دلیل باخت…"
-                    />
-                  </FieldLabel>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-
-          {isAdmin ? (
-            <FieldLabel
-              label="بازنویسی احتمال خرید (٪)"
-              htmlFor="lead-probability-override"
-            >
-              <Input
-                id="lead-probability-override"
-                type="number"
-                min={0}
-                max={100}
-                dir="ltr"
-                placeholder="خالی = مقدار سیستمی"
-                value={adminProbabilityOverridePercent}
-                onChange={(event) =>
-                  setAdminProbabilityOverridePercent(event.target.value)
-                }
-                disabled={loading}
-              />
-            </FieldLabel>
-          ) : null}
-
-          <FieldLabel label="پیگیری بعدی" htmlFor="lead-follow-up">
-            <Input
-              id="lead-follow-up"
-              type="date"
-              value={nextFollowUpAt}
-              onChange={(event) => setNextFollowUpAt(event.target.value)}
-              disabled={loading}
-            />
-          </FieldLabel>
-
-          <div className="flex items-end sm:col-span-2">
-            <Button
-              type="submit"
-              loading={loading}
-              loadingLabel="در حال ذخیره…"
-              disabled={status === "closed_lost" && !lostReason}
-            >
-              ذخیره تغییرات
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      <Card>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">ثبت تماس</h2>
-        <form onSubmit={handleLogCall} className="grid gap-4 sm:grid-cols-2">
-          <FieldLabel label="نتیجه تماس" htmlFor="lead-call-outcome">
-            <Select
-              id="lead-call-outcome"
-              value={callOutcome}
-              onChange={(event) =>
-                setCallOutcome(event.target.value as CallOutcome | "")
-              }
-              disabled={loading}
-              required
-            >
-              <option value="">انتخاب نتیجه</option>
-              {CALL_OUTCOMES.map((outcome) => (
-                <option key={outcome} value={outcome}>
-                  {CALL_OUTCOME_LABELS[outcome]}
-                </option>
-              ))}
-            </Select>
-          </FieldLabel>
-
-          <div className="sm:col-span-2">
-            <FieldLabel label="یادداشت (اختیاری)" htmlFor="lead-call-note">
-              <textarea
-                id="lead-call-note"
-                rows={2}
-                className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                value={callNote}
-                onChange={(event) => setCallNote(event.target.value)}
-                disabled={loading}
-                placeholder="خلاصه کوتاه از تماس…"
-              />
-            </FieldLabel>
-          </div>
-
-          <div className="flex items-end sm:col-span-2">
-            <Button
-              type="submit"
-              loading={loading}
-              loadingLabel="در حال ثبت…"
-              disabled={!callOutcome}
-            >
-              ثبت تماس
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      {canTransfer ? (
-        <Card>
-          <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-            انتقال سرنخ
-          </h2>
-          <form onSubmit={handleTransfer} className="grid gap-4 sm:grid-cols-2">
-            <FieldLabel label="انتقال به همکار" htmlFor="lead-transfer-to">
-              <Select
-                id="lead-transfer-to"
-                value={transferToId}
-                onChange={(event) => setTransferToId(event.target.value)}
-                disabled={loading}
-                required
-              >
-                <option value="">انتخاب کارشناس</option>
-                {transferOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </Select>
-            </FieldLabel>
-
-            <FieldLabel label="دلیل انتقال" htmlFor="lead-transfer-reason">
-              <Select
-                id="lead-transfer-reason"
-                value={transferReason}
-                onChange={(event) =>
-                  setTransferReason(event.target.value as LeadTransferReason | "")
-                }
-                disabled={loading}
-                required
-              >
-                <option value="">انتخاب دلیل</option>
-                {LEAD_TRANSFER_REASONS.map((reason) => (
-                  <option key={reason} value={reason}>
-                    {LEAD_TRANSFER_REASON_LABELS[reason]}
-                  </option>
-                ))}
-              </Select>
-            </FieldLabel>
-
-            <div className="sm:col-span-2">
-              <FieldLabel label="یادداشت انتقال" htmlFor="lead-transfer-note">
-                <textarea
-                  id="lead-transfer-note"
-                  rows={3}
-                  required
-                  minLength={TRANSFER_NOTE_MIN_LENGTH}
-                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  value={transferNote}
-                  onChange={(event) => setTransferNote(event.target.value)}
+              <FieldLabel label="پیگیری بعدی" htmlFor="lead-follow-up">
+                <Input
+                  id="lead-follow-up"
+                  type="date"
+                  value={nextFollowUpAt}
+                  onChange={(event) => setNextFollowUpAt(event.target.value)}
                   disabled={loading}
-                  placeholder={`حداقل ${TRANSFER_NOTE_MIN_LENGTH} کاراکتر — زمینهٔ انتقال را بنویسید`}
                 />
               </FieldLabel>
-            </div>
 
-            <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
-              <Button
-                type="submit"
-                loading={loading}
-                loadingLabel="در حال انتقال…"
-                disabled={
-                  !transferToId ||
-                  !transferReason ||
-                  transferNote.trim().length < TRANSFER_NOTE_MIN_LENGTH
-                }
-              >
-                انتقال سرنخ
-              </Button>
-              {isAdmin && assignedToId ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={loading}
-                  loadingLabel="در حال لغو…"
-                  onClick={handleUnassign}
-                >
-                  لغو تخصیص
-                </Button>
+              {status === "closed_lost" ? (
+                <>
+                  <FieldLabel label="دلیل باخت" htmlFor="lead-lost-reason">
+                    <Select
+                      id="lead-lost-reason"
+                      value={lostReason}
+                      onChange={(event) =>
+                        setLostReason(event.target.value as LostReason | "")
+                      }
+                      disabled={loading}
+                      required
+                    >
+                      <option value="">انتخاب دلیل</option>
+                      {LOST_REASONS.map((reason) => (
+                        <option key={reason} value={reason}>
+                          {LOST_REASON_LABELS[reason]}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldLabel>
+
+                  {lostReason === "other" ? (
+                    <div className="sm:col-span-2">
+                      <FieldLabel
+                        label="توضیح باخت (اختیاری)"
+                        htmlFor="lead-lost-note"
+                      >
+                        <textarea
+                          id="lead-lost-note"
+                          rows={2}
+                          className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          value={lostNote}
+                          onChange={(event) => setLostNote(event.target.value)}
+                          disabled={loading}
+                          placeholder="توضیح کوتاه دربارهٔ دلیل باخت…"
+                        />
+                      </FieldLabel>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
-            </div>
-          </form>
-        </Card>
-      ) : null}
 
-      <Card>
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">
-          افزودن یادداشت
-        </h2>
-        <form onSubmit={handleAddNote} className="space-y-4">
-          <FieldLabel label="متن یادداشت" htmlFor="lead-note">
-            <textarea
-              id="lead-note"
-              rows={3}
-              className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              value={noteBody}
-              onChange={(event) => setNoteBody(event.target.value)}
-              disabled={loading}
-            />
-          </FieldLabel>
-          <Button
-            type="submit"
-            variant="secondary"
-            loading={loading}
-            loadingLabel="در حال ثبت…"
-            disabled={!noteBody.trim()}
-          >
-            ثبت یادداشت
-          </Button>
-        </form>
-      </Card>
+              {isAdmin ? (
+                <FieldLabel
+                  label="بازنویسی احتمال خرید (٪)"
+                  htmlFor="lead-probability-override"
+                >
+                  <Input
+                    id="lead-probability-override"
+                    type="number"
+                    min={0}
+                    max={100}
+                    dir="ltr"
+                    placeholder="خالی = مقدار سیستمی"
+                    value={adminProbabilityOverridePercent}
+                    onChange={(event) =>
+                      setAdminProbabilityOverridePercent(event.target.value)
+                    }
+                    disabled={loading}
+                  />
+                </FieldLabel>
+              ) : null}
+
+              <div className="flex items-end sm:col-span-2">
+                <Button
+                  type="submit"
+                  loading={loading}
+                  loadingLabel="در حال ذخیره…"
+                  disabled={status === "closed_lost" && !lostReason}
+                >
+                  ذخیره تغییرات
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          <Card>
+            <h3 className="mb-4 text-base font-semibold text-zinc-900">
+              ثبت تماس / نتیجه
+            </h3>
+            <form onSubmit={handleLogCall} className="grid gap-4 sm:grid-cols-2">
+              <FieldLabel label="نتیجه تماس" htmlFor="lead-call-outcome">
+                <Select
+                  id="lead-call-outcome"
+                  value={callOutcome}
+                  onChange={(event) =>
+                    setCallOutcome(event.target.value as CallOutcome | "")
+                  }
+                  disabled={loading}
+                  required
+                >
+                  <option value="">انتخاب نتیجه</option>
+                  {CALL_OUTCOMES.map((outcome) => (
+                    <option key={outcome} value={outcome}>
+                      {CALL_OUTCOME_LABELS[outcome]}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <div className="sm:col-span-2">
+                <FieldLabel label="یادداشت (اختیاری)" htmlFor="lead-call-note">
+                  <textarea
+                    id="lead-call-note"
+                    rows={2}
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    value={callNote}
+                    onChange={(event) => setCallNote(event.target.value)}
+                    disabled={loading}
+                    placeholder="خلاصه کوتاه از تماس…"
+                  />
+                </FieldLabel>
+              </div>
+
+              <div className="flex items-end sm:col-span-2">
+                <Button
+                  type="submit"
+                  loading={loading}
+                  loadingLabel="در حال ثبت…"
+                  disabled={!callOutcome}
+                >
+                  ثبت تماس
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      </section>
 
       {error ? <ErrorMessage message={error} /> : null}
       {success ? (
@@ -621,6 +542,143 @@ export function LeadDetailClient({
           {success}
         </p>
       ) : null}
+
+      {leadSummary}
+
+      <details
+        className="rounded-2xl border border-zinc-200 bg-white"
+        open={historyOpen}
+        onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer select-none px-5 py-4 text-lg font-semibold text-zinc-900">
+          تاریخچه
+        </summary>
+        <div className="space-y-6 border-t border-zinc-200 px-5 py-5">
+          <Card className="border-zinc-100 shadow-none">
+            <h3 className="mb-4 text-base font-semibold text-zinc-900">
+              افزودن یادداشت
+            </h3>
+            <form onSubmit={handleAddNote} className="space-y-4">
+              <FieldLabel label="متن یادداشت" htmlFor="lead-note">
+                <textarea
+                  id="lead-note"
+                  rows={3}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  value={noteBody}
+                  onChange={(event) => setNoteBody(event.target.value)}
+                  disabled={loading}
+                />
+              </FieldLabel>
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={loading}
+                loadingLabel="در حال ثبت…"
+                disabled={!noteBody.trim()}
+              >
+                ثبت یادداشت
+              </Button>
+            </form>
+          </Card>
+
+          {canTransfer ? (
+            <Card className="border-zinc-100 shadow-none">
+              <h3 className="mb-4 text-base font-semibold text-zinc-900">
+                انتقال سرنخ
+              </h3>
+              <form
+                onSubmit={handleTransfer}
+                className="grid gap-4 sm:grid-cols-2"
+              >
+                <FieldLabel label="انتقال به همکار" htmlFor="lead-transfer-to">
+                  <Select
+                    id="lead-transfer-to"
+                    value={transferToId}
+                    onChange={(event) => setTransferToId(event.target.value)}
+                    disabled={loading}
+                    required
+                  >
+                    <option value="">انتخاب کارشناس</option>
+                    {transferOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FieldLabel>
+
+                <FieldLabel label="دلیل انتقال" htmlFor="lead-transfer-reason">
+                  <Select
+                    id="lead-transfer-reason"
+                    value={transferReason}
+                    onChange={(event) =>
+                      setTransferReason(
+                        event.target.value as LeadTransferReason | "",
+                      )
+                    }
+                    disabled={loading}
+                    required
+                  >
+                    <option value="">انتخاب دلیل</option>
+                    {LEAD_TRANSFER_REASONS.map((reason) => (
+                      <option key={reason} value={reason}>
+                        {LEAD_TRANSFER_REASON_LABELS[reason]}
+                      </option>
+                    ))}
+                  </Select>
+                </FieldLabel>
+
+                <div className="sm:col-span-2">
+                  <FieldLabel
+                    label="یادداشت انتقال"
+                    htmlFor="lead-transfer-note"
+                  >
+                    <textarea
+                      id="lead-transfer-note"
+                      rows={3}
+                      required
+                      minLength={TRANSFER_NOTE_MIN_LENGTH}
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={transferNote}
+                      onChange={(event) => setTransferNote(event.target.value)}
+                      disabled={loading}
+                      placeholder={`حداقل ${TRANSFER_NOTE_MIN_LENGTH} کاراکتر — زمینهٔ انتقال را بنویسید`}
+                    />
+                  </FieldLabel>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
+                  <Button
+                    type="submit"
+                    loading={loading}
+                    loadingLabel="در حال انتقال…"
+                    disabled={
+                      !transferToId ||
+                      !transferReason ||
+                      transferNote.trim().length < TRANSFER_NOTE_MIN_LENGTH
+                    }
+                  >
+                    انتقال سرنخ
+                  </Button>
+                  {isAdmin && assignedToId ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={loading}
+                      loadingLabel="در حال لغو…"
+                      onClick={handleUnassign}
+                    >
+                      لغو تخصیص
+                    </Button>
+                  ) : null}
+                </div>
+              </form>
+            </Card>
+          ) : null}
+
+          {historyExtras}
+        </div>
+      </details>
     </div>
   );
 }

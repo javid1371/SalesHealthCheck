@@ -13,7 +13,7 @@ export function ExpertLogoutButton() {
     setLoading(true);
     try {
       await salesExpertLogoutRequest();
-      router.push("/expert/login");
+      router.push("/login");
       router.refresh();
     } catch {
       setLoading(false);

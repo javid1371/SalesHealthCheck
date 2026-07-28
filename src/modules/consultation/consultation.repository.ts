@@ -833,12 +833,12 @@ export async function findConsultationNotes(consultationRequestId: string) {
 }
 
 export async function countLeadsNeedingFollowUp(
-  assignedToId: string,
+  assignedToId: string | undefined,
   byDate: Date,
 ) {
   return db.consultationRequest.count({
     where: {
-      assignedToId,
+      ...(assignedToId ? { assignedToId } : {}),
       nextFollowUpAt: { lte: byDate },
       status: { in: OPEN_LEAD_STATUSES },
     },
@@ -846,13 +846,13 @@ export async function countLeadsNeedingFollowUp(
 }
 
 export async function findLeadsNeedingFollowUp(
-  assignedToId: string,
+  assignedToId: string | undefined,
   byDate: Date,
   limit = 10,
 ) {
   return db.consultationRequest.findMany({
     where: {
-      assignedToId,
+      ...(assignedToId ? { assignedToId } : {}),
       nextFollowUpAt: { lte: byDate },
       status: { in: OPEN_LEAD_STATUSES },
     },
@@ -862,13 +862,92 @@ export async function findLeadsNeedingFollowUp(
   });
 }
 
+export async function countOverdueFollowUps(
+  assignedToId: string | undefined,
+  asOf: Date,
+) {
+  return db.consultationRequest.count({
+    where: {
+      ...(assignedToId ? { assignedToId } : {}),
+      nextFollowUpAt: { lt: asOf },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+}
+
+export async function findOverdueFollowUps(
+  assignedToId: string | undefined,
+  asOf: Date,
+  limit = 10,
+) {
+  return db.consultationRequest.findMany({
+    where: {
+      ...(assignedToId ? { assignedToId } : {}),
+      nextFollowUpAt: { lt: asOf },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+    include: consultationListInclude,
+    orderBy: { nextFollowUpAt: "asc" },
+    take: limit,
+  });
+}
+
+/** Follow-ups due in `[from, to]` (e.g. remaining today, excluding already overdue). */
+export async function countFollowUpsDueInRange(
+  assignedToId: string | undefined,
+  from: Date,
+  to: Date,
+) {
+  return db.consultationRequest.count({
+    where: {
+      ...(assignedToId ? { assignedToId } : {}),
+      nextFollowUpAt: { gte: from, lte: to },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+}
+
+export async function findFollowUpsDueInRange(
+  assignedToId: string | undefined,
+  from: Date,
+  to: Date,
+  limit = 10,
+) {
+  return db.consultationRequest.findMany({
+    where: {
+      ...(assignedToId ? { assignedToId } : {}),
+      nextFollowUpAt: { gte: from, lte: to },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+    include: consultationListInclude,
+    orderBy: { nextFollowUpAt: "asc" },
+    take: limit,
+  });
+}
+
+/** Oldest `new` leads first — surfaces stale / never-contacted work. */
+export async function findNewLeadsForDashboard(
+  assignedToId: string | undefined,
+  limit = 10,
+) {
+  return db.consultationRequest.findMany({
+    where: {
+      ...(assignedToId ? { assignedToId } : {}),
+      status: "new",
+    },
+    include: consultationListInclude,
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+}
+
 export async function countClosedLeadsSince(
-  assignedToId: string,
+  assignedToId: string | undefined,
   since: Date,
 ) {
   return db.consultationRequest.count({
     where: {
-      assignedToId,
+      ...(assignedToId ? { assignedToId } : {}),
       status: { in: ["closed_won", "closed_lost"] },
       updatedAt: { gte: since },
     },

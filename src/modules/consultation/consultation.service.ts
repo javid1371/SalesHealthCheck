@@ -13,9 +13,9 @@ import type {
 import {
   addConsultationNote,
   claimLeadIfUnassignedUnderCapacity,
-  countClosedLeadsSince,
   countConsultationRequests,
-  countLeadsNeedingFollowUp,
+  countFollowUpsDueInRange,
+  countOverdueFollowUps,
   createConsultationRequest,
   createLeadActivity,
   createLeadCallLog,
@@ -28,7 +28,9 @@ import {
   findConsultationRequests,
   findConsultationRequestsByIds,
   findConsultationRequestsForKanban,
-  findLeadsNeedingFollowUp,
+  findFollowUpsDueInRange,
+  findNewLeadsForDashboard,
+  findOverdueFollowUps,
   updateConsultationLead,
 } from "./consultation.repository";
 import type {
@@ -1580,26 +1582,17 @@ export function leadStatusLabel(status: LeadStatus): string {
   return LEAD_STATUS_LABELS[status];
 }
 
-function startOfDay(date = new Date()): Date {
-  const result = new Date(date);
-  result.setHours(0, 0, 0, 0);
-  return result;
-}
-
 function endOfDay(date = new Date()): Date {
   const result = new Date(date);
   result.setHours(23, 59, 59, 999);
   return result;
 }
 
-function startOfMonth(date = new Date()): Date {
-  const result = startOfDay(date);
-  result.setDate(1);
-  return result;
-}
-
-function toFollowUpRow(row: ConsultationRow): ExpertDashboardFollowUpRow {
-  const item = toConsultationListItem(row);
+function toFollowUpRow(
+  row: ConsultationRow,
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+): ExpertDashboardFollowUpRow {
+  const item = toConsultationListItem(row, staleNewLeadHours);
   return {
     id: item.id,
     name: item.name,
@@ -1607,37 +1600,62 @@ function toFollowUpRow(row: ConsultationRow): ExpertDashboardFollowUpRow {
     statusLabel: item.statusLabel,
     nextFollowUpAt: item.nextFollowUpAt,
     detailUrl: item.detailUrl,
+    assignedToName: item.assignedToName,
+    isStaleNew: item.sla.staleNew,
   };
 }
 
+/** When `staffUserId` is omitted, KPIs/lists are team-wide (admin expert view). */
 export async function getExpertDashboard(
-  staffUserId: string,
+  staffUserId?: string,
 ): Promise<ExpertDashboardData> {
-  const endOfToday = endOfDay();
-  const monthStart = startOfMonth();
-  const baseFilter = { assignedToId: staffUserId, page: 1, pageSize: 1 };
+  const now = new Date();
+  const endOfToday = endOfDay(now);
+  const settings = await getLeadSettings();
+  const staleNewLeadHours = settings.staleNewLeadHours;
+  const baseFilter = {
+    ...(staffUserId ? { assignedToId: staffUserId } : {}),
+    page: 1,
+    pageSize: 1,
+  };
 
   const [
-    assignedTotal,
-    newLeads,
-    followUpDue,
-    closedThisMonth,
-    todayFollowUps,
+    overdueFollowUp,
+    followUpDueToday,
+    newLeadsCount,
+    teamQueue,
+    overdueRows,
+    todayRows,
+    newLeadRows,
   ] = await Promise.all([
-    countConsultationRequests(baseFilter),
+    countOverdueFollowUps(staffUserId, now),
+    countFollowUpsDueInRange(staffUserId, now, endOfToday),
     countConsultationRequests({ ...baseFilter, status: "new" }),
-    countLeadsNeedingFollowUp(staffUserId, endOfToday),
-    countClosedLeadsSince(staffUserId, monthStart),
-    findLeadsNeedingFollowUp(staffUserId, endOfToday, 10),
+    countConsultationRequests({
+      onlyTeamQueue: true,
+      page: 1,
+      pageSize: 1,
+    }),
+    findOverdueFollowUps(staffUserId, now, 10),
+    findFollowUpsDueInRange(staffUserId, now, endOfToday, 10),
+    findNewLeadsForDashboard(staffUserId, 10),
   ]);
 
   return {
     kpis: {
-      assignedTotal,
-      newLeads,
-      followUpDue,
-      closedThisMonth,
+      overdueFollowUp,
+      followUpDueToday,
+      newLeads: newLeadsCount,
+      teamQueue,
     },
-    todayFollowUps: todayFollowUps.map(toFollowUpRow),
+    overdueFollowUps: overdueRows.map((row) =>
+      toFollowUpRow(row, staleNewLeadHours),
+    ),
+    todayFollowUps: todayRows.map((row) =>
+      toFollowUpRow(row, staleNewLeadHours),
+    ),
+    newLeadRows: newLeadRows.map((row) =>
+      toFollowUpRow(row, staleNewLeadHours),
+    ),
   };
 }
