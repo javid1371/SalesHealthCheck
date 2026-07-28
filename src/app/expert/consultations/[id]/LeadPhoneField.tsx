@@ -14,9 +14,11 @@ export function LeadPhoneField({ phone }: LeadPhoneFieldProps) {
     return <span className="font-medium text-zinc-900">—</span>;
   }
 
+  const phoneNumber = phone;
+
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(phone);
+      await navigator.clipboard.writeText(phoneNumber);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -27,10 +29,10 @@ export function LeadPhoneField({ phone }: LeadPhoneFieldProps) {
   return (
     <div className="flex flex-wrap items-center gap-2" dir="ltr">
       <a
-        href={`tel:${phone}`}
+        href={`tel:${phoneNumber}`}
         className="font-medium text-emerald-700 hover:text-emerald-800"
       >
-        {phone}
+        {phoneNumber}
       </a>
       <Button
         type="button"
