@@ -106,6 +106,13 @@ export default async function ExpertDashboardPage() {
           </h2>
           <div className="flex flex-wrap gap-2">
             <LinkButton
+              href="/expert/consultations?onlyFollowUpDueToday=true"
+              variant="secondary"
+              size="sm"
+            >
+              مشاهده پیگیری‌های امروز
+            </LinkButton>
+            <LinkButton
               href="/expert/consultations?excludeAssessmentInProgress=true"
               variant="secondary"
               size="sm"
@@ -114,6 +121,13 @@ export default async function ExpertDashboardPage() {
             </LinkButton>
             <LinkButton href="/expert/consultations" variant="secondary" size="sm">
               همه لیدها
+            </LinkButton>
+            <LinkButton
+              href="/expert/consultations?onlyTeamQueue=true"
+              variant="secondary"
+              size="sm"
+            >
+              صف تیم
             </LinkButton>
           </div>
         </div>

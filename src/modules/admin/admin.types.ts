@@ -1,4 +1,9 @@
-import type { AssessmentStatus, HealthLevel } from "@prisma/client";
+import type {
+  AssessmentStatus,
+  CallOutcome,
+  HealthLevel,
+  LostReason,
+} from "@prisma/client";
 
 export interface AdminLoginInput {
   password: string;
@@ -131,6 +136,19 @@ export interface AdminExpertPerformanceRow {
   newThisWeek: number;
 }
 
+export interface AdminExpertCallOutcomeRow {
+  staffUserId: string;
+  name: string;
+  totalCalls: number;
+  byOutcome: Record<CallOutcome, number>;
+}
+
+export interface AdminLostReasonBreakdownRow {
+  reason: LostReason | null;
+  reasonLabel: string;
+  count: number;
+}
+
 export interface AdminLeadKpis {
   newThisWeek: number;
   pendingAssignment: number;
@@ -190,6 +208,8 @@ export interface AdminDashboardData {
   salesMetrics: AdminSalesMetrics;
   urgentLeads: AdminUrgentLeadRow[];
   expertPerformance: AdminExpertPerformanceRow[];
+  expertCallOutcomesLast7Days: AdminExpertCallOutcomeRow[];
+  lostReasonBreakdownLast30Days: AdminLostReasonBreakdownRow[];
   smsFunnel: AdminSmsFunnelMetrics;
   recentSmsMessages: AdminSmsMessageRow[];
 }

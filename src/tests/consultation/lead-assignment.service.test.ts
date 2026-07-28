@@ -147,6 +147,14 @@ describe("lead-assignment.service", () => {
       "lead-1",
       "expert-1",
     );
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consultationRequestId: "lead-1",
+        staffUserId: null,
+        type: "assignment_change",
+        detail: expect.stringContaining('"toId":"expert-1"'),
+      }),
+    );
     expect(smsMock.sendMessage).toHaveBeenCalledWith(
       "09121111111",
       "لید جدید داری\nچک کن",

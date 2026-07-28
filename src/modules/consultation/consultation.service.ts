@@ -1,4 +1,4 @@
-import type { LeadStatus } from "@prisma/client";
+import type { LeadStatus, LostReason } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { healthLevelLabelFa } from "@/lib/health-level";
@@ -12,11 +12,13 @@ import type {
 } from "@/modules/assessment/assessment.types";
 import {
   addConsultationNote,
+  claimLeadIfUnassignedUnderCapacity,
   countClosedLeadsSince,
   countConsultationRequests,
   countLeadsNeedingFollowUp,
   createConsultationRequest,
   createLeadActivity,
+  createLeadCallLog,
   createManualConsultationRequest,
   findAllConsultationRequests,
   findConsultationNotes,
@@ -29,7 +31,11 @@ import {
   findLeadsNeedingFollowUp,
   updateConsultationLead,
 } from "./consultation.repository";
-import type { UpdateConsultationLeadInput } from "./consultation-lead.validators";
+import type {
+  LogCallInput,
+  TransferLeadInput,
+  UpdateConsultationLeadInput,
+} from "./consultation-lead.validators";
 import type {
   BulkUpdateLeadsInput,
   ConsultationLeadDetail,
@@ -57,10 +63,19 @@ import {
   LEAD_SOURCE_LABELS,
   resolveEffectivePurchaseProbability,
 } from "./lead-insights";
-import { finalizeNewLead, upgradeExistingLeadToDirect } from "./lead-assignment.service";
 import {
+  finalizeNewLead,
+  notifyLeadTransferToExpert,
+  upgradeExistingLeadToDirect,
+} from "./lead-assignment.service";
+import {
+  CALL_OUTCOME_LABELS,
   formatActivityDetail,
+  formatTransferNoteBody,
   LEAD_ACTIVITY_LABELS,
+  LOST_REASON_LABELS,
+  serializeAssignmentChangeDetail,
+  serializeCallLoggedDetail,
 } from "./lead-activity";
 import { getLeadSettings } from "./lead-config.service";
 import {
@@ -69,6 +84,7 @@ import {
   STALE_NEW_LEAD_HOURS,
 } from "./lead-sla";
 import { isManualStatusTransitionAllowed } from "./lead-status";
+import { findStaffUserById } from "@/modules/staff/staff.repository";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   assessment_in_progress: "در حال انجام تست",
@@ -288,14 +304,43 @@ function resolveListFilter(
     return { ...filter, assignedToId: "__none__" };
   }
 
-  if (filter.onlyMine || !filter.assignedToId) {
-    return { ...filter, assignedToId: staffUserId, onlyUnassigned: false };
+  if (filter.onlyTeamQueue) {
+    return {
+      ...filter,
+      onlyTeamQueue: true,
+      onlyUnassigned: true,
+      assignedToId: undefined,
+      onlyMine: false,
+    };
   }
 
   return { ...filter, assignedToId: staffUserId, onlyUnassigned: false };
 }
 
+/** Read access: admin, owner, or unassigned team-queue preview for experts. */
 function canAccessLead(
+  assignedToId: string | null,
+  access: ConsultationsAccessInput,
+): boolean {
+  if (isAdminAccess(access)) {
+    return true;
+  }
+
+  const staffUserId = access.salesExpertSession?.staffUserId;
+  if (!staffUserId) {
+    return false;
+  }
+
+  if (assignedToId === staffUserId) {
+    return true;
+  }
+
+  // Team-queue preview: active sales experts may read unassigned leads.
+  return assignedToId === null;
+}
+
+/** Mutation access: admin or current owner only (not unassigned queue). */
+function canMutateLead(
   assignedToId: string | null,
   access: ConsultationsAccessInput,
 ): boolean {
@@ -312,6 +357,19 @@ function assertLeadAccess(
   access: ConsultationsAccessInput,
 ): void {
   if (!canAccessLead(assignedToId, access)) {
+    throw new AppError(
+      "FORBIDDEN",
+      "دسترسی به این لید مجاز نیست.",
+      403,
+    );
+  }
+}
+
+function assertLeadOwnership(
+  assignedToId: string | null,
+  access: ConsultationsAccessInput,
+): void {
+  if (!canMutateLead(assignedToId, access)) {
     throw new AppError(
       "FORBIDDEN",
       "دسترسی به این لید مجاز نیست.",
@@ -353,6 +411,91 @@ function mapLeadAssignmentState(row: ConsultationRow) {
     row.assignScheduledFor != null;
 
   return { assignScheduledFor, pendingAssignment };
+}
+
+function mapLeadCallState(row: {
+  lastCallOutcome: ConsultationRow["lastCallOutcome"];
+  lastCalledAt: ConsultationRow["lastCalledAt"];
+}) {
+  return {
+    lastCallOutcome: row.lastCallOutcome,
+    lastCallOutcomeLabel: row.lastCallOutcome
+      ? CALL_OUTCOME_LABELS[row.lastCallOutcome]
+      : null,
+    lastCalledAt: row.lastCalledAt
+      ? formatConsultationDate(row.lastCalledAt)
+      : null,
+  };
+}
+
+function mapLeadLostState(row: {
+  lostReason: ConsultationRow["lostReason"];
+  lostNote: ConsultationRow["lostNote"];
+}) {
+  return {
+    lostReason: row.lostReason,
+    lostReasonLabel: row.lostReason
+      ? LOST_REASON_LABELS[row.lostReason]
+      : null,
+    lostNote: row.lostNote,
+  };
+}
+
+function resolveLostReasonUpdates(
+  existing: {
+    status: LeadStatus;
+    lostReason: LostReason | null;
+    lostNote: string | null;
+  },
+  input: UpdateConsultationLeadInput,
+): { lostReason?: LostReason; lostNote?: string | null } {
+  const nextStatus = input.status ?? existing.status;
+  const updates: {
+    lostReason?: LostReason;
+    lostNote?: string | null;
+  } = {};
+
+  if (input.status === "closed_lost" && input.lostReason === undefined) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "برای بستن ناموفق، دلیل باخت الزامی است.",
+      400,
+      { field: "lostReason" },
+    );
+  }
+
+  if (
+    (input.lostReason !== undefined || input.lostNote !== undefined) &&
+    nextStatus !== "closed_lost"
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "دلیل باخت فقط برای وضعیت بسته — ناموفق مجاز است.",
+      400,
+      { field: "lostReason" },
+    );
+  }
+
+  if (input.lostReason !== undefined) {
+    updates.lostReason = input.lostReason;
+    if (input.lostReason !== "other") {
+      updates.lostNote = null;
+    } else if (input.lostNote !== undefined) {
+      updates.lostNote = input.lostNote;
+    }
+  } else if (input.lostNote !== undefined) {
+    if (existing.lostReason !== "other") {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "یادداشت باخت فقط برای دلیل «سایر» مجاز است.",
+        400,
+        { field: "lostNote" },
+      );
+    }
+    updates.lostNote = input.lostNote;
+  }
+
+  return updates;
 }
 
 function mapLeadSla(
@@ -400,6 +543,8 @@ function toConsultationListItem(
     nextFollowUpAtIso: row.nextFollowUpAt
       ? row.nextFollowUpAt.toISOString().slice(0, 10)
       : null,
+    ...mapLeadCallState(row),
+    ...mapLeadLostState(row),
     createdAt: formatConsultationDate(row.createdAt),
     businessName: row.assessmentSession?.organization.businessName ?? null,
     assessmentUserPhone: row.assessmentSession?.user.phone ?? null,
@@ -535,11 +680,23 @@ async function recordLeadUpdateActivities(params: {
     input.assignedToId !== undefined &&
     input.assignedToId !== existing.assignedToId
   ) {
+    const fromId = existing.assignedToId;
+    const toId = input.assignedToId;
+    const [fromUser, toUser] = await Promise.all([
+      fromId ? findStaffUserById(fromId) : Promise.resolve(null),
+      toId ? findStaffUserById(toId) : Promise.resolve(null),
+    ]);
+
     await createLeadActivity({
       consultationRequestId,
       staffUserId,
       type: "assignment_change",
-      detail: input.assignedToId ?? "unassigned",
+      detail: serializeAssignmentChangeDetail({
+        fromId,
+        toId,
+        fromName: fromUser?.name ?? null,
+        toName: toUser?.name ?? null,
+      }),
     });
   }
 
@@ -629,6 +786,8 @@ function toConsultationLeadDetail(
     nextFollowUpAtIso: row.nextFollowUpAt
       ? row.nextFollowUpAt.toISOString().slice(0, 10)
       : null,
+    ...mapLeadCallState(row),
+    ...mapLeadLostState(row),
     createdAt: formatConsultationDate(row.createdAt),
     businessName: row.assessmentSession?.organization.businessName ?? null,
     assessmentUserPhone: row.assessmentSession?.user.phone ?? null,
@@ -864,6 +1023,226 @@ export async function getConsultationLeadSmsHistory(
   };
 }
 
+export async function transferLead(
+  id: string,
+  input: TransferLeadInput,
+  access: ConsultationsAccessInput,
+): Promise<ConsultationListItem> {
+  requireConsultationsAccess(access);
+
+  const staffUserId =
+    access.adminSession?.staffUserId ??
+    access.salesExpertSession?.staffUserId ??
+    null;
+
+  if (!staffUserId) {
+    throw new AppError(
+      "FORBIDDEN",
+      "برای انتقال لید باید با حساب کاربری داخلی وارد شده باشید.",
+      403,
+    );
+  }
+
+  const existing = await findConsultationRequestById(id);
+  if (!existing) {
+    throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
+  }
+
+  assertLeadOwnership(existing.assignedToId, access);
+
+  if (
+    !isAdminAccess(access) &&
+    existing.assignedToId !== access.salesExpertSession?.staffUserId
+  ) {
+    throw new AppError(
+      "FORBIDDEN",
+      "فقط مالک فعلی لید می‌تواند آن را منتقل کند.",
+      403,
+    );
+  }
+
+  if (input.toStaffUserId === existing.assignedToId) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "لید هم‌اکنون به این کارشناس تخصیص داده شده است.",
+      400,
+      { field: "toStaffUserId" },
+    );
+  }
+
+  if (input.toStaffUserId === staffUserId && !isAdminAccess(access)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "انتقال لید به خودتان مجاز نیست.",
+      400,
+      { field: "toStaffUserId" },
+    );
+  }
+
+  const toUser = await findStaffUserById(input.toStaffUserId);
+  if (
+    !toUser ||
+    toUser.role !== "sales_expert" ||
+    !toUser.isActive
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "کارشناس مقصد نامعتبر یا غیرفعال است.",
+      400,
+      { field: "toStaffUserId" },
+    );
+  }
+
+  const fromUser = existing.assignedToId
+    ? await findStaffUserById(existing.assignedToId)
+    : null;
+
+  const actorName =
+    access.adminSession?.name ??
+    access.salesExpertSession?.name ??
+    fromUser?.name ??
+    "سیستم";
+
+  const updated = await updateConsultationLead(id, {
+    assignedToId: input.toStaffUserId,
+  });
+
+  await createLeadActivity({
+    consultationRequestId: id,
+    staffUserId,
+    type: "assignment_change",
+    detail: serializeAssignmentChangeDetail({
+      fromId: existing.assignedToId,
+      toId: input.toStaffUserId,
+      fromName: fromUser?.name ?? null,
+      toName: toUser.name,
+      reason: input.reason,
+    }),
+  });
+
+  const transferNoteBody = formatTransferNoteBody(input.reason, input.note);
+  await addConsultationNote({
+    consultationRequestId: id,
+    staffUserId,
+    body: transferNoteBody,
+  });
+  await createLeadActivity({
+    consultationRequestId: id,
+    staffUserId,
+    type: "note_added",
+    detail: transferNoteBody.slice(0, 500),
+  });
+
+  await notifyLeadTransferToExpert({
+    leadId: id,
+    leadName: existing.name,
+    toStaffUserId: input.toStaffUserId,
+    fromName: actorName,
+  });
+
+  const settings = await getLeadSettings();
+  return toConsultationListItem(updated, settings.staleNewLeadHours);
+}
+
+export async function claimLead(
+  id: string,
+  access: ConsultationsAccessInput,
+): Promise<ConsultationListItem> {
+  requireConsultationsAccess(access);
+
+  const staffUserId = access.salesExpertSession?.staffUserId ?? null;
+  if (!staffUserId) {
+    throw new AppError(
+      "FORBIDDEN",
+      "فقط کارشناس فروش می‌تواند سرنخ را از صف تیم بردارد.",
+      403,
+    );
+  }
+
+  const expert = await findStaffUserById(staffUserId);
+  if (!expert || expert.role !== "sales_expert" || !expert.isActive) {
+    throw new AppError(
+      "FORBIDDEN",
+      "حساب کارشناس فروش فعال برای برداشتن سرنخ لازم است.",
+      403,
+    );
+  }
+
+  const existing = await findConsultationRequestById(id);
+  if (!existing) {
+    throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
+  }
+
+  if (existing.assignedToId !== null) {
+    throw new AppError(
+      "CONFLICT",
+      "این لید قبلاً تخصیص داده شده و قابل برداشتن نیست.",
+      409,
+    );
+  }
+
+  if (
+    existing.status === "closed_won" ||
+    existing.status === "closed_lost"
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "لید بسته‌شده قابل برداشتن از صف تیم نیست.",
+      400,
+    );
+  }
+
+  const settings = await getLeadSettings();
+  const claimResult = await claimLeadIfUnassignedUnderCapacity(
+    id,
+    staffUserId,
+    settings.maxOpenLeadsPerExpert,
+  );
+
+  if (claimResult === "at_capacity") {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "ظرفیت لیدهای باز شما تکمیل است؛ ابتدا چند لید را ببندید یا منتقل کنید.",
+      400,
+    );
+  }
+
+  if (claimResult === "already_assigned") {
+    throw new AppError(
+      "CONFLICT",
+      "این لید هم‌اکنون توسط کارشناس دیگری برداشته شد.",
+      409,
+    );
+  }
+
+  if (claimResult === "not_claimable") {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "این لید قابل برداشتن از صف تیم نیست.",
+      400,
+    );
+  }
+
+  await createLeadActivity({
+    consultationRequestId: id,
+    staffUserId,
+    type: "assignment_change",
+    detail: serializeAssignmentChangeDetail({
+      fromId: null,
+      toId: staffUserId,
+      fromName: null,
+      toName: expert.name,
+    }),
+  });
+
+  const updated = await findConsultationRequestById(id);
+  if (!updated) {
+    throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
+  }
+
+  return toConsultationListItem(updated, settings.staleNewLeadHours);
+}
+
 export async function updateConsultationLeadStatus(
   id: string,
   input: UpdateConsultationLeadInput,
@@ -876,7 +1255,7 @@ export async function updateConsultationLeadStatus(
     throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
   }
 
-  assertLeadAccess(existing.assignedToId, access);
+  assertLeadOwnership(existing.assignedToId, access);
 
   if (!isAdminAccess(access) && input.assignedToId !== undefined) {
     throw new AppError(
@@ -915,10 +1294,12 @@ export async function updateConsultationLeadStatus(
     null;
 
   const timestampUpdates = resolveStatusTimestamps(existing, input.status);
+  const lostUpdates = resolveLostReasonUpdates(existing, input);
 
   const updated = await updateConsultationLead(id, {
     ...input,
     ...timestampUpdates,
+    ...lostUpdates,
   });
 
   await recordLeadUpdateActivities({
@@ -983,16 +1364,29 @@ export async function bulkUpdateLeads(
       updateInput.assignedToId = input.assignedToId;
     }
 
+    if (input.lostReason !== undefined) {
+      updateInput.lostReason = input.lostReason;
+    }
+
+    if (input.lostNote !== undefined) {
+      updateInput.lostNote = input.lostNote;
+    }
+
     if (
       updateInput.status === undefined &&
-      updateInput.assignedToId === undefined
+      updateInput.assignedToId === undefined &&
+      updateInput.lostReason === undefined &&
+      updateInput.lostNote === undefined
     ) {
       continue;
     }
 
+    const lostUpdates = resolveLostReasonUpdates(row, updateInput);
+
     await updateConsultationLead(row.id, {
       ...updateInput,
       ...timestampUpdates,
+      ...lostUpdates,
     });
 
     await recordLeadUpdateActivities({
@@ -1109,7 +1503,7 @@ export async function addLeadNote(
     throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
   }
 
-  assertLeadAccess(existing.assignedToId, access);
+  assertLeadOwnership(existing.assignedToId, access);
 
   const note = await addConsultationNote({
     consultationRequestId: id,
@@ -1125,6 +1519,59 @@ export async function addLeadNote(
   });
 
   return toConsultationNoteItem(note);
+}
+
+export async function logCall(
+  id: string,
+  input: LogCallInput,
+  access: ConsultationsAccessInput,
+): Promise<ConsultationListItem> {
+  requireConsultationsAccess(access);
+
+  const staffUserId =
+    access.adminSession?.staffUserId ??
+    access.salesExpertSession?.staffUserId ??
+    null;
+
+  if (!staffUserId) {
+    throw new AppError(
+      "FORBIDDEN",
+      "برای ثبت تماس باید با حساب کاربری داخلی وارد شده باشید.",
+      403,
+    );
+  }
+
+  const existing = await findConsultationRequestById(id);
+  if (!existing) {
+    throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
+  }
+
+  assertLeadOwnership(existing.assignedToId, access);
+
+  const calledAt = new Date();
+  const note = input.note?.trim() || null;
+
+  await createLeadCallLog({
+    consultationRequestId: id,
+    staffUserId,
+    outcome: input.outcome,
+    note,
+  });
+
+  const updated = await updateConsultationLead(id, {
+    lastCallOutcome: input.outcome,
+    lastCalledAt: calledAt,
+  });
+
+  await createLeadActivity({
+    consultationRequestId: id,
+    staffUserId,
+    type: "call_logged",
+    detail: serializeCallLoggedDetail(input.outcome, note),
+  });
+
+  const settings = await getLeadSettings();
+  return toConsultationListItem(updated, settings.staleNewLeadHours);
 }
 
 export function leadStatusLabel(status: LeadStatus): string {

@@ -32,10 +32,12 @@ import {
   getLeadSettings,
 } from "./lead-config.service";
 import {
+  buildExpertLeadDetailUrl,
   EXPERT_NEW_LEAD_SMS_MAX_LENGTH,
   renderExpertNewLeadSms,
   type ExpertNewLeadSmsLead,
 } from "./expert-new-lead-sms";
+import { serializeAssignmentChangeDetail } from "./lead-activity";
 import {
   findStaffUserById,
   pickNextSalesExpert,
@@ -201,6 +203,44 @@ export async function notifyAssignedExpertOfLead(leadId: string): Promise<void> 
   await sendExpertNewLeadSms(expert.phone, toExpertNewLeadSmsLead(lead));
 }
 
+export function renderLeadTransferSms(input: {
+  leadId: string;
+  leadName: string;
+  fromName: string;
+}): string {
+  const detailUrl = buildExpertLeadDetailUrl(input.leadId);
+  return `سرنخ «${input.leadName.trim()}» به شما منتقل شد (از ${input.fromName.trim()}).\n${detailUrl}`;
+}
+
+export async function notifyLeadTransferToExpert(input: {
+  leadId: string;
+  leadName: string;
+  toStaffUserId: string;
+  fromName: string;
+}): Promise<void> {
+  const expert = await findStaffUserById(input.toStaffUserId);
+  if (!expert?.phone) {
+    console.warn(
+      "[lead-assignment] transfer recipient missing phone; skip SMS",
+      input.toStaffUserId,
+    );
+    return;
+  }
+
+  const body = renderLeadTransferSms({
+    leadId: input.leadId,
+    leadName: input.leadName,
+    fromName: input.fromName,
+  });
+
+  try {
+    const sender = await createSmsSenderFromSettings();
+    await sender.sendMessage(expert.phone, body);
+  } catch (error) {
+    console.error("[lead-assignment] failed to notify transfer via SMS:", error);
+  }
+}
+
 export async function autoAssignAndNotifyLead(
   leadId: string,
   options?: AssignLeadOptions,
@@ -236,6 +276,18 @@ export async function autoAssignAndNotifyLead(
   if (!assigned) {
     return;
   }
+
+  await createLeadActivity({
+    consultationRequestId: leadId,
+    staffUserId: null,
+    type: "assignment_change",
+    detail: serializeAssignmentChangeDetail({
+      fromId: null,
+      toId: expert.id,
+      fromName: null,
+      toName: expert.name,
+    }),
+  });
 
   if (options?.notifyExpert === false) {
     return;

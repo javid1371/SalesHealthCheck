@@ -6,8 +6,17 @@ import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password-auth";
 import {
   bulkUpdateLeads,
+  claimLead,
   createManualLead,
+  getConsultationLeadDetail,
+  listConsultationRequests,
+  logCall,
+  transferLead,
 } from "@/modules/consultation/consultation.service";
+import {
+  formatActivityDetail,
+  serializeCallLoggedDetail,
+} from "@/modules/consultation/lead-activity";
 import {
   getLeadSettings,
   updateLeadSettings,
@@ -169,6 +178,294 @@ describe("lead config and bulk updates (integration)", () => {
       },
     });
     expect(assignActivities).toHaveLength(2);
-    expect(assignActivities.every((a) => a.detail === expert.id)).toBe(true);
+    for (const activity of assignActivities) {
+      expect(activity.detail).toContain(expert.id);
+      expect(activity.detail).toContain(expert.name);
+      expect(activity.detail).toContain('"fromId":null');
+    }
+  });
+
+  it("transfers lead between experts and revokes previous owner access", async () => {
+    const admin = await db.staffUser.create({
+      data: {
+        name: "Transfer Admin",
+        phone: phoneFor(30),
+        passwordHash: hashPassword("AdminPass123"),
+        role: "admin",
+      },
+    });
+    const fromExpert = await createStaffUserByAdmin({
+      name: "Ali Transfer",
+      phone: phoneFor(31),
+      password: "ExpertPass123",
+      role: "sales_expert",
+    });
+    const toExpert = await createStaffUserByAdmin({
+      name: "Sara Transfer",
+      phone: phoneFor(32),
+      password: "ExpertPass123",
+      role: "sales_expert",
+    });
+
+    const adminAccess = {
+      adminSession: {
+        role: "admin" as const,
+        staffUserId: admin.id,
+        name: admin.name,
+      },
+      salesExpertSession: null,
+    };
+    const fromAccess = {
+      adminSession: null,
+      salesExpertSession: {
+        role: "sales_expert" as const,
+        staffUserId: fromExpert.id,
+        name: fromExpert.name,
+      },
+    };
+    const toAccess = {
+      adminSession: null,
+      salesExpertSession: {
+        role: "sales_expert" as const,
+        staffUserId: toExpert.id,
+        name: toExpert.name,
+      },
+    };
+
+    const lead = await createManualLead(
+      { name: "Transfer Lead", phone: phoneFor(33) },
+      adminAccess,
+    );
+    await bulkUpdateLeads(
+      { ids: [lead.id], assignedToId: fromExpert.id },
+      adminAccess,
+    );
+
+    const transferred = await transferLead(
+      lead.id,
+      {
+        toStaffUserId: toExpert.id,
+        reason: "workload",
+        note: "حجم کار بالا است لطفاً پیگیری کنید",
+      },
+      fromAccess,
+    );
+    expect(transferred.assignedToId).toBe(toExpert.id);
+
+    await expect(getConsultationLeadDetail(lead.id, fromAccess)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+
+    const detail = await getConsultationLeadDetail(lead.id, toAccess);
+    expect(detail.assignedToId).toBe(toExpert.id);
+
+    const activity = await db.leadActivity.findFirst({
+      where: {
+        consultationRequestId: lead.id,
+        type: "assignment_change",
+        detail: { contains: '"reason":"workload"' },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(activity).not.toBeNull();
+    expect(formatActivityDetail("assignment_change", activity?.detail ?? null)).toBe(
+      "Ali Transfer → Sara Transfer | حجم کار",
+    );
+
+    const note = await db.consultationNote.findFirst({
+      where: {
+        consultationRequestId: lead.id,
+        body: { startsWith: "انتقال:" },
+      },
+    });
+    expect(note?.body).toContain("حجم کار");
+  });
+
+  it("logs a call outcome, updates lastCall fields, and records activity", async () => {
+    const passwordHash = await hashPassword("CallExpert123");
+    const expert = await db.staffUser.create({
+      data: {
+        name: "Call Expert",
+        phone: phoneFor(40),
+        passwordHash,
+        role: "sales_expert",
+        isActive: true,
+      },
+    });
+    const admin = await createStaffUserByAdmin({
+      name: "Call Admin",
+      phone: phoneFor(41),
+      password: "CallAdmin123",
+      role: "admin",
+    });
+
+    const adminAccess = {
+      adminSession: {
+        role: "admin" as const,
+        staffUserId: admin.id,
+        name: admin.name,
+      },
+      salesExpertSession: null,
+    };
+    const expertAccess = {
+      adminSession: null,
+      salesExpertSession: {
+        role: "sales_expert" as const,
+        staffUserId: expert.id,
+        name: expert.name,
+      },
+    };
+
+    const lead = await createManualLead(
+      { name: "Call Log Lead", phone: phoneFor(42) },
+      adminAccess,
+    );
+    await bulkUpdateLeads(
+      { ids: [lead.id], assignedToId: expert.id },
+      adminAccess,
+    );
+
+    const logged = await logCall(
+      lead.id,
+      { outcome: "connected_interested", note: "جلسه هفته بعد" },
+      expertAccess,
+    );
+
+    expect(logged.lastCallOutcome).toBe("connected_interested");
+    expect(logged.lastCallOutcomeLabel).toBe("وصل — علاقه‌مند");
+    expect(logged.status).toBe("new");
+
+    const callLog = await db.leadCallLog.findFirst({
+      where: { consultationRequestId: lead.id },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(callLog).toMatchObject({
+      staffUserId: expert.id,
+      outcome: "connected_interested",
+      note: "جلسه هفته بعد",
+    });
+
+    const refreshed = await db.consultationRequest.findUniqueOrThrow({
+      where: { id: lead.id },
+    });
+    expect(refreshed.lastCallOutcome).toBe("connected_interested");
+    expect(refreshed.lastCalledAt).not.toBeNull();
+
+    const activity = await db.leadActivity.findFirst({
+      where: {
+        consultationRequestId: lead.id,
+        type: "call_logged",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(activity?.detail).toBe(
+      serializeCallLoggedDetail("connected_interested", "جلسه هفته بعد"),
+    );
+    expect(formatActivityDetail("call_logged", activity?.detail ?? null)).toBe(
+      "وصل — علاقه‌مند — جلسه هفته بعد",
+    );
+
+    await expect(
+      logCall(lead.id, { outcome: "busy" }, {
+        adminSession: null,
+        salesExpertSession: {
+          role: "sales_expert",
+          staffUserId: "someone-else",
+          name: "Other",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("lets experts claim unassigned team-queue leads atomically", async () => {
+    const passwordHash = await hashPassword("ClaimExpert123");
+    const expertA = await db.staffUser.create({
+      data: {
+        name: "Claim Expert A",
+        phone: phoneFor(50),
+        passwordHash,
+        role: "sales_expert",
+        isActive: true,
+      },
+    });
+    const expertB = await db.staffUser.create({
+      data: {
+        name: "Claim Expert B",
+        phone: phoneFor(51),
+        passwordHash,
+        role: "sales_expert",
+        isActive: true,
+      },
+    });
+    const admin = await createStaffUserByAdmin({
+      name: "Claim Admin",
+      phone: phoneFor(52),
+      password: "ClaimAdmin123",
+      role: "admin",
+    });
+
+    const adminAccess = {
+      adminSession: {
+        role: "admin" as const,
+        staffUserId: admin.id,
+        name: admin.name,
+      },
+      salesExpertSession: null,
+    };
+    const accessA = {
+      adminSession: null,
+      salesExpertSession: {
+        role: "sales_expert" as const,
+        staffUserId: expertA.id,
+        name: expertA.name,
+      },
+    };
+    const accessB = {
+      adminSession: null,
+      salesExpertSession: {
+        role: "sales_expert" as const,
+        staffUserId: expertB.id,
+        name: expertB.name,
+      },
+    };
+
+    const queueLead = await createManualLead(
+      { name: "Queue Lead", phone: phoneFor(53) },
+      adminAccess,
+    );
+    const otherLead = await createManualLead(
+      { name: "Owned Lead", phone: phoneFor(54) },
+      adminAccess,
+    );
+    await bulkUpdateLeads(
+      { ids: [otherLead.id], assignedToId: expertB.id },
+      adminAccess,
+    );
+
+    const queue = await listConsultationRequests(
+      { page: 1, pageSize: 50, onlyTeamQueue: true },
+      accessA,
+    );
+    expect(queue.requests.some((item) => item.id === queueLead.id)).toBe(true);
+    expect(queue.requests.some((item) => item.id === otherLead.id)).toBe(false);
+
+    const claimed = await claimLead(queueLead.id, accessA);
+    expect(claimed.assignedToId).toBe(expertA.id);
+
+    await expect(claimLead(queueLead.id, accessB)).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+    });
+
+    await updateLeadSettings({ maxOpenLeadsPerExpert: 1 });
+    const capacityLead = await createManualLead(
+      { name: "Capacity Lead", phone: phoneFor(55) },
+      adminAccess,
+    );
+    await expect(claimLead(capacityLead.id, accessA)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      status: 400,
+    });
   });
 });

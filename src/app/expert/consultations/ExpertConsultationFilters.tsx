@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import {
+  CALL_OUTCOME_LABELS,
+  CALL_OUTCOMES,
+} from "@/modules/consultation/lead-activity";
 
 const STATUS_OPTIONS = [
   { value: "", label: "همه وضعیت‌ها" },
@@ -32,6 +36,15 @@ const PROBABILITY_BAND_OPTIONS = [
   { value: "high", label: "بالا" },
   { value: "medium", label: "متوسط" },
   { value: "low", label: "پایین" },
+];
+
+const CALL_OUTCOME_OPTIONS = [
+  { value: "", label: "همه نتایج تماس" },
+  { value: "__never__", label: "بدون تماس ثبت‌شده" },
+  ...CALL_OUTCOMES.map((outcome) => ({
+    value: outcome,
+    label: CALL_OUTCOME_LABELS[outcome],
+  })),
 ];
 
 interface AssigneeOption {
@@ -64,6 +77,10 @@ export function ExpertConsultationFilters({
   const [onlyUnassigned, setOnlyUnassigned] = useState(
     searchParams.get("onlyUnassigned") === "true",
   );
+  const [onlyTeamQueue, setOnlyTeamQueue] = useState(
+    searchParams.get("onlyTeamQueue") === "true" ||
+      searchParams.get("onlyTeamQueue") === "1",
+  );
   const [source, setSource] = useState(searchParams.get("source") ?? "");
   const [purchaseProbabilityBand, setPurchaseProbabilityBand] = useState(
     searchParams.get("purchaseProbabilityBand") ?? "",
@@ -85,6 +102,12 @@ export function ExpertConsultationFilters({
   const [onlyHot, setOnlyHot] = useState(
     searchParams.get("onlyHot") === "true",
   );
+  const [callOutcomeFilter, setCallOutcomeFilter] = useState(() => {
+    if (searchParams.get("onlyNeverCalled") === "true") {
+      return "__never__";
+    }
+    return searchParams.get("lastCallOutcome") ?? "";
+  });
 
   useEffect(() => {
     setBusinessName(searchParams.get("businessName") ?? "");
@@ -94,6 +117,10 @@ export function ExpertConsultationFilters({
     setStatus(searchParams.get("status") ?? "");
     setAssignedToId(searchParams.get("assignedToId") ?? "");
     setOnlyUnassigned(searchParams.get("onlyUnassigned") === "true");
+    setOnlyTeamQueue(
+      searchParams.get("onlyTeamQueue") === "true" ||
+        searchParams.get("onlyTeamQueue") === "1",
+    );
     setSource(searchParams.get("source") ?? "");
     setPurchaseProbabilityBand(
       searchParams.get("purchaseProbabilityBand") ?? "",
@@ -110,11 +137,20 @@ export function ExpertConsultationFilters({
     );
     setOnlyStaleNew(searchParams.get("onlyStaleNew") === "true");
     setOnlyHot(searchParams.get("onlyHot") === "true");
+    if (searchParams.get("onlyNeverCalled") === "true") {
+      setCallOutcomeFilter("__never__");
+    } else {
+      setCallOutcomeFilter(searchParams.get("lastCallOutcome") ?? "");
+    }
   }, [searchParams]);
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const params = new URLSearchParams();
+    const view = searchParams.get("view");
+    if (view) {
+      params.set("view", view);
+    }
     if (businessName.trim()) {
       params.set("businessName", businessName.trim());
     }
@@ -154,12 +190,19 @@ export function ExpertConsultationFilters({
     if (onlyHot) {
       params.set("onlyHot", "true");
     }
+    if (callOutcomeFilter === "__never__") {
+      params.set("onlyNeverCalled", "true");
+    } else if (callOutcomeFilter) {
+      params.set("lastCallOutcome", callOutcomeFilter);
+    }
     if (isAdmin) {
       if (onlyUnassigned) {
         params.set("onlyUnassigned", "true");
       } else if (assignedToId) {
         params.set("assignedToId", assignedToId);
       }
+    } else if (onlyTeamQueue) {
+      params.set("onlyTeamQueue", "true");
     }
     params.set("page", "1");
     router.push(`${pathname}?${params.toString()}`);
@@ -173,6 +216,7 @@ export function ExpertConsultationFilters({
     setStatus("");
     setAssignedToId("");
     setOnlyUnassigned(false);
+    setOnlyTeamQueue(false);
     setSource("");
     setPurchaseProbabilityBand("");
     setOnlyPendingAssignment(false);
@@ -181,7 +225,9 @@ export function ExpertConsultationFilters({
     setExcludeAssessmentInProgress(false);
     setOnlyStaleNew(false);
     setOnlyHot(false);
-    router.push(pathname);
+    setCallOutcomeFilter("");
+    const view = searchParams.get("view");
+    router.push(view ? `${pathname}?view=${view}` : pathname);
   }
 
   return (
@@ -243,6 +289,20 @@ export function ExpertConsultationFilters({
         >
           {PROBABILITY_BAND_OPTIONS.map((option) => (
             <option key={option.value || "all-band"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      </FieldLabel>
+
+      <FieldLabel label="نتیجه آخرین تماس" htmlFor="filter-call-outcome">
+        <Select
+          id="filter-call-outcome"
+          value={callOutcomeFilter}
+          onChange={(event) => setCallOutcomeFilter(event.target.value)}
+        >
+          {CALL_OUTCOME_OPTIONS.map((option) => (
+            <option key={option.value || "all-call"} value={option.value}>
               {option.label}
             </option>
           ))}
@@ -315,6 +375,18 @@ export function ExpertConsultationFilters({
             />
             فقط hot (احتمال بالا)
           </label>
+          {!isAdmin ? (
+            <label className="flex items-center gap-2">
+              <input
+                id="filter-team-queue"
+                type="checkbox"
+                checked={onlyTeamQueue}
+                onChange={(event) => setOnlyTeamQueue(event.target.checked)}
+                className="rounded border-zinc-300"
+              />
+              صف تیم (بدون تخصیص)
+            </label>
+          ) : null}
         </div>
       </FieldLabel>
 

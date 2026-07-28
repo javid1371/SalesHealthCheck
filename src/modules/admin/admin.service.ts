@@ -31,22 +31,31 @@ import {
   countOverdueFollowUpsByAssignee,
   countNewLeadsThisWeekByAssignee,
   findUrgentLeads,
+  groupCallLogsByStaffAndOutcomeSince,
+  groupClosedLostByReasonSince,
   STALE_NEW_LEAD_HOURS,
   startOfMonth,
   startOfWeek,
 } from "./admin.repository";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import { getLeadSettings } from "@/modules/consultation/lead-config.service";
+import {
+  CALL_OUTCOMES,
+  LOST_REASON_LABELS,
+  LOST_REASONS,
+} from "@/modules/consultation/lead-activity";
 import type {
   AdminAssessmentDetail,
   AdminAssessmentFilter,
   AdminAssessmentListItem,
   AdminAssessmentsResponse,
   AdminDashboardData,
+  AdminExpertCallOutcomeRow,
   AdminExpertPerformanceRow,
   AdminLeadStatusFunnel,
   AdminLeadSourceBreakdown,
   AdminLeadSourceConversionRow,
+  AdminLostReasonBreakdownRow,
   AdminSalesMetrics,
   AdminUrgentLeadRow,
 } from "./admin.types";
@@ -387,9 +396,25 @@ function mapUrgentLeads(
   }));
 }
 
+function emptyCallOutcomeCounts(): Record<
+  (typeof CALL_OUTCOMES)[number],
+  number
+> {
+  return {
+    no_answer: 0,
+    busy: 0,
+    connected_interested: 0,
+    connected_not_interested: 0,
+    wrong_number: 0,
+    callback_requested: 0,
+  };
+}
+
 export async function getAdminDashboard(): Promise<AdminDashboardData> {
   const weekStart = startOfWeek();
   const monthStart = startOfMonth();
+  const callOutcomesSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const lostReasonsSince = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const leadSettings = await getLeadSettings();
   const staleNewLeadHours =
     Number.isFinite(leadSettings.staleNewLeadHours) &&
@@ -423,6 +448,8 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     overdueByAssignee,
     newThisWeekByAssignee,
     urgentLeadRows,
+    callLogGroups,
+    closedLostReasonGroups,
   ] = await Promise.all([
     countUsersStartedInRange(weekStart),
     countUsersCompletedInRange(weekStart),
@@ -449,6 +476,8 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     countOverdueFollowUpsByAssignee(),
     countNewLeadsThisWeekByAssignee(weekStart),
     findUrgentLeads(10, staleNewLeadHours),
+    groupCallLogsByStaffAndOutcomeSince(callOutcomesSince),
+    groupClosedLostByReasonSince(lostReasonsSince),
   ]);
 
   const leadStatusFunnel = buildLeadStatusFunnel(leadStatusGroups);
@@ -545,6 +574,73 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     });
   }
 
+  const callOutcomeByExpert = new Map<
+    string,
+    Record<(typeof CALL_OUTCOMES)[number], number>
+  >();
+  for (const expert of salesExperts) {
+    callOutcomeByExpert.set(expert.id, emptyCallOutcomeCounts());
+  }
+  for (const row of callLogGroups) {
+    const counts =
+      callOutcomeByExpert.get(row.staffUserId) ?? emptyCallOutcomeCounts();
+    counts[row.outcome] += row._count.id;
+    callOutcomeByExpert.set(row.staffUserId, counts);
+  }
+
+  const expertCallOutcomesLast7Days: AdminExpertCallOutcomeRow[] =
+    salesExperts.map((expert) => {
+      const byOutcome =
+        callOutcomeByExpert.get(expert.id) ?? emptyCallOutcomeCounts();
+      const totalCalls = CALL_OUTCOMES.reduce(
+        (sum, outcome) => sum + byOutcome[outcome],
+        0,
+      );
+      return {
+        staffUserId: expert.id,
+        name: expert.name,
+        totalCalls,
+        byOutcome,
+      };
+    });
+
+  for (const [staffUserId, byOutcome] of callOutcomeByExpert.entries()) {
+    if (salesExperts.some((expert) => expert.id === staffUserId)) {
+      continue;
+    }
+    const totalCalls = CALL_OUTCOMES.reduce(
+      (sum, outcome) => sum + byOutcome[outcome],
+      0,
+    );
+    if (totalCalls === 0) {
+      continue;
+    }
+    expertCallOutcomesLast7Days.push({
+      staffUserId,
+      name: "کارشناس (غیرفعال)",
+      totalCalls,
+      byOutcome,
+    });
+  }
+
+  const lostReasonCounts = new Map(
+    closedLostReasonGroups.map((row) => [row.lostReason, row._count.id]),
+  );
+  const lostReasonBreakdownLast30Days: AdminLostReasonBreakdownRow[] =
+    LOST_REASONS.map((reason) => ({
+      reason,
+      reasonLabel: LOST_REASON_LABELS[reason],
+      count: lostReasonCounts.get(reason) ?? 0,
+    }));
+  const unknownLostReasonCount = lostReasonCounts.get(null) ?? 0;
+  if (unknownLostReasonCount > 0) {
+    lostReasonBreakdownLast30Days.push({
+      reason: null,
+      reasonLabel: "نامشخص",
+      count: unknownLostReasonCount,
+    });
+  }
+
   return {
     kpis: {
       usersStartedThisWeek,
@@ -580,6 +676,8 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     salesMetrics,
     urgentLeads: mapUrgentLeads(urgentLeadRows, staleNewLeadHours),
     expertPerformance,
+    expertCallOutcomesLast7Days,
+    lostReasonBreakdownLast30Days,
     smsFunnel: await getSmsFunnelAdminMetrics(),
     recentSmsMessages: (await listRecentSmsMessages(10)).map((row) => ({
       id: row.id,

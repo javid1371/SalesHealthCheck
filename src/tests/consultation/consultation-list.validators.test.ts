@@ -11,6 +11,25 @@ describe("validateConsultationListFilter", () => {
     expect(filter.excludeAssessmentInProgress).toBe(false);
     expect(filter.onlyStaleNew).toBe(false);
     expect(filter.onlyPendingAssignment).toBe(false);
+    expect(filter.onlyTeamQueue).toBe(false);
+  });
+
+  it("parses onlyTeamQueue as true or 1", () => {
+    expect(
+      validateConsultationListFilter(
+        new URLSearchParams({ onlyTeamQueue: "true" }),
+      ).onlyTeamQueue,
+    ).toBe(true);
+    expect(
+      validateConsultationListFilter(
+        new URLSearchParams({ onlyTeamQueue: "1" }),
+      ).onlyTeamQueue,
+    ).toBe(true);
+    expect(
+      validateConsultationListFilter(
+        new URLSearchParams({ onlyTeamQueue: "yes" }),
+      ).onlyTeamQueue,
+    ).toBe(false);
   });
 
   it("parses onlyOverdueFollowUp, onlyFollowUpDueToday, onlyStaleNew, and excludeAssessmentInProgress", () => {
@@ -65,6 +84,27 @@ describe("validateConsultationListFilter", () => {
     expect(() =>
       validateConsultationListFilter(
         new URLSearchParams({ status: "not-a-status" }),
+      ),
+    ).toThrow(AppError);
+  });
+
+  it("parses lastCallOutcome and onlyNeverCalled filters", () => {
+    const withOutcome = validateConsultationListFilter(
+      new URLSearchParams({ lastCallOutcome: "no_answer" }),
+    );
+    expect(withOutcome.lastCallOutcome).toBe("no_answer");
+    expect(withOutcome.onlyNeverCalled).toBe(false);
+
+    const neverCalled = validateConsultationListFilter(
+      new URLSearchParams({ onlyNeverCalled: "true" }),
+    );
+    expect(neverCalled.onlyNeverCalled).toBe(true);
+  });
+
+  it("rejects invalid lastCallOutcome", () => {
+    expect(() =>
+      validateConsultationListFilter(
+        new URLSearchParams({ lastCallOutcome: "picked_up" }),
       ),
     ).toThrow(AppError);
   });

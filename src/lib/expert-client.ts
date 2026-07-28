@@ -1,5 +1,10 @@
 import { apiPatch, apiPost } from "@/lib/api-client";
-import type { LeadStatus } from "@prisma/client";
+import type {
+  CallOutcome,
+  LeadStatus,
+  LeadTransferReason,
+  LostReason,
+} from "@prisma/client";
 import type {
   ConsultationLeadDetail,
   ConsultationListItem,
@@ -24,6 +29,8 @@ export async function updateConsultationLeadRequest(
     assignedToId?: string | null;
     nextFollowUpAt?: string | null;
     adminProbabilityOverridePercent?: number | null;
+    lostReason?: LostReason;
+    lostNote?: string | null;
   },
 ): Promise<{ lead: ConsultationListItem }> {
   return apiPatch<{ lead: ConsultationListItem }>(
@@ -39,6 +46,42 @@ export async function addConsultationNoteRequest(
   return apiPost<{ note: ConsultationNoteItem }>(
     `/api/consultations/${id}/notes`,
     { body },
+  );
+}
+
+export async function transferConsultationLeadRequest(
+  id: string,
+  input: {
+    toStaffUserId: string;
+    reason: LeadTransferReason;
+    note: string;
+  },
+): Promise<{ lead: ConsultationListItem }> {
+  return apiPost<{ lead: ConsultationListItem }>(
+    `/api/consultations/${id}/transfer`,
+    input,
+  );
+}
+
+export async function claimConsultationLeadRequest(
+  id: string,
+): Promise<{ lead: ConsultationListItem }> {
+  return apiPost<{ lead: ConsultationListItem }>(
+    `/api/consultations/${id}/claim`,
+    {},
+  );
+}
+
+export async function logConsultationCallRequest(
+  id: string,
+  input: {
+    outcome: CallOutcome;
+    note?: string;
+  },
+): Promise<{ lead: ConsultationListItem }> {
+  return apiPost<{ lead: ConsultationListItem }>(
+    `/api/consultations/${id}/calls`,
+    input,
   );
 }
 

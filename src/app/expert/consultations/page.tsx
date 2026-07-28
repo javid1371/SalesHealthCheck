@@ -76,10 +76,17 @@ export default async function ExpertConsultationsPage({
         .map((user) => ({ id: user.id, name: user.name }))
     : [];
 
-  const pageTitle = adminSession ? "درخواست‌های مشاوره" : "لیدهای من";
+  const isTeamQueue = Boolean(filter.onlyTeamQueue && !adminSession);
+  const pageTitle = adminSession
+    ? "درخواست‌های مشاوره"
+    : isTeamQueue
+      ? "صف تیم"
+      : "لیدهای من";
   const pageSubtitle = adminSession
     ? "لیست همه لیدها — فیلتر بر اساس وضعیت و تخصیص."
-    : "لیدهای تخصیص‌یافته به شما برای پیگیری فروش.";
+    : isTeamQueue
+      ? "لیدهای بدون تخصیص — با «برداشتن سرنخ» مالک شوید."
+      : "لیدهای تخصیص‌یافته به شما برای پیگیری فروش.";
 
   return (
     <PageLayout
@@ -100,7 +107,11 @@ export default async function ExpertConsultationsPage({
       </Suspense>
 
       <Suspense fallback={null}>
-        <ConsultationViewToggle currentView={view} />
+        <ConsultationViewToggle
+          currentView={view}
+          showTeamQueueToggle={!adminSession}
+          isTeamQueue={isTeamQueue}
+        />
       </Suspense>
 
       <p className="mb-4 text-sm text-zinc-600">
@@ -115,13 +126,17 @@ export default async function ExpertConsultationsPage({
           <p className="text-zinc-600">درخواستی با این فیلترها یافت نشد.</p>
         </Card>
       ) : view === "kanban" ? (
-        <ConsultationKanbanView requests={requests} />
+        <ConsultationKanbanView
+          requests={requests}
+          showClaimActions={isTeamQueue}
+        />
       ) : (
         <ConsultationListWithAdmin
           requests={requests}
           assigneeOptions={assigneeOptions}
           exportQueryString={exportQueryString}
           isAdmin={Boolean(adminSession)}
+          showClaimActions={isTeamQueue}
         />
       )}
 

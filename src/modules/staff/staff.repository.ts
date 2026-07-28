@@ -75,6 +75,17 @@ export async function touchLastLogin(id: string) {
   });
 }
 
+export async function listActiveSalesExpertsWithPhone() {
+  return db.staffUser.findMany({
+    where: {
+      role: "sales_expert",
+      isActive: true,
+      NOT: { phone: "" },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+}
+
 export async function pickNextSalesExpert(options?: {
   excludeIds?: string[];
   maxOpenLeadsPerExpert?: number;

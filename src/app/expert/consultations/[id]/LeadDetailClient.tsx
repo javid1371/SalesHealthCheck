@@ -11,9 +11,26 @@ import { Select } from "@/components/ui/Select";
 import { ApiClientError } from "@/lib/api-client";
 import {
   addConsultationNoteRequest,
+  claimConsultationLeadRequest,
+  logConsultationCallRequest,
+  transferConsultationLeadRequest,
   updateConsultationLeadRequest,
 } from "@/lib/expert-client";
-import type { LeadStatus } from "@prisma/client";
+import {
+  CALL_OUTCOME_LABELS,
+  CALL_OUTCOMES,
+  LEAD_TRANSFER_REASON_LABELS,
+  LEAD_TRANSFER_REASONS,
+  LOST_REASON_LABELS,
+  LOST_REASONS,
+  TRANSFER_NOTE_MIN_LENGTH,
+} from "@/modules/consultation/lead-activity";
+import type {
+  CallOutcome,
+  LeadStatus,
+  LeadTransferReason,
+  LostReason,
+} from "@prisma/client";
 
 const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
   { value: "assessment_in_progress", label: "در حال انجام تست" },
@@ -38,7 +55,12 @@ interface LeadDetailClientProps {
   initialAssignedToId: string | null;
   initialNextFollowUpAtIso: string | null;
   initialAdminProbabilityOverridePercent: number | null;
+  initialLostReason: LostReason | null;
+  initialLostNote: string | null;
   isAdmin: boolean;
+  currentStaffUserId: string | null;
+  canTransfer: boolean;
+  canClaim?: boolean;
   assigneeOptions: AssigneeOption[];
 }
 
@@ -48,7 +70,12 @@ export function LeadDetailClient({
   initialAssignedToId,
   initialNextFollowUpAtIso,
   initialAdminProbabilityOverridePercent,
+  initialLostReason,
+  initialLostNote,
   isAdmin,
+  currentStaffUserId,
+  canTransfer,
+  canClaim = false,
   assigneeOptions,
 }: LeadDetailClientProps) {
   const router = useRouter();
@@ -65,13 +92,34 @@ export function LeadDetailClient({
         ? String(initialAdminProbabilityOverridePercent)
         : "",
     );
+  const [lostReason, setLostReason] = useState<LostReason | "">(
+    initialLostReason ?? "",
+  );
+  const [lostNote, setLostNote] = useState(initialLostNote ?? "");
   const [noteBody, setNoteBody] = useState("");
+  const [transferToId, setTransferToId] = useState("");
+  const [transferReason, setTransferReason] = useState<LeadTransferReason | "">(
+    "",
+  );
+  const [transferNote, setTransferNote] = useState("");
+  const [callOutcome, setCallOutcome] = useState<CallOutcome | "">("");
+  const [callNote, setCallNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const transferOptions = assigneeOptions.filter(
+    (option) =>
+      option.id !== currentStaffUserId && option.id !== (assignedToId || null),
+  );
+
   async function handleUpdateLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (status === "closed_lost" && !lostReason) {
+      setError("برای بستن ناموفق، دلیل باخت الزامی است.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
@@ -82,11 +130,11 @@ export function LeadDetailClient({
         assignedToId?: string | null;
         nextFollowUpAt?: string | null;
         adminProbabilityOverridePercent?: number | null;
+        lostReason?: LostReason;
+        lostNote?: string | null;
       } = { status };
 
       if (isAdmin) {
-        payload.assignedToId = assignedToId || null;
-
         if (adminProbabilityOverridePercent.trim() === "") {
           payload.adminProbabilityOverridePercent = null;
         } else {
@@ -101,6 +149,13 @@ export function LeadDetailClient({
         ? new Date(nextFollowUpAt).toISOString()
         : null;
 
+      if (status === "closed_lost" && lostReason) {
+        payload.lostReason = lostReason;
+        if (lostReason === "other") {
+          payload.lostNote = lostNote.trim() || null;
+        }
+      }
+
       await updateConsultationLeadRequest(leadId, payload);
       setSuccess("تغییرات ذخیره شد.");
       router.refresh();
@@ -109,6 +164,116 @@ export function LeadDetailClient({
         err instanceof ApiClientError
           ? err.message
           : "خطا در ذخیره تغییرات.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleUnassign() {
+    if (!isAdmin || !assignedToId) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateConsultationLeadRequest(leadId, { assignedToId: null });
+      setAssignedToId("");
+      setSuccess("تخصیص لید لغو شد.");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در لغو تخصیص.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleClaim() {
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await claimConsultationLeadRequest(leadId);
+      setAssignedToId(currentStaffUserId ?? "");
+      setSuccess("سرنخ با موفقیت برداشته شد.");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در برداشتن سرنخ.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTransfer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!transferToId || !transferReason) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await transferConsultationLeadRequest(leadId, {
+        toStaffUserId: transferToId,
+        reason: transferReason,
+        note: transferNote.trim(),
+      });
+      setAssignedToId(transferToId);
+      setTransferToId("");
+      setTransferReason("");
+      setTransferNote("");
+      setSuccess("سرنخ منتقل شد.");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در انتقال سرنخ.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLogCall(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!callOutcome) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const note = callNote.trim();
+      await logConsultationCallRequest(leadId, {
+        outcome: callOutcome,
+        ...(note ? { note } : {}),
+      });
+      setCallOutcome("");
+      setCallNote("");
+      setSuccess("تماس ثبت شد.");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در ثبت تماس.",
       );
     } finally {
       setLoading(false);
@@ -139,6 +304,35 @@ export function LeadDetailClient({
     }
   }
 
+  if (canClaim) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <h2 className="mb-2 text-lg font-semibold text-zinc-900">
+            صف تیم
+          </h2>
+          <p className="mb-4 text-sm text-zinc-600">
+            این سرنخ هنوز تخصیص نشده است. با برداشتن آن، مالک پیگیری می‌شوید.
+          </p>
+          {error ? <ErrorMessage message={error} /> : null}
+          {success ? (
+            <p className="mb-4 text-sm text-emerald-700" role="status">
+              {success}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            onClick={() => void handleClaim()}
+            loading={loading}
+            loadingLabel="در حال برداشتن…"
+          >
+            برداشتن سرنخ
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -150,9 +344,14 @@ export function LeadDetailClient({
             <Select
               id="lead-status"
               value={status}
-              onChange={(event) =>
-                setStatus(event.target.value as LeadStatus)
-              }
+              onChange={(event) => {
+                const nextStatus = event.target.value as LeadStatus;
+                setStatus(nextStatus);
+                if (nextStatus !== "closed_lost") {
+                  setLostReason(initialLostReason ?? "");
+                  setLostNote(initialLostNote ?? "");
+                }
+              }}
               disabled={loading}
             >
               {STATUS_OPTIONS.filter(
@@ -167,22 +366,46 @@ export function LeadDetailClient({
             </Select>
           </FieldLabel>
 
-          {isAdmin ? (
-            <FieldLabel label="تخصیص به کارشناس" htmlFor="lead-assignee">
-              <Select
-                id="lead-assignee"
-                value={assignedToId}
-                onChange={(event) => setAssignedToId(event.target.value)}
-                disabled={loading}
-              >
-                <option value="">بدون تخصیص</option>
-                {assigneeOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </Select>
-            </FieldLabel>
+          {status === "closed_lost" ? (
+            <>
+              <FieldLabel label="دلیل باخت" htmlFor="lead-lost-reason">
+                <Select
+                  id="lead-lost-reason"
+                  value={lostReason}
+                  onChange={(event) =>
+                    setLostReason(event.target.value as LostReason | "")
+                  }
+                  disabled={loading}
+                  required
+                >
+                  <option value="">انتخاب دلیل</option>
+                  {LOST_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {LOST_REASON_LABELS[reason]}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              {lostReason === "other" ? (
+                <div className="sm:col-span-2">
+                  <FieldLabel
+                    label="توضیح باخت (اختیاری)"
+                    htmlFor="lead-lost-note"
+                  >
+                    <textarea
+                      id="lead-lost-note"
+                      rows={2}
+                      className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      value={lostNote}
+                      onChange={(event) => setLostNote(event.target.value)}
+                      disabled={loading}
+                      placeholder="توضیح کوتاه دربارهٔ دلیل باخت…"
+                    />
+                  </FieldLabel>
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           {isAdmin ? (
@@ -217,12 +440,153 @@ export function LeadDetailClient({
           </FieldLabel>
 
           <div className="flex items-end sm:col-span-2">
-            <Button type="submit" loading={loading} loadingLabel="در حال ذخیره…">
+            <Button
+              type="submit"
+              loading={loading}
+              loadingLabel="در حال ذخیره…"
+              disabled={status === "closed_lost" && !lostReason}
+            >
               ذخیره تغییرات
             </Button>
           </div>
         </form>
       </Card>
+
+      <Card>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900">ثبت تماس</h2>
+        <form onSubmit={handleLogCall} className="grid gap-4 sm:grid-cols-2">
+          <FieldLabel label="نتیجه تماس" htmlFor="lead-call-outcome">
+            <Select
+              id="lead-call-outcome"
+              value={callOutcome}
+              onChange={(event) =>
+                setCallOutcome(event.target.value as CallOutcome | "")
+              }
+              disabled={loading}
+              required
+            >
+              <option value="">انتخاب نتیجه</option>
+              {CALL_OUTCOMES.map((outcome) => (
+                <option key={outcome} value={outcome}>
+                  {CALL_OUTCOME_LABELS[outcome]}
+                </option>
+              ))}
+            </Select>
+          </FieldLabel>
+
+          <div className="sm:col-span-2">
+            <FieldLabel label="یادداشت (اختیاری)" htmlFor="lead-call-note">
+              <textarea
+                id="lead-call-note"
+                rows={2}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                value={callNote}
+                onChange={(event) => setCallNote(event.target.value)}
+                disabled={loading}
+                placeholder="خلاصه کوتاه از تماس…"
+              />
+            </FieldLabel>
+          </div>
+
+          <div className="flex items-end sm:col-span-2">
+            <Button
+              type="submit"
+              loading={loading}
+              loadingLabel="در حال ثبت…"
+              disabled={!callOutcome}
+            >
+              ثبت تماس
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {canTransfer ? (
+        <Card>
+          <h2 className="mb-4 text-lg font-semibold text-zinc-900">
+            انتقال سرنخ
+          </h2>
+          <form onSubmit={handleTransfer} className="grid gap-4 sm:grid-cols-2">
+            <FieldLabel label="انتقال به همکار" htmlFor="lead-transfer-to">
+              <Select
+                id="lead-transfer-to"
+                value={transferToId}
+                onChange={(event) => setTransferToId(event.target.value)}
+                disabled={loading}
+                required
+              >
+                <option value="">انتخاب کارشناس</option>
+                {transferOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+
+            <FieldLabel label="دلیل انتقال" htmlFor="lead-transfer-reason">
+              <Select
+                id="lead-transfer-reason"
+                value={transferReason}
+                onChange={(event) =>
+                  setTransferReason(event.target.value as LeadTransferReason | "")
+                }
+                disabled={loading}
+                required
+              >
+                <option value="">انتخاب دلیل</option>
+                {LEAD_TRANSFER_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>
+                    {LEAD_TRANSFER_REASON_LABELS[reason]}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+
+            <div className="sm:col-span-2">
+              <FieldLabel label="یادداشت انتقال" htmlFor="lead-transfer-note">
+                <textarea
+                  id="lead-transfer-note"
+                  rows={3}
+                  required
+                  minLength={TRANSFER_NOTE_MIN_LENGTH}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  value={transferNote}
+                  onChange={(event) => setTransferNote(event.target.value)}
+                  disabled={loading}
+                  placeholder={`حداقل ${TRANSFER_NOTE_MIN_LENGTH} کاراکتر — زمینهٔ انتقال را بنویسید`}
+                />
+              </FieldLabel>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 sm:col-span-2">
+              <Button
+                type="submit"
+                loading={loading}
+                loadingLabel="در حال انتقال…"
+                disabled={
+                  !transferToId ||
+                  !transferReason ||
+                  transferNote.trim().length < TRANSFER_NOTE_MIN_LENGTH
+                }
+              >
+                انتقال سرنخ
+              </Button>
+              {isAdmin && assignedToId ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={loading}
+                  loadingLabel="در حال لغو…"
+                  onClick={handleUnassign}
+                >
+                  لغو تخصیص
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        </Card>
+      ) : null}
 
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-zinc-900">

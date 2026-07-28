@@ -10,6 +10,10 @@ import type {
   AdminFullConversionFunnel,
   AdminLeadStatusFunnel,
 } from "@/modules/admin/admin.types";
+import {
+  CALL_OUTCOME_LABELS,
+  CALL_OUTCOMES,
+} from "@/modules/consultation/lead-activity";
 import { AdminNav } from "../AdminNav";
 
 function toDateInputValue(date: Date): string {
@@ -713,6 +717,106 @@ export default async function AdminDashboardPage() {
                     </td>
                     <td className="px-4 py-3 text-zinc-600">
                       {row.newThisWeek.toLocaleString("fa-IR")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-zinc-900">
+            نتایج تماس ۷ روز اخیر
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            شمارش ثبت تماس‌ها به تفکیک کارشناس و نتیجه.
+          </p>
+        </div>
+
+        {dashboard.expertCallOutcomesLast7Days.length === 0 ? (
+          <Card className="text-center">
+            <p className="text-zinc-600">هنوز کارشناس فعالی ثبت نشده است.</p>
+          </Card>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-zinc-700">کارشناس</th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">کل</th>
+                  {CALL_OUTCOMES.map((outcome) => (
+                    <th
+                      key={outcome}
+                      className="px-4 py-3 font-medium text-zinc-700"
+                    >
+                      {CALL_OUTCOME_LABELS[outcome]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {dashboard.expertCallOutcomesLast7Days.map((row) => (
+                  <tr key={row.staffUserId} className="hover:bg-zinc-50/80">
+                    <td className="px-4 py-3 font-medium text-zinc-900">
+                      {row.name}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {row.totalCalls.toLocaleString("fa-IR")}
+                    </td>
+                    {CALL_OUTCOMES.map((outcome) => (
+                      <td key={outcome} className="px-4 py-3 text-zinc-600">
+                        {row.byOutcome[outcome].toLocaleString("fa-IR")}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-zinc-900">
+            دلایل باخت ۳۰ روز اخیر
+          </h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            تعداد لیدهای بسته — ناموفق به تفکیک دلیل باخت.
+          </p>
+        </div>
+
+        {dashboard.lostReasonBreakdownLast30Days.every(
+          (row) => row.count === 0,
+        ) ? (
+          <Card className="text-center">
+            <p className="text-zinc-600">
+              در ۳۰ روز اخیر باخت ثبت‌شده‌ای نیست.
+            </p>
+          </Card>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-zinc-700">دلیل</th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">تعداد</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {dashboard.lostReasonBreakdownLast30Days.map((row) => (
+                  <tr
+                    key={row.reason ?? "unknown"}
+                    className="hover:bg-zinc-50/80"
+                  >
+                    <td className="px-4 py-3 font-medium text-zinc-900">
+                      {row.reasonLabel}
+                    </td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {row.count.toLocaleString("fa-IR")}
                     </td>
                   </tr>
                 ))}

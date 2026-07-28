@@ -5,10 +5,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { ApiClientError } from "@/lib/api-client";
-import { updateConsultationLeadRequest } from "@/lib/expert-client";
+import {
+  claimConsultationLeadRequest,
+  logConsultationCallRequest,
+  updateConsultationLeadRequest,
+} from "@/lib/expert-client";
 import type { ConsultationListItem } from "@/modules/consultation/consultation.types";
+import {
+  CALL_OUTCOME_LABELS,
+  LOST_REASON_LABELS,
+  LOST_REASONS,
+  QUICK_CALL_OUTCOMES,
+} from "@/modules/consultation/lead-activity";
 import { isManualStatusTransitionAllowed } from "@/modules/consultation/lead-status";
-import type { LeadStatus } from "@prisma/client";
+import type { CallOutcome, LeadStatus, LostReason } from "@prisma/client";
 
 const QUICK_ACTION_HIDDEN_STATUSES = new Set<LeadStatus>([
   "assessment_in_progress",
@@ -102,10 +112,12 @@ const KANBAN_COLUMNS: Array<{
 
 interface ConsultationKanbanViewProps {
   requests: ConsultationListItem[];
+  showClaimActions?: boolean;
 }
 
 export function ConsultationKanbanView({
   requests: initialRequests,
+  showClaimActions = false,
 }: ConsultationKanbanViewProps) {
   const router = useRouter();
   const [requests, setRequests] = useState(initialRequests);
@@ -117,7 +129,16 @@ export function ConsultationKanbanView({
     null,
   );
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingLostMove, setPendingLostMove] = useState<{
+    leadId: string;
+    leadName: string;
+  } | null>(null);
+  const [pendingLostReason, setPendingLostReason] = useState<LostReason | "">(
+    "",
+  );
+  const [pendingLostNote, setPendingLostNote] = useState("");
 
   const columns = useMemo(() => {
     const grouped = new Map<LeadStatus, ConsultationListItem[]>();
@@ -149,9 +170,32 @@ export function ConsultationKanbanView({
     return isManualStatusTransitionAllowed(lead.status, status);
   }
 
+  async function handleClaim(leadId: string) {
+    setClaimingId(leadId);
+    setError(null);
+    try {
+      await claimConsultationLeadRequest(leadId);
+      setRequests((current) => current.filter((item) => item.id !== leadId));
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در برداشتن سرنخ.",
+      );
+    } finally {
+      setClaimingId(null);
+    }
+  }
+
   async function applyLeadPatch(
     leadId: string,
-    patch: { status?: LeadStatus; nextFollowUpAt?: string },
+    patch: {
+      status?: LeadStatus;
+      nextFollowUpAt?: string;
+      lostReason?: LostReason;
+      lostNote?: string | null;
+    },
     optimistic: (item: ConsultationListItem) => ConsultationListItem,
   ) {
     setUpdatingId(leadId);
@@ -179,7 +223,11 @@ export function ConsultationKanbanView({
     }
   }
 
-  async function moveLead(leadId: string, newStatus: LeadStatus) {
+  async function moveLead(
+    leadId: string,
+    newStatus: LeadStatus,
+    lost?: { lostReason: LostReason; lostNote?: string | null },
+  ) {
     const lead = requests.find((item) => item.id === leadId);
     if (!lead || lead.status === newStatus) {
       return;
@@ -192,13 +240,58 @@ export function ConsultationKanbanView({
       return;
     }
 
-    await applyLeadPatch(leadId, { status: newStatus }, (item) => ({
-      ...item,
-      status: newStatus,
-      statusLabel:
-        KANBAN_COLUMNS.find((column) => column.status === newStatus)?.label ??
-        item.statusLabel,
-    }));
+    if (newStatus === "closed_lost" && !lost?.lostReason) {
+      setPendingLostMove({ leadId, leadName: lead.name });
+      setPendingLostReason("");
+      setPendingLostNote("");
+      setDraggingId(null);
+      setDropTargetStatus(null);
+      return;
+    }
+
+    await applyLeadPatch(
+      leadId,
+      {
+        status: newStatus,
+        ...(lost?.lostReason
+          ? {
+              lostReason: lost.lostReason,
+              ...(lost.lostReason === "other"
+                ? { lostNote: lost.lostNote ?? null }
+                : {}),
+            }
+          : {}),
+      },
+      (item) => ({
+        ...item,
+        status: newStatus,
+        statusLabel:
+          KANBAN_COLUMNS.find((column) => column.status === newStatus)?.label ??
+          item.statusLabel,
+        ...(lost?.lostReason
+          ? {
+              lostReason: lost.lostReason,
+              lostReasonLabel: LOST_REASON_LABELS[lost.lostReason],
+              lostNote:
+                lost.lostReason === "other" ? (lost.lostNote ?? null) : null,
+            }
+          : {}),
+      }),
+    );
+  }
+
+  async function confirmLostMove() {
+    if (!pendingLostMove || !pendingLostReason) {
+      return;
+    }
+    const { leadId } = pendingLostMove;
+    const lostNote =
+      pendingLostReason === "other" ? pendingLostNote.trim() || null : null;
+    setPendingLostMove(null);
+    await moveLead(leadId, "closed_lost", {
+      lostReason: pendingLostReason,
+      lostNote,
+    });
   }
 
   async function markContacted(leadId: string) {
@@ -221,6 +314,48 @@ export function ConsultationKanbanView({
       nextFollowUpAt: formatFollowUpLabel(nextFollowUpAt),
       nextFollowUpAtIso: nextFollowUpAt.slice(0, 10),
     }));
+  }
+
+  async function logQuickCall(leadId: string, outcome: CallOutcome) {
+    const lead = requests.find((item) => item.id === leadId);
+    if (!lead || !canShowQuickActions(lead.status)) {
+      return;
+    }
+
+    setUpdatingId(leadId);
+    setError(null);
+
+    const previous = requests;
+    const nowLabel = new Intl.DateTimeFormat("fa-IR", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date());
+    setRequests((current) =>
+      current.map((item) =>
+        item.id === leadId
+          ? {
+              ...item,
+              lastCallOutcome: outcome,
+              lastCallOutcomeLabel: CALL_OUTCOME_LABELS[outcome],
+              lastCalledAt: nowLabel,
+            }
+          : item,
+      ),
+    );
+
+    try {
+      await logConsultationCallRequest(leadId, { outcome });
+      router.refresh();
+    } catch (err) {
+      setRequests(previous);
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در ثبت تماس.",
+      );
+    } finally {
+      setUpdatingId(null);
+    }
   }
 
   function handleDragStart(leadId: string) {
@@ -265,6 +400,65 @@ export function ConsultationKanbanView({
     <div>
       {error ? <ErrorMessage message={error} /> : null}
 
+      {pendingLostMove ? (
+        <div className="mb-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-sm font-medium text-zinc-900">
+            دلیل باخت برای «{pendingLostMove.leadName}»
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-zinc-700">
+              <span className="mb-1 block">دلیل باخت</span>
+              <select
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+                value={pendingLostReason}
+                onChange={(event) =>
+                  setPendingLostReason(event.target.value as LostReason | "")
+                }
+              >
+                <option value="">انتخاب دلیل</option>
+                {LOST_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>
+                    {LOST_REASON_LABELS[reason]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pendingLostReason === "other" ? (
+              <label className="block text-sm text-zinc-700 sm:col-span-2">
+                <span className="mb-1 block">توضیح (اختیاری)</span>
+                <textarea
+                  rows={2}
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+                  value={pendingLostNote}
+                  onChange={(event) => setPendingLostNote(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!pendingLostReason || updatingId === pendingLostMove.leadId}
+              onClick={() => void confirmLostMove()}
+              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              تأیید باخت
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingLostMove(null);
+                setPendingLostReason("");
+                setPendingLostNote("");
+              }}
+              className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              انصراف
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex gap-4 overflow-x-auto pb-2">
         {columns.map((column) => (
           <section
@@ -306,8 +500,12 @@ export function ConsultationKanbanView({
                 column.items.map((item) => (
                   <article
                     key={item.id}
-                    draggable={updatingId !== item.id}
+                    draggable={!showClaimActions && updatingId !== item.id}
                     onDragStart={(event) => {
+                      if (showClaimActions) {
+                        event.preventDefault();
+                        return;
+                      }
                       const target = event.target as HTMLElement | null;
                       if (target?.closest("button, a, input, textarea, select")) {
                         event.preventDefault();
@@ -318,7 +516,11 @@ export function ConsultationKanbanView({
                       handleDragStart(item.id);
                     }}
                     onDragEnd={handleDragEnd}
-                    className={`cursor-grab rounded-xl border border-zinc-200 bg-white p-3 shadow-sm active:cursor-grabbing ${
+                    className={`rounded-xl border border-zinc-200 bg-white p-3 shadow-sm ${
+                      showClaimActions
+                        ? ""
+                        : "cursor-grab active:cursor-grabbing"
+                    } ${
                       draggingId === item.id ? "opacity-50" : ""
                     } ${
                       item.status === "assessment_in_progress"
@@ -392,13 +594,41 @@ export function ConsultationKanbanView({
                       <p className="mt-2 text-xs text-zinc-400">بدون تخصیص</p>
                     )}
 
+                    {showClaimActions && item.assignedToId == null ? (
+                      <button
+                        type="button"
+                        disabled={claimingId != null}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleClaim(item.id);
+                        }}
+                        className="mt-2 w-full rounded-lg bg-emerald-700 px-2 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {claimingId === item.id
+                          ? "در حال برداشتن…"
+                          : "برداشتن سرنخ"}
+                      </button>
+                    ) : null}
+
                     {item.nextFollowUpAt ? (
                       <p className="mt-1 text-xs text-zinc-500">
                         پیگیری: {item.nextFollowUpAt}
                       </p>
                     ) : null}
 
-                    {canShowQuickActions(item.status) ? (
+                    {item.lastCallOutcomeLabel ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        آخرین تماس: {item.lastCallOutcomeLabel}
+                      </p>
+                    ) : null}
+
+                    {item.status === "closed_lost" && item.lostReasonLabel ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        دلیل باخت: {item.lostReasonLabel}
+                      </p>
+                    ) : null}
+
+                    {!showClaimActions && canShowQuickActions(item.status) ? (
                       <div
                         className="mt-2 flex flex-wrap gap-1"
                         onMouseDown={(event) => event.stopPropagation()}
@@ -416,6 +646,20 @@ export function ConsultationKanbanView({
                             تماس گرفتم
                           </button>
                         ) : null}
+                        {QUICK_CALL_OUTCOMES.map((outcome) => (
+                          <button
+                            key={outcome}
+                            type="button"
+                            disabled={updatingId === item.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void logQuickCall(item.id, outcome);
+                            }}
+                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {CALL_OUTCOME_LABELS[outcome]}
+                          </button>
+                        ))}
                         <button
                           type="button"
                           disabled={updatingId === item.id}

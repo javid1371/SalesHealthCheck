@@ -48,6 +48,8 @@ vi.mock("@/modules/admin/admin.repository", async (importOriginal) => {
     countOverdueFollowUpsByAssignee: vi.fn(),
     countNewLeadsThisWeekByAssignee: vi.fn(),
     findUrgentLeads: vi.fn(),
+    groupCallLogsByStaffAndOutcomeSince: vi.fn(),
+    groupClosedLostByReasonSince: vi.fn(),
   };
 });
 
@@ -100,6 +102,8 @@ import {
   countOverdueFollowUpsByAssignee,
   countNewLeadsThisWeekByAssignee,
   findUrgentLeads,
+  groupCallLogsByStaffAndOutcomeSince,
+  groupClosedLostByReasonSince,
 } from "@/modules/admin/admin.repository";
 import {
   getSmsFunnelAdminMetrics,
@@ -281,6 +285,23 @@ describe("getAdminDashboard", () => {
         assignedToId: null,
       },
     ] as never);
+    vi.mocked(groupCallLogsByStaffAndOutcomeSince).mockResolvedValue([
+      {
+        staffUserId: "expert-1",
+        outcome: "no_answer",
+        _count: { id: 3 },
+      },
+      {
+        staffUserId: "expert-1",
+        outcome: "connected_interested",
+        _count: { id: 2 },
+      },
+    ] as never);
+    vi.mocked(groupClosedLostByReasonSince).mockResolvedValue([
+      { lostReason: "price", _count: { id: 2 } },
+      { lostReason: "competitor", _count: { id: 1 } },
+      { lostReason: null, _count: { id: 1 } },
+    ] as never);
     vi.mocked(getSmsFunnelAdminMetrics).mockResolvedValue({
       smsSent: 12,
       smsPending: 3,
@@ -356,6 +377,33 @@ describe("getAdminDashboard", () => {
         overdueFollowUpOpen: 1,
         newThisWeek: 2,
       },
+    ]);
+    expect(dashboard.expertCallOutcomesLast7Days).toEqual([
+      {
+        staffUserId: "expert-1",
+        name: "Expert One",
+        totalCalls: 5,
+        byOutcome: {
+          no_answer: 3,
+          busy: 0,
+          connected_interested: 2,
+          connected_not_interested: 0,
+          wrong_number: 0,
+          callback_requested: 0,
+        },
+      },
+    ]);
+    expect(groupCallLogsByStaffAndOutcomeSince).toHaveBeenCalledTimes(1);
+    expect(groupClosedLostByReasonSince).toHaveBeenCalledTimes(1);
+    expect(dashboard.lostReasonBreakdownLast30Days).toEqual([
+      { reason: "price", reasonLabel: "قیمت", count: 2 },
+      { reason: "timing", reasonLabel: "زمان‌بندی", count: 0 },
+      { reason: "competitor", reasonLabel: "رقیب", count: 1 },
+      { reason: "no_response", reasonLabel: "عدم پاسخ", count: 0 },
+      { reason: "low_quality", reasonLabel: "کیفیت پایین لید", count: 0 },
+      { reason: "not_a_fit", reasonLabel: "عدم تناسب", count: 0 },
+      { reason: "other", reasonLabel: "سایر", count: 0 },
+      { reason: null, reasonLabel: "نامشخص", count: 1 },
     ]);
     expect(getLeadSettings).toHaveBeenCalled();
     expect(countStaleNewLeads).toHaveBeenCalledWith(24);

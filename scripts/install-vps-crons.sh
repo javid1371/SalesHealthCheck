@@ -21,6 +21,7 @@ crontab -l 2>/dev/null | grep -v "${MARKER}" > "${TMP}" || true
 
 cat >> "${TMP}" <<CRON
 */15 * * * * cd ${PROJECT_ROOT} && ./scripts/vps-cron-call.sh /api/cron/lead-assignment >> ${CRON_LOG_DIR}/lead-assignment.log 2>&1 ${MARKER} lead-assignment
+*/15 * * * * cd ${PROJECT_ROOT} && ./scripts/vps-cron-call.sh /api/cron/follow-up-reminders >> ${CRON_LOG_DIR}/follow-up-reminders.log 2>&1 ${MARKER} follow-up-reminders
 */5 * * * * cd ${PROJECT_ROOT} && ./scripts/vps-cron-call.sh /api/cron/sms-funnel >> ${CRON_LOG_DIR}/sms-funnel.log 2>&1 ${MARKER} sms-funnel
 CRON
 
@@ -29,4 +30,4 @@ rm -f "${TMP}"
 
 echo "Installed crontab entries (${MARKER}):"
 crontab -l | grep "${MARKER}" || true
-echo "Logs: ${CRON_LOG_DIR}/lead-assignment.log, ${CRON_LOG_DIR}/sms-funnel.log"
+echo "Logs: ${CRON_LOG_DIR}/lead-assignment.log, ${CRON_LOG_DIR}/follow-up-reminders.log, ${CRON_LOG_DIR}/sms-funnel.log"

@@ -45,8 +45,23 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
     throw error;
   }
 
+  const currentStaffUserId =
+    adminSession?.staffUserId ?? salesExpertSession?.staffUserId ?? null;
+  const canTransfer = Boolean(
+    adminSession ||
+      (salesExpertSession &&
+        lead.assignedToId === salesExpertSession.staffUserId),
+  );
+  const canClaim = Boolean(
+    !adminSession &&
+      salesExpertSession &&
+      lead.assignedToId == null &&
+      lead.status !== "closed_won" &&
+      lead.status !== "closed_lost",
+  );
+
   const [assigneeOptions, smsHistory] = await Promise.all([
-    adminSession
+    canTransfer
       ? listStaffUsers().then((users) =>
           users
             .filter((user) => user.role === "sales_expert" && user.isActive)
@@ -71,6 +86,12 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         <Card>
           <p className="text-sm text-zinc-600">وضعیت</p>
           <p className="mt-1 font-semibold text-zinc-900">{lead.statusLabel}</p>
+          {lead.status === "closed_lost" && lead.lostReasonLabel ? (
+            <p className="mt-1 text-sm text-zinc-600">
+              دلیل باخت: {lead.lostReasonLabel}
+              {lead.lostNote ? ` — ${lead.lostNote}` : ""}
+            </p>
+          ) : null}
         </Card>
         <Card>
           <p className="text-sm text-zinc-600">منبع</p>
@@ -106,6 +127,15 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
           <p className="mt-1 font-semibold text-zinc-900">
             {lead.nextFollowUpAt ?? "—"}
           </p>
+        </Card>
+        <Card>
+          <p className="text-sm text-zinc-600">آخرین تماس</p>
+          <p className="mt-1 font-semibold text-zinc-900">
+            {lead.lastCallOutcomeLabel ?? "—"}
+          </p>
+          {lead.lastCalledAt ? (
+            <p className="mt-1 text-sm text-zinc-600">{lead.lastCalledAt}</p>
+          ) : null}
         </Card>
       </div>
 
@@ -235,7 +265,12 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         initialAssignedToId={lead.assignedToId}
         initialNextFollowUpAtIso={lead.nextFollowUpAtIso}
         initialAdminProbabilityOverridePercent={lead.adminProbabilityOverridePercent}
+        initialLostReason={lead.lostReason}
+        initialLostNote={lead.lostNote}
         isAdmin={Boolean(adminSession)}
+        currentStaffUserId={currentStaffUserId}
+        canTransfer={canTransfer}
+        canClaim={canClaim}
         assigneeOptions={assigneeOptions}
       />
 

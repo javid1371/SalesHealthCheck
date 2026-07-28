@@ -1,9 +1,20 @@
-import type { LeadStatus } from "@prisma/client";
+import type {
+  CallOutcome,
+  LeadStatus,
+  LeadTransferReason,
+  LostReason,
+} from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import type {
   BulkUpdateLeadsInput,
   CreateManualLeadInput,
 } from "./consultation.types";
+import {
+  CALL_OUTCOMES,
+  LEAD_TRANSFER_REASONS,
+  LOST_REASONS,
+  TRANSFER_NOTE_MIN_LENGTH,
+} from "./lead-activity";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^[\d+\-\s()]{8,20}$/;
@@ -78,7 +89,61 @@ export type UpdateConsultationLeadInput = {
   assignedToId?: string | null;
   nextFollowUpAt?: Date | null;
   adminProbabilityOverridePercent?: number | null;
+  lostReason?: LostReason;
+  lostNote?: string | null;
 };
+
+function parseOptionalLostReason(value: unknown): LostReason | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "string" ||
+    !LOST_REASONS.includes(value as LostReason)
+  ) {
+    throw new AppError("VALIDATION_ERROR", "دلیل باخت نامعتبر است.", 400, {
+      field: "lostReason",
+    });
+  }
+
+  return value as LostReason;
+}
+
+function parseOptionalLostNote(
+  value: unknown,
+  lostReason: LostReason | undefined,
+): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new AppError("VALIDATION_ERROR", "یادداشت باخت نامعتبر است.", 400, {
+      field: "lostNote",
+    });
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (lostReason !== undefined && lostReason !== "other") {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "یادداشت باخت فقط برای دلیل «سایر» مجاز است.",
+      400,
+      { field: "lostNote" },
+    );
+  }
+
+  return trimmed;
+}
 
 function parseOptionalProbabilityOverride(
   value: unknown,
@@ -125,6 +190,8 @@ export function validateUpdateConsultationLeadRequest(
   const adminProbabilityOverridePercent = parseOptionalProbabilityOverride(
     data.adminProbabilityOverridePercent,
   );
+  const lostReason = parseOptionalLostReason(data.lostReason);
+  const lostNote = parseOptionalLostNote(data.lostNote, lostReason);
   let nextFollowUpAt: Date | null | undefined;
 
   if (data.nextFollowUpAt === null) {
@@ -133,11 +200,22 @@ export function validateUpdateConsultationLeadRequest(
     nextFollowUpAt = parseOptionalDate(data.nextFollowUpAt, "nextFollowUpAt");
   }
 
+  if (status === "closed_lost" && lostReason === undefined) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "برای بستن ناموفق، دلیل باخت الزامی است.",
+      400,
+      { field: "lostReason" },
+    );
+  }
+
   if (
     status === undefined &&
     assignedToId === undefined &&
     nextFollowUpAt === undefined &&
-    adminProbabilityOverridePercent === undefined
+    adminProbabilityOverridePercent === undefined &&
+    lostReason === undefined &&
+    lostNote === undefined
   ) {
     throw new AppError(
       "VALIDATION_ERROR",
@@ -153,6 +231,8 @@ export function validateUpdateConsultationLeadRequest(
     ...(adminProbabilityOverridePercent !== undefined
       ? { adminProbabilityOverridePercent }
       : {}),
+    ...(lostReason !== undefined ? { lostReason } : {}),
+    ...(lostNote !== undefined ? { lostNote } : {}),
   };
 }
 
@@ -234,6 +314,17 @@ export function validateBulkUpdateLeadsRequest(
 
   const status = parseOptionalLeadStatus(data.status);
   const assignedToId = parseOptionalStringId(data.assignedToId, "assignedToId");
+  const lostReason = parseOptionalLostReason(data.lostReason);
+  const lostNote = parseOptionalLostNote(data.lostNote, lostReason);
+
+  if (status === "closed_lost" && lostReason === undefined) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "برای بستن ناموفق، دلیل باخت الزامی است.",
+      400,
+      { field: "lostReason" },
+    );
+  }
 
   if (status === undefined && assignedToId === undefined) {
     throw new AppError(
@@ -247,6 +338,8 @@ export function validateBulkUpdateLeadsRequest(
     ids,
     ...(status !== undefined ? { status } : {}),
     ...(assignedToId !== undefined ? { assignedToId } : {}),
+    ...(lostReason !== undefined ? { lostReason } : {}),
+    ...(lostNote !== undefined ? { lostNote } : {}),
   };
 }
 
@@ -263,4 +356,98 @@ export function validateAddConsultationNoteRequest(body: unknown): string {
   }
 
   return value.trim();
+}
+
+export type LogCallInput = {
+  outcome: CallOutcome;
+  note?: string;
+};
+
+export function validateLogCallRequest(body: unknown): LogCallInput {
+  if (!body || typeof body !== "object") {
+    throw new AppError("VALIDATION_ERROR", "Request body is required", 400);
+  }
+
+  const data = body as Record<string, unknown>;
+
+  if (
+    typeof data.outcome !== "string" ||
+    !CALL_OUTCOMES.includes(data.outcome as CallOutcome)
+  ) {
+    throw new AppError("VALIDATION_ERROR", "نتیجه تماس نامعتبر است.", 400, {
+      field: "outcome",
+    });
+  }
+
+  let note: string | undefined;
+  if (data.note !== undefined && data.note !== null) {
+    if (typeof data.note !== "string") {
+      throw new AppError("VALIDATION_ERROR", "یادداشت تماس نامعتبر است.", 400, {
+        field: "note",
+      });
+    }
+    const trimmed = data.note.trim();
+    if (trimmed.length > 0) {
+      note = trimmed;
+    }
+  }
+
+  return {
+    outcome: data.outcome as CallOutcome,
+    ...(note !== undefined ? { note } : {}),
+  };
+}
+
+export type TransferLeadInput = {
+  toStaffUserId: string;
+  reason: LeadTransferReason;
+  note: string;
+};
+
+export function validateTransferLeadRequest(body: unknown): TransferLeadInput {
+  if (!body || typeof body !== "object") {
+    throw new AppError("VALIDATION_ERROR", "Request body is required", 400);
+  }
+
+  const data = body as Record<string, unknown>;
+
+  if (
+    typeof data.toStaffUserId !== "string" ||
+    data.toStaffUserId.trim().length === 0
+  ) {
+    throw new AppError("VALIDATION_ERROR", "گیرنده انتقال الزامی است.", 400, {
+      field: "toStaffUserId",
+    });
+  }
+
+  if (
+    typeof data.reason !== "string" ||
+    !LEAD_TRANSFER_REASONS.includes(data.reason as LeadTransferReason)
+  ) {
+    throw new AppError("VALIDATION_ERROR", "دلیل انتقال نامعتبر است.", 400, {
+      field: "reason",
+    });
+  }
+
+  if (typeof data.note !== "string" || data.note.trim().length === 0) {
+    throw new AppError("VALIDATION_ERROR", "یادداشت انتقال الزامی است.", 400, {
+      field: "note",
+    });
+  }
+
+  const note = data.note.trim();
+  if (note.length < TRANSFER_NOTE_MIN_LENGTH) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `یادداشت انتقال باید حداقل ${TRANSFER_NOTE_MIN_LENGTH} کاراکتر باشد.`,
+      400,
+      { field: "note", minLength: TRANSFER_NOTE_MIN_LENGTH },
+    );
+  }
+
+  return {
+    toStaffUserId: data.toStaffUserId.trim(),
+    reason: data.reason as LeadTransferReason,
+    note,
+  };
 }

@@ -1,8 +1,10 @@
 import type { AdminSession, SalesExpertSession } from "@/lib/session";
 import type {
+  CallOutcome,
   LeadActivityType,
   LeadSource,
   LeadStatus,
+  LostReason,
   PurchaseProbability,
 } from "@prisma/client";
 import type { LeadSlaFlags } from "./lead-sla";
@@ -15,7 +17,12 @@ export interface ConsultationListFilter {
   status?: LeadStatus;
   source?: LeadSource;
   purchaseProbabilityBand?: PurchaseProbability;
+  lastCallOutcome?: CallOutcome;
+  /** Leads with no call log recorded yet (`lastCallOutcome` is null). */
+  onlyNeverCalled?: boolean;
   onlyUnassigned?: boolean;
+  /** Expert team queue: unassigned open leads that can be claimed. */
+  onlyTeamQueue?: boolean;
   onlyPendingAssignment?: boolean;
   onlyOverdueFollowUp?: boolean;
   /** Follow-ups due by end of local today (includes future times today). */
@@ -41,6 +48,8 @@ export interface BulkUpdateLeadsInput {
   ids: string[];
   status?: LeadStatus;
   assignedToId?: string | null;
+  lostReason?: LostReason;
+  lostNote?: string | null;
 }
 
 export interface ConsultationListItem {
@@ -60,6 +69,12 @@ export interface ConsultationListItem {
   assignedToName: string | null;
   nextFollowUpAt: string | null;
   nextFollowUpAtIso: string | null;
+  lastCallOutcome: CallOutcome | null;
+  lastCallOutcomeLabel: string | null;
+  lastCalledAt: string | null;
+  lostReason: LostReason | null;
+  lostReasonLabel: string | null;
+  lostNote: string | null;
   createdAt: string;
   businessName: string | null;
   assessmentUserPhone: string | null;
@@ -150,6 +165,12 @@ export interface ConsultationLeadDetail {
   assignedToName: string | null;
   nextFollowUpAt: string | null;
   nextFollowUpAtIso: string | null;
+  lastCallOutcome: CallOutcome | null;
+  lastCallOutcomeLabel: string | null;
+  lastCalledAt: string | null;
+  lostReason: LostReason | null;
+  lostReasonLabel: string | null;
+  lostNote: string | null;
   createdAt: string;
   businessName: string | null;
   assessmentUserPhone: string | null;

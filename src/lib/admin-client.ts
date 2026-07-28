@@ -97,6 +97,8 @@ export async function bulkUpdateLeadsRequest(input: {
   ids: string[];
   status?: import("@prisma/client").LeadStatus;
   assignedToId?: string | null;
+  lostReason?: import("@prisma/client").LostReason;
+  lostNote?: string | null;
 }) {
   return apiPost<{ updated: number }>("/api/admin/leads/bulk", input);
 }

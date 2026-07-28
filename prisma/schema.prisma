@@ -78,6 +78,38 @@ enum LeadActivityType {
   note_added
   probability_override
   follow_up_set
+  call_logged
+}
+
+enum LeadTransferReason {
+  workload
+  leave
+  expertise
+  customer_request
+  other
+}
+
+enum CallOutcome {
+  no_answer
+  busy
+  connected_interested
+  connected_not_interested
+  wrong_number
+  callback_requested
+}
+
+enum LostReason {
+  price
+  timing
+  competitor
+  no_response
+  low_quality
+  not_a_fit
+  other
+}
+
+enum StaffReminderType {
+  follow_up_digest
 }
 
 enum PurchaseProbability {
@@ -460,6 +492,10 @@ model ConsultationRequest {
   nextFollowUpAt                  DateTime?            @map("next_follow_up_at")
   firstContactedAt                DateTime?            @map("first_contacted_at")
   closedAt                        DateTime?            @map("closed_at")
+  lastCallOutcome                 CallOutcome?         @map("last_call_outcome")
+  lastCalledAt                    DateTime?            @map("last_called_at")
+  lostReason                      LostReason?          @map("lost_reason")
+  lostNote                        String?              @map("lost_note")
   adminProbabilityOverridePercent Int?                 @map("admin_probability_override_percent")
   createdAt                       DateTime             @default(now()) @map("created_at")
   updatedAt                       DateTime             @updatedAt @map("updated_at")
@@ -469,6 +505,7 @@ model ConsultationRequest {
   assignedTo        StaffUser?         @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   consultationNotes ConsultationNote[]
   leadActivities    LeadActivity[]
+  callLogs          LeadCallLog[]
 
   @@index([assessmentSessionId])
   @@index([createdAt])
@@ -476,6 +513,9 @@ model ConsultationRequest {
   @@index([status])
   @@index([source])
   @@index([assignScheduledFor, assignedToId, source])
+  @@index([lastCallOutcome])
+  @@index([lastCalledAt])
+  @@index([lostReason])
   @@map("consultation_requests")
 }
 
@@ -494,6 +534,8 @@ model StaffUser {
   assignedLeads     ConsultationRequest[] @relation("LeadAssignee")
   consultationNotes ConsultationNote[]
   leadActivities    LeadActivity[]
+  callLogs          LeadCallLog[]
+  reminderLogs      StaffReminderLog[]
 
   @@map("staff_users")
 }
@@ -692,6 +734,36 @@ model LeadActivity {
 
   @@index([consultationRequestId])
   @@map("lead_activities")
+}
+
+model LeadCallLog {
+  id                    String      @id @default(cuid())
+  consultationRequestId String      @map("consultation_request_id")
+  staffUserId           String      @map("staff_user_id")
+  outcome               CallOutcome
+  note                  String?
+  createdAt             DateTime    @default(now()) @map("created_at")
+
+  consultationRequest ConsultationRequest @relation(fields: [consultationRequestId], references: [id], onDelete: Cascade)
+  staffUser           StaffUser           @relation(fields: [staffUserId], references: [id])
+
+  @@index([consultationRequestId])
+  @@index([staffUserId, createdAt])
+  @@map("lead_call_logs")
+}
+
+model StaffReminderLog {
+  id          String            @id @default(cuid())
+  staffUserId String            @map("staff_user_id")
+  date        DateTime          @db.Date
+  type        StaffReminderType
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  staffUser StaffUser @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  @@unique([staffUserId, date, type])
+  @@index([date, type])
+  @@map("staff_reminder_logs")
 }
 
 model SalesFunnel {

@@ -1,10 +1,16 @@
 import { AppError } from "@/lib/errors";
 import { normalizePhone } from "@/modules/auth/auth.validators";
-import type { LeadStatus, LeadSource, PurchaseProbability } from "@prisma/client";
+import type {
+  CallOutcome,
+  LeadStatus,
+  LeadSource,
+  PurchaseProbability,
+} from "@prisma/client";
 import type {
   ConsultationListFilter,
   SalesExpertLoginInput,
 } from "./consultation.types";
+import { CALL_OUTCOMES } from "./lead-activity";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -84,6 +90,9 @@ export function validateConsultationListFilter(
 
   const assignedToId = searchParams.get("assignedToId")?.trim() || undefined;
   const onlyUnassigned = searchParams.get("onlyUnassigned") === "true";
+  const onlyTeamQueueRaw = searchParams.get("onlyTeamQueue");
+  const onlyTeamQueue =
+    onlyTeamQueueRaw === "true" || onlyTeamQueueRaw === "1";
   const onlyPendingAssignment =
     searchParams.get("onlyPendingAssignment") === "true";
   const onlyOverdueFollowUp =
@@ -118,6 +127,20 @@ export function validateConsultationListFilter(
     purchaseProbabilityBand = bandRaw as PurchaseProbability;
   }
 
+  let lastCallOutcome: CallOutcome | undefined;
+  const callOutcomeRaw = searchParams.get("lastCallOutcome")?.trim();
+  if (callOutcomeRaw) {
+    if (!CALL_OUTCOMES.includes(callOutcomeRaw as CallOutcome)) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Invalid lastCallOutcome filter",
+        400,
+      );
+    }
+    lastCallOutcome = callOutcomeRaw as CallOutcome;
+  }
+  const onlyNeverCalled = searchParams.get("onlyNeverCalled") === "true";
+
   return {
     phone,
     businessName,
@@ -126,8 +149,11 @@ export function validateConsultationListFilter(
     status,
     source,
     purchaseProbabilityBand,
+    lastCallOutcome,
+    onlyNeverCalled,
     assignedToId,
     onlyUnassigned,
+    onlyTeamQueue,
     onlyPendingAssignment,
     onlyOverdueFollowUp,
     onlyFollowUpDueToday,

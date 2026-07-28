@@ -13,8 +13,13 @@ import {
   bulkUpdateLeadsRequest,
   createManualLeadRequest,
 } from "@/lib/admin-client";
+import { claimConsultationLeadRequest } from "@/lib/expert-client";
 import type { ConsultationListItem } from "@/modules/consultation/consultation.types";
-import type { LeadStatus } from "@prisma/client";
+import {
+  LOST_REASON_LABELS,
+  LOST_REASONS,
+} from "@/modules/consultation/lead-activity";
+import type { LeadStatus, LostReason } from "@prisma/client";
 
 const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
   { value: "assessment_in_progress", label: "در حال انجام تست" },
@@ -38,6 +43,7 @@ interface ConsultationListWithAdminProps {
   assigneeOptions: AssigneeOption[];
   exportQueryString: string;
   isAdmin: boolean;
+  showClaimActions?: boolean;
 }
 
 export function ConsultationListWithAdmin({
@@ -45,6 +51,7 @@ export function ConsultationListWithAdmin({
   assigneeOptions,
   exportQueryString,
   isAdmin,
+  showClaimActions = false,
 }: ConsultationListWithAdminProps) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -52,6 +59,8 @@ export function ConsultationListWithAdmin({
   const bulkStatusOptions = STATUS_OPTIONS.filter(
     (option) => option.value !== "assessment_in_progress",
   );
+  const [bulkLostReason, setBulkLostReason] = useState<LostReason | "">("");
+  const [bulkLostNote, setBulkLostNote] = useState("");
   const [bulkAssigneeId, setBulkAssigneeId] = useState("");
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualName, setManualName] = useState("");
@@ -59,6 +68,7 @@ export function ConsultationListWithAdmin({
   const [manualEmail, setManualEmail] = useState("");
   const [manualMessage, setManualMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -85,8 +95,32 @@ export function ConsultationListWithAdmin({
     });
   }
 
+  async function handleClaim(id: string) {
+    setClaimingId(id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await claimConsultationLeadRequest(id);
+      setSuccess("سرنخ با موفقیت برداشته شد.");
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در برداشتن سرنخ.",
+      );
+    } finally {
+      setClaimingId(null);
+    }
+  }
+
   async function handleBulkStatus() {
     if (selectedIds.size === 0) {
+      return;
+    }
+
+    if (bulkStatus === "closed_lost" && !bulkLostReason) {
+      setError("برای بستن ناموفق، دلیل باخت الزامی است.");
       return;
     }
 
@@ -98,9 +132,19 @@ export function ConsultationListWithAdmin({
       const result = await bulkUpdateLeadsRequest({
         ids: [...selectedIds],
         status: bulkStatus,
+        ...(bulkStatus === "closed_lost" && bulkLostReason
+          ? {
+              lostReason: bulkLostReason,
+              ...(bulkLostReason === "other"
+                ? { lostNote: bulkLostNote.trim() || null }
+                : {}),
+            }
+          : {}),
       });
       setSuccess(`${result.updated.toLocaleString("fa-IR")} لید به‌روزرسانی شد.`);
       setSelectedIds(new Set());
+      setBulkLostReason("");
+      setBulkLostNote("");
       router.refresh();
     } catch (err) {
       setError(
@@ -246,9 +290,14 @@ export function ConsultationListWithAdmin({
             <Select
               id="bulk-status"
               value={bulkStatus}
-              onChange={(event) =>
-                setBulkStatus(event.target.value as LeadStatus)
-              }
+              onChange={(event) => {
+                const nextStatus = event.target.value as LeadStatus;
+                setBulkStatus(nextStatus);
+                if (nextStatus !== "closed_lost") {
+                  setBulkLostReason("");
+                  setBulkLostNote("");
+                }
+              }}
               disabled={loading}
             >
               {bulkStatusOptions.map((option) => (
@@ -258,12 +307,45 @@ export function ConsultationListWithAdmin({
               ))}
             </Select>
           </FieldLabel>
+          {bulkStatus === "closed_lost" ? (
+            <>
+              <FieldLabel label="دلیل باخت" htmlFor="bulk-lost-reason">
+                <Select
+                  id="bulk-lost-reason"
+                  value={bulkLostReason}
+                  onChange={(event) =>
+                    setBulkLostReason(event.target.value as LostReason | "")
+                  }
+                  disabled={loading}
+                  required
+                >
+                  <option value="">انتخاب دلیل</option>
+                  {LOST_REASONS.map((reason) => (
+                    <option key={reason} value={reason}>
+                      {LOST_REASON_LABELS[reason]}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+              {bulkLostReason === "other" ? (
+                <FieldLabel label="توضیح (اختیاری)" htmlFor="bulk-lost-note">
+                  <Input
+                    id="bulk-lost-note"
+                    value={bulkLostNote}
+                    onChange={(event) => setBulkLostNote(event.target.value)}
+                    disabled={loading}
+                  />
+                </FieldLabel>
+              ) : null}
+            </>
+          ) : null}
           <Button
             type="button"
             size="sm"
             onClick={handleBulkStatus}
             loading={loading}
             loadingLabel="در حال اعمال…"
+            disabled={bulkStatus === "closed_lost" && !bulkLostReason}
           >
             اعمال وضعیت
           </Button>
@@ -364,6 +446,11 @@ export function ConsultationListWithAdmin({
                         تماس نگیرید
                       </span>
                     ) : null}
+                    {item.status === "closed_lost" && item.lostReasonLabel ? (
+                      <span className="rounded-full bg-zinc-50 px-2.5 py-0.5 text-xs text-zinc-600">
+                        {item.lostReasonLabel}
+                      </span>
+                    ) : null}
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -435,6 +522,18 @@ export function ConsultationListWithAdmin({
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <div className="flex flex-col gap-1 text-sm">
+                    {showClaimActions && item.assignedToId == null ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void handleClaim(item.id)}
+                        loading={claimingId === item.id}
+                        loadingLabel="در حال برداشتن…"
+                        disabled={claimingId != null}
+                      >
+                        برداشتن سرنخ
+                      </Button>
+                    ) : null}
                     <Link
                       href={item.detailUrl}
                       className="font-medium text-emerald-700 hover:text-emerald-800"

@@ -1,9 +1,22 @@
 import { db } from "@/lib/db";
 import type { CreateConsultationRequestInput } from "@/modules/assessment/assessment.types";
 import type { ConsultationListFilter } from "./consultation.types";
-import type { LeadStatus, Prisma } from "@prisma/client";
+import type {
+  CallOutcome,
+  LeadStatus,
+  Prisma,
+  StaffReminderType,
+} from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import { CAPACITY_COUNTED_LEAD_STATUSES } from "@/modules/staff/staff.repository";
 import type { UpdateConsultationLeadInput } from "./consultation-lead.validators";
 import { compareLeadsByCallQueuePriority } from "./lead-status";
+
+export type ClaimLeadAtomicResult =
+  | "ok"
+  | "already_assigned"
+  | "at_capacity"
+  | "not_claimable";
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
   "assessment_in_progress",
@@ -367,6 +380,62 @@ export async function assignLeadToExpertIfUnassigned(
   return result.count > 0;
 }
 
+/**
+ * Atomically claim an unassigned open lead if the expert is under capacity.
+ * Capacity count + assign run in one transaction to reduce race over-claim.
+ */
+export async function claimLeadIfUnassignedUnderCapacity(
+  leadId: string,
+  expertId: string,
+  maxOpenLeadsPerExpert: number,
+): Promise<ClaimLeadAtomicResult> {
+  return db.$transaction(async (tx) => {
+    const lead = await tx.consultationRequest.findUnique({
+      where: { id: leadId },
+      select: { id: true, assignedToId: true, status: true },
+    });
+
+    if (!lead) {
+      return "not_claimable";
+    }
+
+    if (lead.assignedToId !== null) {
+      return "already_assigned";
+    }
+
+    if (lead.status === "closed_won" || lead.status === "closed_lost") {
+      return "not_claimable";
+    }
+
+    const openCount = await tx.consultationRequest.count({
+      where: {
+        assignedToId: expertId,
+        status: { in: CAPACITY_COUNTED_LEAD_STATUSES },
+      },
+    });
+
+    if (openCount >= maxOpenLeadsPerExpert) {
+      return "at_capacity";
+    }
+
+    const result = await tx.consultationRequest.updateMany({
+      where: { id: leadId, assignedToId: null },
+      data: { assignedToId: expertId },
+    });
+
+    if (result.count === 0) {
+      return "already_assigned";
+    }
+
+    await tx.staffUser.update({
+      where: { id: expertId },
+      data: { lastAssignedAt: new Date() },
+    });
+
+    return "ok";
+  });
+}
+
 function buildConsultationWhere(
   filter: Omit<ConsultationListFilter, "page" | "pageSize">,
 ): Prisma.ConsultationRequestWhereInput {
@@ -415,6 +484,12 @@ function buildConsultationWhere(
     where.purchaseProbabilityBand = filter.purchaseProbabilityBand;
   }
 
+  if (filter.onlyNeverCalled) {
+    where.lastCallOutcome = null;
+  } else if (filter.lastCallOutcome) {
+    where.lastCallOutcome = filter.lastCallOutcome;
+  }
+
   if (filter.onlyHot) {
     where.purchaseProbabilityBand = "high";
   }
@@ -449,10 +524,19 @@ function buildConsultationWhere(
     }
   }
 
-  if (filter.onlyUnassigned) {
+  if (filter.onlyTeamQueue || filter.onlyUnassigned) {
     where.assignedToId = null;
   } else if (filter.assignedToId) {
     where.assignedToId = filter.assignedToId;
+  }
+
+  if (filter.onlyTeamQueue && !filter.status && where.status === undefined) {
+    const openStatuses = filter.excludeAssessmentInProgress
+      ? OPEN_LEAD_STATUSES.filter(
+          (status) => status !== "assessment_in_progress",
+        )
+      : OPEN_LEAD_STATUSES;
+    where.status = { in: openStatuses };
   }
 
   return where;
@@ -580,6 +664,10 @@ export async function updateConsultationLead(
   input: UpdateConsultationLeadInput & {
     firstContactedAt?: Date;
     closedAt?: Date;
+    lastCallOutcome?: CallOutcome | null;
+    lastCalledAt?: Date | null;
+    lostReason?: UpdateConsultationLeadInput["lostReason"];
+    lostNote?: string | null;
   },
 ) {
   const data: Prisma.ConsultationRequestUpdateInput = {};
@@ -611,6 +699,22 @@ export async function updateConsultationLead(
     data.closedAt = input.closedAt;
   }
 
+  if (input.lastCallOutcome !== undefined) {
+    data.lastCallOutcome = input.lastCallOutcome;
+  }
+
+  if (input.lastCalledAt !== undefined) {
+    data.lastCalledAt = input.lastCalledAt;
+  }
+
+  if (input.lostReason !== undefined) {
+    data.lostReason = input.lostReason;
+  }
+
+  if (input.lostNote !== undefined) {
+    data.lostNote = input.lostNote;
+  }
+
   return db.consultationRequest.update({
     where: { id },
     data,
@@ -639,7 +743,14 @@ export async function createManualConsultationRequest(input: {
 export async function createLeadActivity(input: {
   consultationRequestId: string;
   staffUserId?: string | null;
-  type: "created" | "status_change" | "assignment_change" | "note_added" | "probability_override" | "follow_up_set";
+  type:
+    | "created"
+    | "status_change"
+    | "assignment_change"
+    | "note_added"
+    | "probability_override"
+    | "follow_up_set"
+    | "call_logged";
   detail?: string | null;
 }) {
   return db.leadActivity.create({
@@ -648,6 +759,22 @@ export async function createLeadActivity(input: {
       staffUserId: input.staffUserId ?? null,
       type: input.type,
       detail: input.detail ?? null,
+    },
+  });
+}
+
+export async function createLeadCallLog(input: {
+  consultationRequestId: string;
+  staffUserId: string;
+  outcome: CallOutcome;
+  note?: string | null;
+}) {
+  return db.leadCallLog.create({
+    data: {
+      consultationRequestId: input.consultationRequestId,
+      staffUserId: input.staffUserId,
+      outcome: input.outcome,
+      note: input.note ?? null,
     },
   });
 }
@@ -744,6 +871,88 @@ export async function countClosedLeadsSince(
       assignedToId,
       status: { in: ["closed_won", "closed_lost"] },
       updatedAt: { gte: since },
+    },
+  });
+}
+
+/** Due/overdue follow-up counts for open leads, grouped by assignee. */
+export async function countFollowUpsDueByAssignee(byDate: Date) {
+  const rows = await db.consultationRequest.groupBy({
+    by: ["assignedToId"],
+    _count: { id: true },
+    where: {
+      assignedToId: { not: null },
+      nextFollowUpAt: { lte: byDate },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+
+  return rows
+    .filter((row) => row.assignedToId != null)
+    .map((row) => ({
+      assignedToId: row.assignedToId as string,
+      count: row._count.id,
+    }));
+}
+
+export async function countOverdueFollowUpsByAssignee(asOf: Date) {
+  const rows = await db.consultationRequest.groupBy({
+    by: ["assignedToId"],
+    _count: { id: true },
+    where: {
+      assignedToId: { not: null },
+      nextFollowUpAt: { lt: asOf },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+
+  return rows
+    .filter((row) => row.assignedToId != null)
+    .map((row) => ({
+      assignedToId: row.assignedToId as string,
+      count: row._count.id,
+    }));
+}
+
+/**
+ * Atomically claims a daily reminder slot. Returns true if claimed,
+ * false if the unique (staff, date, type) row already exists.
+ */
+export async function tryCreateStaffReminderLog(input: {
+  staffUserId: string;
+  date: Date;
+  type: StaffReminderType;
+}): Promise<boolean> {
+  try {
+    await db.staffReminderLog.create({
+      data: {
+        staffUserId: input.staffUserId,
+        date: input.date,
+        type: input.type,
+      },
+    });
+    return true;
+  } catch (error) {
+    if (
+      error instanceof PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export async function deleteStaffReminderLog(input: {
+  staffUserId: string;
+  date: Date;
+  type: StaffReminderType;
+}): Promise<void> {
+  await db.staffReminderLog.deleteMany({
+    where: {
+      staffUserId: input.staffUserId,
+      date: input.date,
+      type: input.type,
     },
   });
 }

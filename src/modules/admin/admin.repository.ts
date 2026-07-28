@@ -424,4 +424,25 @@ export async function findActiveSalesExperts() {
   });
 }
 
+export async function groupCallLogsByStaffAndOutcomeSince(from: Date) {
+  return db.leadCallLog.groupBy({
+    by: ["staffUserId", "outcome"],
+    _count: { id: true },
+    where: {
+      createdAt: { gte: from },
+    },
+  });
+}
+
+export async function groupClosedLostByReasonSince(from: Date) {
+  return db.consultationRequest.groupBy({
+    by: ["lostReason"],
+    _count: { id: true },
+    where: {
+      status: "closed_lost",
+      closedAt: { gte: from },
+    },
+  });
+}
+
 export { startOfDay, startOfWeek, startOfMonth };

@@ -264,9 +264,10 @@ This installs:
 | Schedule | Endpoint | Purpose |
 |----------|----------|---------|
 | Every 15 min | `POST /api/cron/lead-assignment` | Assign due system leads + notify experts |
+| Every 15 min | `POST /api/cron/follow-up-reminders` | Daily follow-up digest SMS (09:00–11:00 Asia/Tehran; deduped per expert) |
 | Every 5 min | `POST /api/cron/sms-funnel` | Re-queue stale SMS funnel messages |
 
-Logs: `/var/log/sales-health-check/lead-assignment.log` and `sms-funnel.log`.
+Logs: `/var/log/sales-health-check/lead-assignment.log`, `follow-up-reminders.log`, and `sms-funnel.log`.
 
 Manual test:
 
