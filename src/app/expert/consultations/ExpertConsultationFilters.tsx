@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { Input } from "@/components/ui/Input";
@@ -71,9 +71,46 @@ export function ExpertConsultationFilters({
   const [onlyPendingAssignment, setOnlyPendingAssignment] = useState(
     searchParams.get("onlyPendingAssignment") === "true",
   );
+  const [onlyOverdueFollowUp, setOnlyOverdueFollowUp] = useState(
+    searchParams.get("onlyOverdueFollowUp") === "true",
+  );
+  const [onlyFollowUpDueToday, setOnlyFollowUpDueToday] = useState(
+    searchParams.get("onlyFollowUpDueToday") === "true",
+  );
+  const [excludeAssessmentInProgress, setExcludeAssessmentInProgress] =
+    useState(searchParams.get("excludeAssessmentInProgress") === "true");
+  const [onlyStaleNew, setOnlyStaleNew] = useState(
+    searchParams.get("onlyStaleNew") === "true",
+  );
   const [onlyHot, setOnlyHot] = useState(
     searchParams.get("onlyHot") === "true",
   );
+
+  useEffect(() => {
+    setBusinessName(searchParams.get("businessName") ?? "");
+    setPhone(searchParams.get("phone") ?? "");
+    setFrom(searchParams.get("from") ?? "");
+    setTo(searchParams.get("to") ?? "");
+    setStatus(searchParams.get("status") ?? "");
+    setAssignedToId(searchParams.get("assignedToId") ?? "");
+    setOnlyUnassigned(searchParams.get("onlyUnassigned") === "true");
+    setSource(searchParams.get("source") ?? "");
+    setPurchaseProbabilityBand(
+      searchParams.get("purchaseProbabilityBand") ?? "",
+    );
+    setOnlyPendingAssignment(
+      searchParams.get("onlyPendingAssignment") === "true",
+    );
+    setOnlyOverdueFollowUp(searchParams.get("onlyOverdueFollowUp") === "true");
+    setOnlyFollowUpDueToday(
+      searchParams.get("onlyFollowUpDueToday") === "true",
+    );
+    setExcludeAssessmentInProgress(
+      searchParams.get("excludeAssessmentInProgress") === "true",
+    );
+    setOnlyStaleNew(searchParams.get("onlyStaleNew") === "true");
+    setOnlyHot(searchParams.get("onlyHot") === "true");
+  }, [searchParams]);
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -102,6 +139,18 @@ export function ExpertConsultationFilters({
     if (onlyPendingAssignment) {
       params.set("onlyPendingAssignment", "true");
     }
+    if (onlyOverdueFollowUp) {
+      params.set("onlyOverdueFollowUp", "true");
+    }
+    if (onlyFollowUpDueToday) {
+      params.set("onlyFollowUpDueToday", "true");
+    }
+    if (excludeAssessmentInProgress) {
+      params.set("excludeAssessmentInProgress", "true");
+    }
+    if (onlyStaleNew) {
+      params.set("onlyStaleNew", "true");
+    }
     if (onlyHot) {
       params.set("onlyHot", "true");
     }
@@ -127,6 +176,10 @@ export function ExpertConsultationFilters({
     setSource("");
     setPurchaseProbabilityBand("");
     setOnlyPendingAssignment(false);
+    setOnlyOverdueFollowUp(false);
+    setOnlyFollowUpDueToday(false);
+    setExcludeAssessmentInProgress(false);
+    setOnlyStaleNew(false);
     setOnlyHot(false);
     router.push(pathname);
   }
@@ -207,6 +260,50 @@ export function ExpertConsultationFilters({
               className="rounded border-zinc-300"
             />
             فقط در صف تخصیص
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-overdue"
+              type="checkbox"
+              checked={onlyOverdueFollowUp}
+              onChange={(event) => setOnlyOverdueFollowUp(event.target.checked)}
+              className="rounded border-zinc-300"
+            />
+            فقط پیگیری عقب‌افتاده
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-follow-up-today"
+              type="checkbox"
+              checked={onlyFollowUpDueToday}
+              onChange={(event) =>
+                setOnlyFollowUpDueToday(event.target.checked)
+              }
+              className="rounded border-zinc-300"
+            />
+            پیگیری امروز
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-exclude-in-progress"
+              type="checkbox"
+              checked={excludeAssessmentInProgress}
+              onChange={(event) =>
+                setExcludeAssessmentInProgress(event.target.checked)
+              }
+              className="rounded border-zinc-300"
+            />
+            صف تماس (بدون در حال تست)
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              id="filter-stale-new"
+              type="checkbox"
+              checked={onlyStaleNew}
+              onChange={(event) => setOnlyStaleNew(event.target.checked)}
+              className="rounded border-zinc-300"
+            />
+            فقط لید جدید کهنه
           </label>
           <label className="flex items-center gap-2">
             <input

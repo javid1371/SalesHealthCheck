@@ -17,6 +17,12 @@ export interface ConsultationListFilter {
   purchaseProbabilityBand?: PurchaseProbability;
   onlyUnassigned?: boolean;
   onlyPendingAssignment?: boolean;
+  onlyOverdueFollowUp?: boolean;
+  /** Follow-ups due by end of local today (includes future times today). */
+  onlyFollowUpDueToday?: boolean;
+  excludeAssessmentInProgress?: boolean;
+  /** `new` leads older than configured stale threshold (applied in service). */
+  onlyStaleNew?: boolean;
   onlyHot?: boolean;
   onlyMine?: boolean;
   assignedToId?: string;
@@ -163,4 +169,33 @@ export interface ConsultationLeadDetail {
   pendingAssignment: boolean;
   sla: LeadSlaFlags;
   slaReason: string | null;
+}
+
+export interface LeadSmsHistoryMessage {
+  id: string;
+  phone: string;
+  sequenceKey: string;
+  sequenceLabel: string;
+  stepKey: string;
+  status: string;
+  statusLabel: string;
+  scheduledFor: string;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface LeadSmsActiveEnrollment {
+  id: string;
+  sequenceKey: string;
+  sequenceLabel: string;
+  currentStep: string | null;
+  status: string;
+  statusLabel: string;
+  messagesSentCount: number;
+  lastEventAt: string;
+}
+
+export interface ConsultationLeadSmsHistory {
+  activeEnrollments: LeadSmsActiveEnrollment[];
+  messages: LeadSmsHistoryMessage[];
 }

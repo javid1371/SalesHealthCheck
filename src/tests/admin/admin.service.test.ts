@@ -57,6 +57,19 @@ vi.mock("@/modules/sms-funnel/funnel.repository", () => ({
   listRecentSmsMessages: vi.fn(),
 }));
 
+vi.mock("@/modules/consultation/lead-config.service", () => ({
+  getLeadSettings: vi.fn().mockResolvedValue({
+    autoAssignEnabled: true,
+    systemAssignDelayHours: 24,
+    expertNewLeadSms: "لید جدید داری\nچک کن",
+    maxOpenLeadsPerExpert: 30,
+    hotLeadDirectAssigneeId: null,
+    assessmentIncompleteAfterHours: 24,
+    autoAssignExcludeStaffIds: [],
+    staleNewLeadHours: 24,
+  }),
+}));
+
 import {
   getAdminDashboard,
   requireAdminSession,
@@ -93,6 +106,7 @@ import {
   getFullConversionFunnelMetrics,
   listRecentSmsMessages,
 } from "@/modules/sms-funnel/funnel.repository";
+import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 
 describe("verifyAdminPassword", () => {
   beforeEach(() => {
@@ -343,6 +357,9 @@ describe("getAdminDashboard", () => {
         newThisWeek: 2,
       },
     ]);
+    expect(getLeadSettings).toHaveBeenCalled();
+    expect(countStaleNewLeads).toHaveBeenCalledWith(24);
+    expect(findUrgentLeads).toHaveBeenCalledWith(10, 24);
     expect(dashboard.leadKpis).toEqual({
       newThisWeek: 7,
       pendingAssignment: 2,

@@ -403,6 +403,8 @@ function buildConsultationWhere(
 
   if (filter.status) {
     where.status = filter.status;
+  } else if (filter.excludeAssessmentInProgress) {
+    where.status = { not: "assessment_in_progress" };
   }
 
   if (filter.source) {
@@ -421,6 +423,30 @@ function buildConsultationWhere(
     where.source = "system";
     where.assignedToId = null;
     where.assignScheduledFor = { not: null };
+  }
+
+  if (filter.onlyOverdueFollowUp) {
+    where.nextFollowUpAt = { lt: new Date() };
+    if (!filter.status) {
+      const openStatuses = filter.excludeAssessmentInProgress
+        ? OPEN_LEAD_STATUSES.filter(
+            (status) => status !== "assessment_in_progress",
+          )
+        : OPEN_LEAD_STATUSES;
+      where.status = { in: openStatuses };
+    }
+  } else if (filter.onlyFollowUpDueToday) {
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    where.nextFollowUpAt = { lte: endOfToday };
+    if (!filter.status) {
+      const openStatuses = filter.excludeAssessmentInProgress
+        ? OPEN_LEAD_STATUSES.filter(
+            (status) => status !== "assessment_in_progress",
+          )
+        : OPEN_LEAD_STATUSES;
+      where.status = { in: openStatuses };
+    }
   }
 
   if (filter.onlyUnassigned) {

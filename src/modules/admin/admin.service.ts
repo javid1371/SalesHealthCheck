@@ -36,6 +36,7 @@ import {
   startOfWeek,
 } from "./admin.repository";
 import { healthLevelLabelFa } from "@/lib/health-level";
+import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 import type {
   AdminAssessmentDetail,
   AdminAssessmentFilter,
@@ -370,10 +371,11 @@ function classifyUrgentLeadReason(
 
 function mapUrgentLeads(
   leads: Awaited<ReturnType<typeof findUrgentLeads>>,
+  staleNewLeadHours: number,
 ): AdminUrgentLeadRow[] {
   const now = new Date();
   const staleThreshold = new Date(
-    now.getTime() - STALE_NEW_LEAD_HOURS * 60 * 60 * 1000,
+    now.getTime() - staleNewLeadHours * 60 * 60 * 1000,
   );
 
   return leads.map((lead) => ({
@@ -388,6 +390,12 @@ function mapUrgentLeads(
 export async function getAdminDashboard(): Promise<AdminDashboardData> {
   const weekStart = startOfWeek();
   const monthStart = startOfMonth();
+  const leadSettings = await getLeadSettings();
+  const staleNewLeadHours =
+    Number.isFinite(leadSettings.staleNewLeadHours) &&
+    leadSettings.staleNewLeadHours > 0
+      ? leadSettings.staleNewLeadHours
+      : STALE_NEW_LEAD_HOURS;
 
   const [
     usersStartedThisWeek,
@@ -431,7 +439,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     countLeadsByStatus(),
     countPendingAssignmentLeads(),
     countOverdueFollowUps(),
-    countStaleNewLeads(STALE_NEW_LEAD_HOURS),
+    countStaleNewLeads(staleNewLeadHours),
     countHighProbabilityUnassigned(),
     countLeadsCreatedInRange(weekStart),
     groupLeadsBySource(),
@@ -440,7 +448,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     findLeadsWithClose(),
     countOverdueFollowUpsByAssignee(),
     countNewLeadsThisWeekByAssignee(weekStart),
-    findUrgentLeads(10),
+    findUrgentLeads(10, staleNewLeadHours),
   ]);
 
   const leadStatusFunnel = buildLeadStatusFunnel(leadStatusGroups);
@@ -570,7 +578,7 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     leadStatusFunnel,
     leadSourceBreakdown,
     salesMetrics,
-    urgentLeads: mapUrgentLeads(urgentLeadRows),
+    urgentLeads: mapUrgentLeads(urgentLeadRows, staleNewLeadHours),
     expertPerformance,
     smsFunnel: await getSmsFunnelAdminMetrics(),
     recentSmsMessages: (await listRecentSmsMessages(10)).map((row) => ({

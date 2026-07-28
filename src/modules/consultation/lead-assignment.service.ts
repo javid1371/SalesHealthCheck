@@ -27,7 +27,15 @@ import {
   upgradeConsultationRequestToMessenger,
 } from "./consultation.repository";
 import { computePurchaseProbability } from "./lead-insights";
-import { getLeadSettings } from "./lead-config.service";
+import {
+  DEFAULT_EXPERT_NEW_LEAD_SMS,
+  getLeadSettings,
+} from "./lead-config.service";
+import {
+  EXPERT_NEW_LEAD_SMS_MAX_LENGTH,
+  renderExpertNewLeadSms,
+  type ExpertNewLeadSmsLead,
+} from "./expert-new-lead-sms";
 import {
   findStaffUserById,
   pickNextSalesExpert,
@@ -135,11 +143,41 @@ export type AssignLeadOptions = {
   notifyExpert?: boolean;
 };
 
-async function sendExpertNewLeadSms(expertPhone: string): Promise<void> {
+function toExpertNewLeadSmsLead(lead: {
+  id: string;
+  name: string;
+  phone?: string | null;
+  purchaseProbabilityPercent?: number | null;
+  purchaseProbabilityBand?: ExpertNewLeadSmsLead["purchaseProbabilityBand"];
+  adminProbabilityOverridePercent?: number | null;
+}): ExpertNewLeadSmsLead {
+  return {
+    id: lead.id,
+    name: lead.name,
+    phone: lead.phone,
+    purchaseProbabilityPercent: lead.purchaseProbabilityPercent,
+    purchaseProbabilityBand: lead.purchaseProbabilityBand,
+    adminProbabilityOverridePercent: lead.adminProbabilityOverridePercent,
+  };
+}
+
+async function sendExpertNewLeadSms(
+  expertPhone: string,
+  lead: ExpertNewLeadSmsLead,
+): Promise<void> {
   const settings = await getLeadSettings();
+  let body = renderExpertNewLeadSms(settings.expertNewLeadSms, lead);
+  if (body.length > EXPERT_NEW_LEAD_SMS_MAX_LENGTH) {
+    console.warn(
+      "[lead-assignment] expert SMS exceeds max length after interpolate; falling back to default body",
+      { leadId: lead.id, length: body.length },
+    );
+    body = DEFAULT_EXPERT_NEW_LEAD_SMS;
+  }
+
   try {
     const sender = await createSmsSenderFromSettings();
-    await sender.sendMessage(expertPhone, settings.expertNewLeadSms);
+    await sender.sendMessage(expertPhone, body);
   } catch (error) {
     console.error("[lead-assignment] failed to notify expert via SMS:", error);
   }
@@ -160,7 +198,7 @@ export async function notifyAssignedExpertOfLead(leadId: string): Promise<void> 
     return;
   }
 
-  await sendExpertNewLeadSms(expert.phone);
+  await sendExpertNewLeadSms(expert.phone, toExpertNewLeadSmsLead(lead));
 }
 
 export async function autoAssignAndNotifyLead(
@@ -183,6 +221,11 @@ export async function autoAssignAndNotifyLead(
 
   const expert = await pickNextSalesExpert({
     excludeIds: settings.autoAssignExcludeStaffIds,
+    maxOpenLeadsPerExpert: settings.maxOpenLeadsPerExpert,
+    preferStaffId:
+      lead.purchaseProbabilityBand === "high"
+        ? settings.hotLeadDirectAssigneeId
+        : null,
   });
   if (!expert) {
     console.warn("[lead-assignment] no active sales expert with phone found");
@@ -198,7 +241,7 @@ export async function autoAssignAndNotifyLead(
     return;
   }
 
-  await sendExpertNewLeadSms(expert.phone);
+  await sendExpertNewLeadSms(expert.phone, toExpertNewLeadSmsLead(lead));
 }
 
 export type FinalizeNewLeadOptions = {

@@ -86,6 +86,7 @@ export async function updateLeadSettingsRequest(input: {
   hotLeadDirectAssigneeId?: string | null;
   assessmentIncompleteAfterHours?: number;
   autoAssignExcludeStaffIds?: string[];
+  staleNewLeadHours?: number;
 }) {
   return apiPatch<{
     settings: import("@/modules/consultation/lead-config.service").LeadSettings;

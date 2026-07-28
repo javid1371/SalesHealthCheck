@@ -290,6 +290,61 @@ export async function findSmsMessageByDedupeKey(dedupeKey: string) {
   return db.smsMessage.findUnique({ where: { dedupeKey } });
 }
 
+export async function findActiveCallScheduledEnrollment(input: {
+  userId: string;
+  assessmentSessionId?: string | null;
+}) {
+  return db.funnelEnrollment.findFirst({
+    where: {
+      userId: input.userId,
+      sequenceKey: "seq_call_scheduled",
+      status: "active",
+      assessmentSessionId: input.assessmentSessionId ?? null,
+    },
+    select: { id: true },
+  });
+}
+
+export async function listPendingSmsForEnrollment(enrollmentId: string) {
+  return db.smsMessage.findMany({
+    where: {
+      enrollmentId,
+      status: "pending",
+    },
+    select: {
+      id: true,
+      stepKey: true,
+      dedupeKey: true,
+      enrollmentId: true,
+      sequenceKey: true,
+      scheduledFor: true,
+    },
+  });
+}
+
+export async function updateSmsMessageScheduledFor(
+  id: string,
+  scheduledFor: Date,
+) {
+  return db.smsMessage.updateMany({
+    where: { id, status: "pending" },
+    data: { scheduledFor },
+  });
+}
+
+export async function cancelPendingSmsMessage(
+  id: string,
+  error: string,
+) {
+  return db.smsMessage.updateMany({
+    where: { id, status: "pending" },
+    data: {
+      status: "canceled",
+      error,
+    },
+  });
+}
+
 export async function createShortLink(input: {
   slug: string;
   targetUrl: string;
@@ -347,6 +402,89 @@ export async function listRecentSmsMessages(limit = 20) {
       createdAt: true,
     },
   });
+}
+
+const leadSmsMessageSelect = {
+  id: true,
+  phone: true,
+  sequenceKey: true,
+  stepKey: true,
+  status: true,
+  scheduledFor: true,
+  sentAt: true,
+  createdAt: true,
+  error: true,
+} as const;
+
+const leadEnrollmentSelect = {
+  id: true,
+  sequenceKey: true,
+  currentStep: true,
+  status: true,
+  messagesSentCount: true,
+  lastEventAt: true,
+} as const;
+
+/**
+ * Lead SMS history: messages matching lead phone and/or assessment user phone,
+ * plus messages linked via enrollment when assessmentSessionId is present.
+ * Active enrollments for the same scope are returned for the detail panel.
+ */
+export async function listLeadSmsHistory(input: {
+  phones: string[];
+  assessmentSessionId?: string | null;
+  limit?: number;
+}) {
+  const phones = [...new Set(input.phones.map((p) => p.trim()).filter(Boolean))];
+  const assessmentSessionId = input.assessmentSessionId ?? null;
+  const limit = input.limit ?? 50;
+
+  const messageOr: Prisma.SmsMessageWhereInput[] = [];
+  if (phones.length > 0) {
+    messageOr.push({ phone: { in: phones } });
+  }
+  if (assessmentSessionId) {
+    messageOr.push({
+      enrollment: { assessmentSessionId },
+    });
+  }
+
+  const enrollmentOr: Prisma.FunnelEnrollmentWhereInput[] = [];
+  if (assessmentSessionId) {
+    enrollmentOr.push({ assessmentSessionId });
+  }
+  if (phones.length > 0) {
+    enrollmentOr.push({
+      smsMessages: { some: { phone: { in: phones } } },
+    });
+  }
+
+  if (messageOr.length === 0 && enrollmentOr.length === 0) {
+    return { messages: [], activeEnrollments: [] };
+  }
+
+  const [messages, activeEnrollments] = await Promise.all([
+    messageOr.length === 0
+      ? Promise.resolve([])
+      : db.smsMessage.findMany({
+          where: { OR: messageOr },
+          orderBy: [{ createdAt: "desc" }, { scheduledFor: "desc" }],
+          take: limit,
+          select: leadSmsMessageSelect,
+        }),
+    enrollmentOr.length === 0
+      ? Promise.resolve([])
+      : db.funnelEnrollment.findMany({
+          where: {
+            status: "active",
+            OR: enrollmentOr,
+          },
+          orderBy: { lastEventAt: "desc" },
+          select: leadEnrollmentSelect,
+        }),
+  ]);
+
+  return { messages, activeEnrollments };
 }
 
 export async function listSmsOptOuts(limit = 50) {

@@ -4,6 +4,7 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Card } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/LinkButton";
 import { readAdminSession } from "@/lib/session";
+import { startOfWeek } from "@/modules/admin/admin.repository";
 import { getAdminDashboard } from "@/modules/admin/admin.service";
 import type {
   AdminFullConversionFunnel,
@@ -11,16 +12,25 @@ import type {
 } from "@/modules/admin/admin.types";
 import { AdminNav } from "../AdminNav";
 
+function toDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function KpiCard({
   label,
   value,
   suffix,
   highlight,
+  href,
 }: {
   label: string;
   value: number;
   suffix?: string;
   highlight?: "amber" | "red";
+  href?: string;
 }) {
   const valueColor =
     highlight === "red"
@@ -29,8 +39,8 @@ function KpiCard({
         ? "text-amber-700"
         : "text-zinc-900";
 
-  return (
-    <Card className="text-center">
+  const content = (
+    <>
       <p className="text-sm text-zinc-600">{label}</p>
       <p className={`mt-2 text-3xl font-semibold ${valueColor}`}>
         {value.toLocaleString("fa-IR")}
@@ -38,8 +48,22 @@ function KpiCard({
           <span className="text-lg font-normal text-zinc-600">{suffix}</span>
         ) : null}
       </p>
-    </Card>
+    </>
   );
+
+  if (href) {
+    return (
+      <Card
+        as={Link}
+        href={href}
+        className="text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+      >
+        {content}
+      </Card>
+    );
+  }
+
+  return <Card className="text-center">{content}</Card>;
 }
 
 function formatSmsDate(iso: string): string {
@@ -246,6 +270,19 @@ export default async function AdminDashboardPage() {
   }
 
   const dashboard = await getAdminDashboard();
+  const weekStartFrom = toDateInputValue(startOfWeek());
+  const consultationsNewThisWeekHref = `/expert/consultations?from=${weekStartFrom}`;
+  const consultationsPendingAssignmentHref =
+    "/expert/consultations?onlyPendingAssignment=true";
+  const consultationsOverdueHref =
+    "/expert/consultations?onlyOverdueFollowUp=true";
+  const consultationsStatusNewHref = "/expert/consultations?status=new";
+  const consultationsStaleNewHref =
+    "/expert/consultations?onlyStaleNew=true";
+  const consultationsCallQueueHref =
+    "/expert/consultations?excludeAssessmentInProgress=true";
+  const consultationsHotUnassignedHref =
+    "/expert/consultations?onlyHot=true&onlyUnassigned=true";
 
   return (
     <PageLayout
@@ -265,32 +302,50 @@ export default async function AdminDashboardPage() {
         <section className="mb-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-zinc-900">لیدهای فوری</h2>
-            <LinkButton href="/expert/consultations" variant="secondary" size="sm">
-              همه لیدها
-            </LinkButton>
+            <div className="flex flex-wrap gap-2">
+              <LinkButton
+                href={consultationsCallQueueHref}
+                variant="secondary"
+                size="sm"
+              >
+                صف تماس
+              </LinkButton>
+              <LinkButton href="/expert/consultations" variant="secondary" size="sm">
+                همه لیدها
+              </LinkButton>
+            </div>
           </div>
           <Card className="border-amber-200 bg-amber-50/50">
             <div className="mb-4 grid gap-3 sm:grid-cols-3">
-              <div className="text-center">
+              <Link
+                href={consultationsHotUnassignedHref}
+                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
+              >
                 <p className="text-sm text-zinc-600">احتمال بالا — بدون تخصیص</p>
                 <p className="mt-1 text-2xl font-semibold text-amber-800">
                   {dashboard.leadKpis.highProbabilityUnassigned.toLocaleString(
                     "fa-IR",
                   )}
                 </p>
-              </div>
-              <div className="text-center">
+              </Link>
+              <Link
+                href={consultationsStaleNewHref}
+                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
+              >
                 <p className="text-sm text-zinc-600">لید جدید کهنه</p>
                 <p className="mt-1 text-2xl font-semibold text-amber-800">
                   {dashboard.leadKpis.staleNewLeads.toLocaleString("fa-IR")}
                 </p>
-              </div>
-              <div className="text-center">
+              </Link>
+              <Link
+                href={consultationsOverdueHref}
+                className="rounded-lg text-center transition-colors hover:bg-amber-100/60"
+              >
                 <p className="text-sm text-zinc-600">پیگیری عقب‌افتاده</p>
                 <p className="mt-1 text-2xl font-semibold text-red-700">
                   {dashboard.leadKpis.overdueFollowUps.toLocaleString("fa-IR")}
                 </p>
-              </div>
+              </Link>
             </div>
             {dashboard.urgentLeads.length > 0 ? (
               <ul className="divide-y divide-amber-200/80 border-t border-amber-200/80">
@@ -342,6 +397,7 @@ export default async function AdminDashboardPage() {
           <KpiCard
             label="لید جدید این هفته"
             value={dashboard.leadKpis.newThisWeek}
+            href={consultationsNewThisWeekHref}
           />
           <KpiCard
             label="در صف تخصیص"
@@ -349,6 +405,7 @@ export default async function AdminDashboardPage() {
             highlight={
               dashboard.leadKpis.pendingAssignment > 0 ? "amber" : undefined
             }
+            href={consultationsPendingAssignmentHref}
           />
           <KpiCard
             label="پیگیری عقب‌افتاده"
@@ -356,6 +413,7 @@ export default async function AdminDashboardPage() {
             highlight={
               dashboard.leadKpis.overdueFollowUps > 0 ? "red" : undefined
             }
+            href={consultationsOverdueHref}
           />
           <KpiCard
             label="نرخ بستن"
@@ -473,6 +531,7 @@ export default async function AdminDashboardPage() {
           <KpiCard
             label="درخواست مشاوره جدید (نفر)"
             value={dashboard.kpis.usersNewConsultations}
+            href={consultationsStatusNewHref}
           />
         </div>
         <div className="mt-4 space-y-1 text-sm text-zinc-500">
@@ -713,6 +772,12 @@ export default async function AdminDashboardPage() {
           className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
         >
           مشاهده همه ارزیابی‌ها ←
+        </Link>
+        <Link
+          href={consultationsCallQueueHref}
+          className="text-sm font-medium text-emerald-700 hover:text-emerald-800"
+        >
+          صف تماس ←
         </Link>
         <Link
           href="/expert/consultations"

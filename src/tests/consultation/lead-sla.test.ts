@@ -32,6 +32,20 @@ describe("computeLeadSlaFlags", () => {
     expect(slaReasonLabel(flags)).toBe("لید جدید کهنه");
   });
 
+  it("respects custom staleNewLeadHours threshold", () => {
+    const createdAt = new Date(Date.now() - 30 * 60 * 60 * 1000);
+    const row = {
+      status: "new" as const,
+      createdAt,
+      nextFollowUpAt: null,
+      assignedToId: "expert-1",
+      purchaseProbabilityBand: null,
+    };
+
+    expect(computeLeadSlaFlags(row, 48).staleNew).toBe(false);
+    expect(computeLeadSlaFlags(row, 24).staleNew).toBe(true);
+  });
+
   it("flags high-probability unassigned as amber", () => {
     const flags = computeLeadSlaFlags({
       status: "new",

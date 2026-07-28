@@ -37,6 +37,7 @@ describe("lead config and bulk updates (integration)", () => {
     expect(settings.systemAssignDelayHours).toBeGreaterThanOrEqual(0);
     expect(settings.expertNewLeadSms.length).toBeGreaterThan(0);
     expect(settings.maxOpenLeadsPerExpert).toBeGreaterThan(0);
+    expect(settings.staleNewLeadHours).toBeGreaterThan(0);
     expect(settings.hotLeadDirectAssigneeId).toBeNull();
   });
 

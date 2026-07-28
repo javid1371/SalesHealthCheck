@@ -1,5 +1,18 @@
-import type { StaffRole } from "@prisma/client";
+import type { LeadStatus, StaffRole } from "@prisma/client";
 import { db } from "@/lib/db";
+
+/**
+ * Open lead statuses that count toward expert capacity.
+ * `assessment_in_progress` is excluded so mid-test soft-assign never blocks.
+ */
+export const CAPACITY_COUNTED_LEAD_STATUSES: LeadStatus[] = [
+  "assessment_incomplete",
+  "assessment_completed",
+  "new",
+  "contacted",
+  "meeting_scheduled",
+  "unreachable",
+];
 
 export async function findStaffUserByPhone(phone: string) {
   return db.staffUser.findUnique({ where: { phone } });
@@ -64,8 +77,13 @@ export async function touchLastLogin(id: string) {
 
 export async function pickNextSalesExpert(options?: {
   excludeIds?: string[];
+  maxOpenLeadsPerExpert?: number;
+  /** Prefer this expert when eligible (active, not excluded, under capacity). */
+  preferStaffId?: string | null;
 }) {
   const excludeIds = (options?.excludeIds ?? []).filter(Boolean);
+  const maxOpen = options?.maxOpenLeadsPerExpert;
+  const preferStaffId = options?.preferStaffId?.trim() || null;
 
   return db.$transaction(async (tx) => {
     const experts = await tx.staffUser.findMany({
@@ -85,7 +103,39 @@ export async function pickNextSalesExpert(options?: {
       return null;
     }
 
-    const expert = experts[0];
+    let eligible = experts;
+
+    if (maxOpen !== undefined && Number.isFinite(maxOpen) && maxOpen > 0) {
+      const expertIds = experts.map((expert) => expert.id);
+      const counts = await tx.consultationRequest.groupBy({
+        by: ["assignedToId"],
+        _count: { id: true },
+        where: {
+          assignedToId: { in: expertIds },
+          status: { in: CAPACITY_COUNTED_LEAD_STATUSES },
+        },
+      });
+      const openCountByExpertId = new Map(
+        counts
+          .filter((row) => row.assignedToId != null)
+          .map((row) => [row.assignedToId as string, row._count.id]),
+      );
+
+      eligible = experts.filter(
+        (expert) => (openCountByExpertId.get(expert.id) ?? 0) < maxOpen,
+      );
+    }
+
+    if (eligible.length === 0) {
+      return null;
+    }
+
+    const preferred =
+      preferStaffId != null
+        ? eligible.find((expert) => expert.id === preferStaffId)
+        : undefined;
+    const expert = preferred ?? eligible[0];
+
     await tx.staffUser.update({
       where: { id: expert.id },
       data: { lastAssignedAt: new Date() },

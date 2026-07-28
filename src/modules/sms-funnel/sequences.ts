@@ -20,6 +20,12 @@ export interface SequenceStepDefinition {
   linkPurpose: StepLinkPurpose;
   /** Optional score-band overrides keyed by band. */
   bodyByScoreBand?: Partial<Record<ScoreBand, string>>;
+  /**
+   * For `seq_call_scheduled` reminder steps: offset from the call / follow-up
+   * time (negative = before). Used when CRM sets `nextFollowUpAt`.
+   * Immediate confirmation (`delayMs: 0`) omits this and is never rescheduled.
+   */
+  callOffsetMs?: number;
   /** Skip this step when guard returns false at schedule time (optional). */
   requiresNoReportView?: boolean;
   requiresNoConsultation?: boolean;
@@ -198,7 +204,9 @@ export const FUNNEL_SEQUENCES: Record<SequenceKey, SequenceDefinition> = {
       },
       {
         stepKey: "S6-2",
+        // Approximate when no follow-up time is known (assume call ~24h after submit).
         delayMs: 24 * MS.hour,
+        callOffsetMs: -24 * MS.hour,
         linkPurpose: null,
         hasLink: false,
         body:
@@ -207,6 +215,7 @@ export const FUNNEL_SEQUENCES: Record<SequenceKey, SequenceDefinition> = {
       {
         stepKey: "S6-3",
         delayMs: 22 * MS.hour,
+        callOffsetMs: -2 * MS.hour,
         linkPurpose: null,
         hasLink: false,
         body:
@@ -215,6 +224,7 @@ export const FUNNEL_SEQUENCES: Record<SequenceKey, SequenceDefinition> = {
       {
         stepKey: "S6-4",
         delayMs: 26 * MS.hour,
+        callOffsetMs: 2 * MS.hour,
         linkPurpose: "consultation",
         body:
           "به نظر می‌رسد تماس امروز انجام نشد. اگر هنوز مایلید گزارش فروش‌تان بررسی شود، می‌توانید زمان جدید انتخاب کنید:",
@@ -241,4 +251,12 @@ export function resolveStepBody(
 
 export function stepIncludesLink(step: SequenceStepDefinition): boolean {
   return step.hasLink !== false && step.linkPurpose !== null;
+}
+
+/** Offset from call/follow-up for call-scheduled reminder steps; null = do not reschedule. */
+export function getCallScheduledOffsetMs(stepKey: string): number | null {
+  const step = FUNNEL_SEQUENCES[SEQUENCE_KEYS.callScheduled].steps.find(
+    (item) => item.stepKey === stepKey,
+  );
+  return step?.callOffsetMs ?? null;
 }

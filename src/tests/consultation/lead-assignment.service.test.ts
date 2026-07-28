@@ -42,10 +42,24 @@ const leadConfigMock = vi.hoisted(() => ({
   getLeadSettings: vi.fn(),
 }));
 
+vi.mock("@/lib/env", () => ({
+  env: {
+    appBaseUrl: "https://app.example.com",
+  },
+}));
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 vi.mock("@/modules/assessment/assessment.repository", () => assessmentMock);
 vi.mock("@/modules/staff/staff.repository", () => staffMock);
-vi.mock("@/modules/consultation/lead-config.service", () => leadConfigMock);
+vi.mock("@/modules/consultation/lead-config.service", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/modules/consultation/lead-config.service")
+  >();
+  return {
+    ...actual,
+    getLeadSettings: (...args: unknown[]) =>
+      leadConfigMock.getLeadSettings(...args),
+  };
+});
 vi.mock("@/modules/auth/sms/kavenegar", () => ({
   createSmsSenderFromSettings: async () => ({ sendMessage: smsMock.sendMessage }),
 }));
@@ -64,9 +78,14 @@ describe("lead-assignment.service", () => {
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
       assignedToId: null,
       assessmentSessionId: null,
       status: "new",
+      purchaseProbabilityPercent: null,
+      purchaseProbabilityBand: null,
+      adminProbabilityOverridePercent: null,
     });
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
     repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
@@ -121,6 +140,8 @@ describe("lead-assignment.service", () => {
 
     expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
       excludeIds: [],
+      maxOpenLeadsPerExpert: 30,
+      preferStaffId: null,
     });
     expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalledWith(
       "lead-1",
@@ -129,6 +150,81 @@ describe("lead-assignment.service", () => {
     expect(smsMock.sendMessage).toHaveBeenCalledWith(
       "09121111111",
       "لید جدید داری\nچک کن",
+    );
+  });
+
+  it("interpolates expert SMS placeholders and includes lead detail URL", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms:
+        "لید {{name}} — {{phone}} — {{probability}}\n{{detailUrl}}",
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-9",
+      name: "سارا",
+      phone: "09123334444",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      purchaseProbabilityPercent: 72,
+      purchaseProbabilityBand: "high",
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-9");
+
+    expect(smsMock.sendMessage).toHaveBeenCalledWith(
+      "09121111111",
+      "لید سارا — 09123334444 — بالا — 72٪\nhttps://app.example.com/expert/consultations/lead-9",
+    );
+  });
+
+  it("falls back to default expert SMS when interpolated body exceeds max length", async () => {
+    const longName = "ن".repeat(480);
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: `لید {{name}} {{detailUrl}}`,
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-long",
+      name: longName,
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      purchaseProbabilityPercent: null,
+      purchaseProbabilityBand: null,
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+    const { DEFAULT_EXPERT_NEW_LEAD_SMS } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-long");
+
+    expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalled();
+    expect(smsMock.sendMessage).toHaveBeenCalledWith(
+      "09121111111",
+      DEFAULT_EXPERT_NEW_LEAD_SMS,
     );
   });
 
@@ -151,6 +247,78 @@ describe("lead-assignment.service", () => {
 
     expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
       excludeIds: ["amin-id"],
+      maxOpenLeadsPerExpert: 30,
+      preferStaffId: null,
+    });
+  });
+
+  it("passes hotLeadDirectAssigneeId as preferStaffId only for high-band leads", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 20,
+      hotLeadDirectAssigneeId: "hot-expert",
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      purchaseProbabilityPercent: 80,
+      purchaseProbabilityBand: "high",
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 20,
+      preferStaffId: "hot-expert",
+    });
+  });
+
+  it("does not prefer hot assignee for non-high purchase probability", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 20,
+      hotLeadDirectAssigneeId: "hot-expert",
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "assessment_in_progress",
+      purchaseProbabilityPercent: null,
+      purchaseProbabilityBand: null,
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 20,
+      preferStaffId: null,
     });
   });
 
@@ -376,9 +544,14 @@ describe("lead-assignment.service", () => {
   it("upgradeExistingLeadToDirect sets new status path and notifies assigned expert", async () => {
     repoMock.findConsultationRequestById.mockImplementation(async () => ({
       id: "existing-lead",
+      name: "Direct User",
+      phone: "09123456789",
       status: "assessment_completed",
       assignedToId: "expert-1",
       assessmentSessionId: "assessment-1",
+      purchaseProbabilityPercent: null,
+      purchaseProbabilityBand: null,
+      adminProbabilityOverridePercent: null,
     }));
     repoMock.upgradeConsultationRequestToDirect.mockResolvedValue({
       id: "existing-lead",
@@ -418,9 +591,14 @@ describe("lead-assignment.service", () => {
     async (fromStatus) => {
       repoMock.findConsultationRequestById.mockImplementation(async () => ({
         id: "pipeline-lead",
+        name: "Consult User",
+        phone: "09123456789",
         status: fromStatus,
         assignedToId: "expert-1",
         assessmentSessionId: "assessment-1",
+        purchaseProbabilityPercent: null,
+        purchaseProbabilityBand: null,
+        adminProbabilityOverridePercent: null,
       }));
       repoMock.upgradeConsultationRequestToDirect.mockResolvedValue({
         id: "pipeline-lead",
@@ -454,9 +632,14 @@ describe("lead-assignment.service", () => {
   it("upgradeExistingLeadToMessenger notifies assigned expert on consultation upgrade", async () => {
     repoMock.findConsultationRequestById.mockImplementation(async () => ({
       id: "messenger-lead",
+      name: "Messenger User",
+      phone: "09123456789",
       status: "assessment_in_progress",
       assignedToId: "expert-1",
       assessmentSessionId: "assessment-1",
+      purchaseProbabilityPercent: null,
+      purchaseProbabilityBand: null,
+      adminProbabilityOverridePercent: null,
     }));
     repoMock.upgradeConsultationRequestToMessenger.mockResolvedValue({
       id: "messenger-lead",
@@ -636,8 +819,13 @@ describe("lead-assignment.service", () => {
     repoMock.findConsultationRequestById.mockImplementation(
       async (id: string) => ({
         id,
+        name: "Open Lead",
+        phone: "09120000000",
         assignedToId: assigned.has(id) ? "expert-1" : null,
         status: id === "open-2" ? "assessment_in_progress" : "new",
+        purchaseProbabilityPercent: null,
+        purchaseProbabilityBand: null,
+        adminProbabilityOverridePercent: null,
       }),
     );
     repoMock.assignLeadToExpertIfUnassigned.mockImplementation(

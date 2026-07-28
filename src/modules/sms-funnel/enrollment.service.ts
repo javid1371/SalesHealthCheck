@@ -1,9 +1,13 @@
 import {
+  cancelPendingSmsMessage,
   createPendingSmsMessage,
+  findActiveCallScheduledEnrollment,
   findSmsMessageByDedupeKey,
   findUserPhone,
   hasUserSmsForStep,
+  listPendingSmsForEnrollment,
   stopEnrollmentsForUser,
+  updateSmsMessageScheduledFor,
   upsertFunnelEnrollment,
 } from "./funnel.repository";
 import { nextAllowedSmsSendTime } from "./quiet-hours";
@@ -12,9 +16,16 @@ import {
   getResolvedSequence,
   isFunnelEnabledFromSettings,
 } from "./funnel-config.service";
-import type { SequenceKey } from "./sequences";
+import {
+  getCallScheduledOffsetMs,
+  type SequenceKey,
+} from "./sequences";
 import { buildDedupeKey } from "./sms-funnel.types";
-import { enqueueSmsFunnelJob } from "./sms-funnel.queue";
+import {
+  enqueueSmsFunnelJob,
+  removeSmsFunnelJob,
+  rescheduleSmsFunnelJob,
+} from "./sms-funnel.queue";
 import { processSmsFunnelJob } from "./sms-funnel.processor";
 
 export interface EnrollContext {
@@ -202,4 +213,129 @@ export async function onConsultationSubmitted(
     userId,
     assessmentSessionId,
   });
+}
+
+export type CallScheduledRescheduleAction =
+  | {
+      type: "cancel";
+      messageId: string;
+      dedupeKey: string;
+      stepKey: string;
+    }
+  | {
+      type: "reschedule";
+      messageId: string;
+      dedupeKey: string;
+      stepKey: string;
+      sequenceKey: string;
+      enrollmentId: string;
+      scheduledFor: Date;
+    };
+
+/**
+ * Pure planner: for each pending call-scheduled reminder, either cancel (send
+ * time already past relative to follow-up) or reschedule to follow-up + offset.
+ * Confirmation step S6-1 (no callOffsetMs) is left untouched.
+ */
+export function planCallScheduledReschedule(input: {
+  pendingMessages: Array<{
+    id: string;
+    stepKey: string;
+    dedupeKey: string;
+    enrollmentId: string;
+    sequenceKey: string;
+  }>;
+  nextFollowUpAt: Date;
+  now?: Date;
+  resolveSendTime?: (raw: Date) => Date;
+}): CallScheduledRescheduleAction[] {
+  const now = input.now ?? new Date();
+  const resolveSendTime = input.resolveSendTime ?? ((raw: Date) => raw);
+  const actions: CallScheduledRescheduleAction[] = [];
+
+  for (const message of input.pendingMessages) {
+    const offsetMs = getCallScheduledOffsetMs(message.stepKey);
+    if (offsetMs === null) continue;
+
+    const rawAt = new Date(input.nextFollowUpAt.getTime() + offsetMs);
+    if (rawAt.getTime() <= now.getTime()) {
+      actions.push({
+        type: "cancel",
+        messageId: message.id,
+        dedupeKey: message.dedupeKey,
+        stepKey: message.stepKey,
+      });
+      continue;
+    }
+
+    const scheduledFor = resolveSendTime(rawAt);
+    actions.push({
+      type: "reschedule",
+      messageId: message.id,
+      dedupeKey: message.dedupeKey,
+      stepKey: message.stepKey,
+      sequenceKey: message.sequenceKey,
+      enrollmentId: message.enrollmentId,
+      scheduledFor,
+    });
+  }
+
+  return actions;
+}
+
+/**
+ * When CRM sets/changes `nextFollowUpAt`, realign pending `seq_call_scheduled`
+ * reminder SMS to that call time. Clearing follow-up leaves submit schedules alone.
+ * Does not change CRM lead status.
+ */
+export async function rescheduleCallScheduledForFollowUp(input: {
+  userId: string;
+  assessmentSessionId?: string | null;
+  nextFollowUpAt: Date;
+  now?: Date;
+}): Promise<void> {
+  const enrollment = await findActiveCallScheduledEnrollment({
+    userId: input.userId,
+    assessmentSessionId: input.assessmentSessionId,
+  });
+  if (!enrollment) return;
+
+  const pending = await listPendingSmsForEnrollment(enrollment.id);
+  if (pending.length === 0) return;
+
+  const settings = await getFunnelSettings();
+  const quietHours = {
+    start: settings.quietHoursStart,
+    end: settings.quietHoursEnd,
+  };
+
+  const actions = planCallScheduledReschedule({
+    pendingMessages: pending,
+    nextFollowUpAt: input.nextFollowUpAt,
+    now: input.now,
+    resolveSendTime: (raw) => nextAllowedSmsSendTime(raw, quietHours),
+  });
+
+  const now = input.now ?? new Date();
+
+  for (const action of actions) {
+    if (action.type === "cancel") {
+      await cancelPendingSmsMessage(action.messageId, "follow_up_reschedule_past");
+      await removeSmsFunnelJob(action.dedupeKey);
+      continue;
+    }
+
+    await updateSmsMessageScheduledFor(action.messageId, action.scheduledFor);
+    const delayMs = Math.max(0, action.scheduledFor.getTime() - now.getTime());
+    await rescheduleSmsFunnelJob(
+      {
+        enrollmentId: action.enrollmentId,
+        sequenceKey: action.sequenceKey,
+        stepKey: action.stepKey,
+        dedupeKey: action.dedupeKey,
+        smsMessageId: action.messageId,
+      },
+      delayMs,
+    );
+  }
 }

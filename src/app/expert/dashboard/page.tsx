@@ -13,18 +13,34 @@ import { ExpertNav } from "../ExpertNav";
 function KpiCard({
   label,
   value,
+  href,
 }: {
   label: string;
   value: number;
+  href?: string;
 }) {
-  return (
-    <Card className="text-center">
+  const content = (
+    <>
       <p className="text-sm text-zinc-600">{label}</p>
       <p className="mt-2 text-3xl font-semibold text-zinc-900">
         {value.toLocaleString("fa-IR")}
       </p>
-    </Card>
+    </>
   );
+
+  if (href) {
+    return (
+      <Card
+        as={Link}
+        href={href}
+        className="text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+      >
+        {content}
+      </Card>
+    );
+  }
+
+  return <Card className="text-center">{content}</Card>;
 }
 
 export default async function ExpertDashboardPage() {
@@ -64,11 +80,17 @@ export default async function ExpertDashboardPage() {
           <KpiCard
             label="لید تخصیص‌یافته"
             value={dashboard.kpis.assignedTotal}
+            href="/expert/consultations"
           />
-          <KpiCard label="لید جدید" value={dashboard.kpis.newLeads} />
+          <KpiCard
+            label="لید جدید"
+            value={dashboard.kpis.newLeads}
+            href="/expert/consultations?status=new"
+          />
           <KpiCard
             label="نیازمند پیگیری امروز"
             value={dashboard.kpis.followUpDue}
+            href="/expert/consultations?onlyFollowUpDueToday=true"
           />
           <KpiCard
             label="بسته‌شده این ماه"
@@ -82,9 +104,18 @@ export default async function ExpertDashboardPage() {
           <h2 className="text-lg font-semibold text-zinc-900">
             پیگیری‌های امروز
           </h2>
-          <LinkButton href="/expert/consultations" variant="secondary" size="sm">
-            همه لیدها
-          </LinkButton>
+          <div className="flex flex-wrap gap-2">
+            <LinkButton
+              href="/expert/consultations?excludeAssessmentInProgress=true"
+              variant="secondary"
+              size="sm"
+            >
+              صف تماس
+            </LinkButton>
+            <LinkButton href="/expert/consultations" variant="secondary" size="sm">
+              همه لیدها
+            </LinkButton>
+          </div>
         </div>
 
         {dashboard.todayFollowUps.length === 0 ? (

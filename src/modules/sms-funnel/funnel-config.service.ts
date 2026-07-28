@@ -72,7 +72,7 @@ export interface UpdateFunnelSettingsInput {
   kavenegarOtpTemplate?: string | null;
 }
 
-const SEQUENCE_LABELS: Record<SequenceKey, string> = {
+export const SEQUENCE_LABELS: Record<SequenceKey, string> = {
   seq_start: "شروع Health Check",
   seq_incomplete: "نیمه‌کاره‌ها",
   seq_report_ready: "گزارش آماده",

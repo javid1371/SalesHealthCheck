@@ -86,7 +86,10 @@ export async function processSmsFunnelJob(
     end: settings.quietHoursEnd,
   };
 
-  const sendAt = nextAllowedSmsSendTime(new Date(), quietHours);
+  // Honor DB schedule so a stale early BullMQ job (e.g. after CRM
+  // follow-up reschedule when queue remove failed) does not send early.
+  const notBeforeMs = Math.max(Date.now(), existing.scheduledFor.getTime());
+  const sendAt = nextAllowedSmsSendTime(new Date(notBeforeMs), quietHours);
   if (sendAt.getTime() > Date.now() + 60_000) {
     const delayMs = sendAt.getTime() - Date.now();
     const { enqueueSmsFunnelJob } = await import("./sms-funnel.queue");

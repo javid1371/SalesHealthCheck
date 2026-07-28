@@ -8,10 +8,14 @@ import {
   readSalesExpertSession,
 } from "@/lib/session";
 import { AppError } from "@/lib/errors";
-import { getConsultationLeadDetail } from "@/modules/consultation/consultation.service";
+import {
+  getConsultationLeadDetail,
+  getConsultationLeadSmsHistory,
+} from "@/modules/consultation/consultation.service";
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import { ExpertNav } from "../../ExpertNav";
 import { LeadDetailClient } from "./LeadDetailClient";
+import { LeadSmsHistoryPanel } from "./LeadSmsHistoryPanel";
 
 interface LeadDetailPageProps {
   params: Promise<{ id: string }>;
@@ -41,11 +45,16 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
     throw error;
   }
 
-  const assigneeOptions = adminSession
-    ? (await listStaffUsers())
-        .filter((user) => user.role === "sales_expert" && user.isActive)
-        .map((user) => ({ id: user.id, name: user.name }))
-    : [];
+  const [assigneeOptions, smsHistory] = await Promise.all([
+    adminSession
+      ? listStaffUsers().then((users) =>
+          users
+            .filter((user) => user.role === "sales_expert" && user.isActive)
+            .map((user) => ({ id: user.id, name: user.name })),
+        )
+      : Promise.resolve([] as Array<{ id: string; name: string }>),
+    getConsultationLeadSmsHistory(id, access),
+  ]);
 
   return (
     <PageLayout
@@ -229,6 +238,8 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         isAdmin={Boolean(adminSession)}
         assigneeOptions={assigneeOptions}
       />
+
+      <LeadSmsHistoryPanel history={smsHistory} />
 
       <section className="mt-8">
         <h2 className="mb-4 text-lg font-semibold text-zinc-900">

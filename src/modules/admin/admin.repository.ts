@@ -380,11 +380,16 @@ export async function countNewLeadsThisWeekByAssignee(from: Date) {
   });
 }
 
-export async function findUrgentLeads(limit = 10) {
+export async function findUrgentLeads(
+  limit = 10,
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+) {
+  const hours =
+    Number.isFinite(staleNewLeadHours) && staleNewLeadHours > 0
+      ? staleNewLeadHours
+      : STALE_NEW_LEAD_HOURS;
   const now = new Date();
-  const staleThreshold = new Date(
-    now.getTime() - STALE_NEW_LEAD_HOURS * 60 * 60 * 1000,
-  );
+  const staleThreshold = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
   return db.consultationRequest.findMany({
     where: {

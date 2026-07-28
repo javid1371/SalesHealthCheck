@@ -2,6 +2,11 @@ import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { db } from "@/lib/db";
 import { findStaffUserById } from "@/modules/staff/staff.repository";
+import {
+  EXPERT_NEW_LEAD_SMS_MAX_LENGTH,
+  expertNewLeadSmsHasPlaceholders,
+  renderExpertNewLeadSms,
+} from "./expert-new-lead-sms";
 
 export const LEAD_SETTING_KEYS = {
   autoAssignEnabled: "auto_assign_enabled",
@@ -11,12 +16,13 @@ export const LEAD_SETTING_KEYS = {
   hotLeadDirectAssigneeId: "hot_lead_direct_assignee_id",
   assessmentIncompleteAfterHours: "assessment_incomplete_after_hours",
   autoAssignExcludeStaffIds: "auto_assign_exclude_staff_ids",
+  staleNewLeadHours: "stale_new_lead_hours",
 } as const;
 
 export const DEFAULT_EXPERT_NEW_LEAD_SMS = "لید جدید داری\nچک کن";
 
 const DEFAULT_MAX_OPEN_LEADS_PER_EXPERT = 30;
-const MAX_SMS_BODY_LENGTH = 500;
+const DEFAULT_STALE_NEW_LEAD_HOURS = 24;
 
 export interface LeadSettings {
   autoAssignEnabled: boolean;
@@ -27,6 +33,8 @@ export interface LeadSettings {
   assessmentIncompleteAfterHours: number;
   /** Staff IDs excluded from automatic round-robin assignment. */
   autoAssignExcludeStaffIds: string[];
+  /** Hours after which a `new` lead is considered stale (SLA / admin KPI). */
+  staleNewLeadHours: number;
 }
 
 export interface UpdateLeadSettingsInput {
@@ -37,6 +45,7 @@ export interface UpdateLeadSettingsInput {
   hotLeadDirectAssigneeId?: string | null;
   assessmentIncompleteAfterHours?: number;
   autoAssignExcludeStaffIds?: string[];
+  staleNewLeadHours?: number;
 }
 
 function parseStaffIdList(raw: string | undefined): string[] {
@@ -77,6 +86,16 @@ function assertValidMaxOpenLeads(value: number): void {
   }
 }
 
+function assertValidStaleNewLeadHours(value: number): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "staleNewLeadHours must be a positive integer",
+      400,
+    );
+  }
+}
+
 function assertValidExpertNewLeadSms(value: string): void {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -86,10 +105,31 @@ function assertValidExpertNewLeadSms(value: string): void {
       400,
     );
   }
-  if (trimmed.length > MAX_SMS_BODY_LENGTH) {
+  if (trimmed.length > EXPERT_NEW_LEAD_SMS_MAX_LENGTH) {
     throw new AppError(
       "VALIDATION_ERROR",
-      `expertNewLeadSms exceeds ${MAX_SMS_BODY_LENGTH} characters`,
+      `expertNewLeadSms exceeds ${EXPERT_NEW_LEAD_SMS_MAX_LENGTH} characters`,
+      400,
+    );
+  }
+
+  if (!expertNewLeadSmsHasPlaceholders(trimmed)) {
+    return;
+  }
+
+  // Reject templates that already overflow with representative sample values.
+  const rendered = renderExpertNewLeadSms(trimmed, {
+    id: "00000000-0000-0000-0000-000000000000",
+    name: "نمونه نام بلند کارشناس برای سنجش طول پیامک",
+    phone: "09121234567",
+    purchaseProbabilityPercent: 99,
+    purchaseProbabilityBand: "high",
+    adminProbabilityOverridePercent: null,
+  });
+  if (rendered.length > EXPERT_NEW_LEAD_SMS_MAX_LENGTH) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `expertNewLeadSms exceeds ${EXPERT_NEW_LEAD_SMS_MAX_LENGTH} characters after placeholders`,
       400,
     );
   }
@@ -122,6 +162,7 @@ export async function getLeadSettings(): Promise<LeadSettings> {
   const excludeStaffIdsDb = map.get(
     LEAD_SETTING_KEYS.autoAssignExcludeStaffIds,
   );
+  const staleNewHoursDb = map.get(LEAD_SETTING_KEYS.staleNewLeadHours);
 
   return {
     autoAssignEnabled:
@@ -147,6 +188,15 @@ export async function getLeadSettings(): Promise<LeadSettings> {
         ? Number.parseInt(incompleteHoursDb, 10)
         : env.leadAssessmentIncompleteAfterHours,
     autoAssignExcludeStaffIds: parseStaffIdList(excludeStaffIdsDb),
+    staleNewLeadHours: (() => {
+      if (staleNewHoursDb === undefined) {
+        return DEFAULT_STALE_NEW_LEAD_HOURS;
+      }
+      const parsed = Number.parseInt(staleNewHoursDb, 10);
+      return Number.isInteger(parsed) && parsed >= 1
+        ? parsed
+        : DEFAULT_STALE_NEW_LEAD_HOURS;
+    })(),
   };
 }
 
@@ -177,6 +227,14 @@ export async function updateLeadSettings(
     await upsertSetting(
       LEAD_SETTING_KEYS.maxOpenLeadsPerExpert,
       String(input.maxOpenLeadsPerExpert),
+    );
+  }
+
+  if (input.staleNewLeadHours !== undefined) {
+    assertValidStaleNewLeadHours(input.staleNewLeadHours);
+    await upsertSetting(
+      LEAD_SETTING_KEYS.staleNewLeadHours,
+      String(input.staleNewLeadHours),
     );
   }
 

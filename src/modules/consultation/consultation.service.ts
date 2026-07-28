@@ -33,6 +33,7 @@ import type { UpdateConsultationLeadInput } from "./consultation-lead.validators
 import type {
   BulkUpdateLeadsInput,
   ConsultationLeadDetail,
+  ConsultationLeadSmsHistory,
   ConsultationListFilter,
   ConsultationListItem,
   ConsultationListResponse,
@@ -45,7 +46,11 @@ import type {
 } from "./consultation.types";
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
+import { SEQUENCE_LABELS } from "@/modules/sms-funnel/funnel-config.service";
+import { rescheduleCallScheduledForFollowUp } from "@/modules/sms-funnel/enrollment.service";
+import { listLeadSmsHistory } from "@/modules/sms-funnel/funnel.repository";
 import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
+import type { SequenceKey } from "@/modules/sms-funnel/sequences";
 import { recordConversionFunnelEvent } from "@/modules/funnel/conversion-events";
 import {
   formatPurchaseProbabilityLabel,
@@ -57,7 +62,12 @@ import {
   formatActivityDetail,
   LEAD_ACTIVITY_LABELS,
 } from "./lead-activity";
-import { computeLeadSlaFlags, slaReasonLabel } from "./lead-sla";
+import { getLeadSettings } from "./lead-config.service";
+import {
+  computeLeadSlaFlags,
+  slaReasonLabel,
+  STALE_NEW_LEAD_HOURS,
+} from "./lead-sla";
 import { isManualStatusTransitionAllowed } from "./lead-status";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
@@ -71,6 +81,25 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   closed_lost: "بسته — ناموفق",
   unreachable: "در دسترس نیست",
 };
+
+const SMS_STATUS_LABELS: Record<string, string> = {
+  pending: "در صف",
+  sent: "ارسال‌شده",
+  failed: "ناموفق",
+  canceled: "لغو شده",
+  skipped: "رد شده",
+};
+
+const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
+  active: "فعال",
+  completed: "تکمیل‌شده",
+  stopped: "متوقف",
+  converted: "تبدیل‌شده",
+};
+
+function sequenceLabel(sequenceKey: string): string {
+  return SEQUENCE_LABELS[sequenceKey as SequenceKey] ?? sequenceKey;
+}
 
 /**
  * Grants access if the token matches OR the caller is authenticated as the
@@ -326,14 +355,20 @@ function mapLeadAssignmentState(row: ConsultationRow) {
   return { assignScheduledFor, pendingAssignment };
 }
 
-function mapLeadSla(row: ConsultationRow) {
-  const sla = computeLeadSlaFlags({
-    status: row.status,
-    createdAt: row.createdAt,
-    nextFollowUpAt: row.nextFollowUpAt,
-    assignedToId: row.assignedToId,
-    purchaseProbabilityBand: row.purchaseProbabilityBand,
-  });
+function mapLeadSla(
+  row: ConsultationRow,
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+) {
+  const sla = computeLeadSlaFlags(
+    {
+      status: row.status,
+      createdAt: row.createdAt,
+      nextFollowUpAt: row.nextFollowUpAt,
+      assignedToId: row.assignedToId,
+      purchaseProbabilityBand: row.purchaseProbabilityBand,
+    },
+    staleNewLeadHours,
+  );
 
   return {
     sla,
@@ -341,7 +376,10 @@ function mapLeadSla(row: ConsultationRow) {
   };
 }
 
-function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
+function toConsultationListItem(
+  row: ConsultationRow,
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+): ConsultationListItem {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
 
@@ -381,7 +419,7 @@ function toConsultationListItem(row: ConsultationRow): ConsultationListItem {
       : null,
     detailUrl: `/expert/consultations/${row.id}`,
     ...mapLeadAssignmentState(row),
-    ...mapLeadSla(row),
+    ...mapLeadSla(row, staleNewLeadHours),
   };
 }
 
@@ -454,7 +492,10 @@ function resolveStatusTimestamps(
   const updates: { firstContactedAt?: Date; closedAt?: Date } = {};
   const now = new Date();
 
-  if (newStatus === "contacted" && !existing.firstContactedAt) {
+  if (
+    (newStatus === "contacted" || newStatus === "meeting_scheduled") &&
+    !existing.firstContactedAt
+  ) {
     updates.firstContactedAt = now;
   }
 
@@ -534,7 +575,39 @@ async function recordLeadUpdateActivities(params: {
   }
 }
 
-function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadDetail {
+async function syncCallScheduledSmsForFollowUp(params: {
+  assessmentSessionId: string | null;
+  userId: string | null | undefined;
+  existingNextFollowUpAt: Date | null;
+  nextFollowUpAt: Date | null | undefined;
+}): Promise<void> {
+  const { nextFollowUpAt } = params;
+  if (nextFollowUpAt === undefined || nextFollowUpAt === null) return;
+
+  const existingIso = params.existingNextFollowUpAt?.toISOString() ?? null;
+  if (existingIso === nextFollowUpAt.toISOString()) return;
+
+  const userId = params.userId;
+  if (!userId) return;
+
+  try {
+    await rescheduleCallScheduledForFollowUp({
+      userId,
+      assessmentSessionId: params.assessmentSessionId,
+      nextFollowUpAt,
+    });
+  } catch (error) {
+    console.error(
+      "[sms-funnel] call-scheduled follow-up reschedule failed:",
+      error,
+    );
+  }
+}
+
+function toConsultationLeadDetail(
+  row: ConsultationDetailRow,
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+): ConsultationLeadDetail {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
   const healthLevel = row.assessmentSession?.overallScore?.healthLevel ?? null;
@@ -585,7 +658,35 @@ function toConsultationLeadDetail(row: ConsultationDetailRow): ConsultationLeadD
     notes: row.consultationNotes.map(toConsultationNoteItem),
     timeline: buildLeadTimeline(row),
     ...mapLeadAssignmentState(row),
-    ...mapLeadSla(row),
+    ...mapLeadSla(row, staleNewLeadHours),
+  };
+}
+
+function applyStaleNewListFilter<
+  T extends {
+    onlyStaleNew?: boolean;
+    status?: ConsultationListFilter["status"];
+    createdTo?: Date;
+  },
+>(filter: T, staleNewLeadHours: number): T {
+  if (!filter.onlyStaleNew) {
+    return filter;
+  }
+
+  const hours =
+    Number.isFinite(staleNewLeadHours) && staleNewLeadHours > 0
+      ? staleNewLeadHours
+      : STALE_NEW_LEAD_HOURS;
+  const staleBefore = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const createdTo =
+    filter.createdTo && filter.createdTo.getTime() < staleBefore.getTime()
+      ? filter.createdTo
+      : staleBefore;
+
+  return {
+    ...filter,
+    status: filter.status ?? "new",
+    createdTo,
   };
 }
 
@@ -609,15 +710,30 @@ export async function listConsultationRequests(
     };
   }
 
-  const [total, requests] = await Promise.all([
-    countConsultationRequests(effectiveFilter),
-    findConsultationRequests(effectiveFilter),
+  const settingsPromise = getLeadSettings();
+  const settingsForFilter = effectiveFilter.onlyStaleNew
+    ? await settingsPromise
+    : null;
+  const queryFilter = settingsForFilter
+    ? applyStaleNewListFilter(
+        effectiveFilter,
+        settingsForFilter.staleNewLeadHours,
+      )
+    : effectiveFilter;
+
+  const [total, requests, settings] = await Promise.all([
+    countConsultationRequests(queryFilter),
+    findConsultationRequests(queryFilter),
+    settingsPromise,
   ]);
 
   const totalPages = total === 0 ? 0 : Math.ceil(total / filter.pageSize);
+  const staleNewLeadHours = settings.staleNewLeadHours;
 
   return {
-    requests: requests.map(toConsultationListItem),
+    requests: requests.map((row) =>
+      toConsultationListItem(row, staleNewLeadHours),
+    ),
     pagination: {
       page: filter.page,
       pageSize: filter.pageSize,
@@ -654,11 +770,25 @@ export async function listConsultationRequestsForKanban(
   }
 
   const { page: _page, pageSize: _pageSize, ...listFilter } = effectiveFilter;
-  const requests = await findConsultationRequestsForKanban(listFilter);
+  const settingsPromise = getLeadSettings();
+  const settingsForFilter = listFilter.onlyStaleNew
+    ? await settingsPromise
+    : null;
+  const queryFilter = settingsForFilter
+    ? applyStaleNewListFilter(listFilter, settingsForFilter.staleNewLeadHours)
+    : listFilter;
+
+  const [requests, settings] = await Promise.all([
+    findConsultationRequestsForKanban(queryFilter),
+    settingsPromise,
+  ]);
   const total = requests.length;
+  const staleNewLeadHours = settings.staleNewLeadHours;
 
   return {
-    requests: requests.map(toConsultationListItem),
+    requests: requests.map((row) =>
+      toConsultationListItem(row, staleNewLeadHours),
+    ),
     pagination: {
       page: 1,
       pageSize: total,
@@ -680,7 +810,58 @@ export async function getConsultationLeadDetail(
   }
 
   assertLeadAccess(row.assignedToId, access);
-  return toConsultationLeadDetail(row);
+  const settings = await getLeadSettings();
+  return toConsultationLeadDetail(row, settings.staleNewLeadHours);
+}
+
+export async function getConsultationLeadSmsHistory(
+  id: string,
+  access: ConsultationsAccessInput,
+): Promise<ConsultationLeadSmsHistory> {
+  requireConsultationsAccess(access);
+
+  const row = await findConsultationRequestById(id);
+  if (!row) {
+    throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
+  }
+
+  assertLeadAccess(row.assignedToId, access);
+
+  const phones = [
+    row.phone,
+    row.assessmentSession?.user.phone ?? null,
+  ].filter((phone): phone is string => Boolean(phone));
+
+  const history = await listLeadSmsHistory({
+    phones,
+    assessmentSessionId: row.assessmentSessionId,
+  });
+
+  return {
+    activeEnrollments: history.activeEnrollments.map((enrollment) => ({
+      id: enrollment.id,
+      sequenceKey: enrollment.sequenceKey,
+      sequenceLabel: sequenceLabel(enrollment.sequenceKey),
+      currentStep: enrollment.currentStep,
+      status: enrollment.status,
+      statusLabel:
+        ENROLLMENT_STATUS_LABELS[enrollment.status] ?? enrollment.status,
+      messagesSentCount: enrollment.messagesSentCount,
+      lastEventAt: formatConsultationDate(enrollment.lastEventAt),
+    })),
+    messages: history.messages.map((message) => ({
+      id: message.id,
+      phone: message.phone,
+      sequenceKey: message.sequenceKey,
+      sequenceLabel: sequenceLabel(message.sequenceKey),
+      stepKey: message.stepKey,
+      status: message.status,
+      statusLabel: SMS_STATUS_LABELS[message.status] ?? message.status,
+      scheduledFor: formatConsultationDate(message.scheduledFor),
+      sentAt: message.sentAt ? formatConsultationDate(message.sentAt) : null,
+      createdAt: formatConsultationDate(message.createdAt),
+    })),
+  };
 }
 
 export async function updateConsultationLeadStatus(
@@ -752,7 +933,15 @@ export async function updateConsultationLeadStatus(
     input,
   });
 
-  return toConsultationListItem(updated);
+  await syncCallScheduledSmsForFollowUp({
+    assessmentSessionId: existing.assessmentSessionId,
+    userId: existing.assessmentSession?.userId ?? existing.assessmentSession?.user?.id,
+    existingNextFollowUpAt: existing.nextFollowUpAt,
+    nextFollowUpAt: input.nextFollowUpAt,
+  });
+
+  const settings = await getLeadSettings();
+  return toConsultationListItem(updated, settings.staleNewLeadHours);
 }
 
 function requireAdminAccess(access: ConsultationsAccessInput): void {

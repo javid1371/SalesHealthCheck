@@ -86,6 +86,13 @@ export function validateConsultationListFilter(
   const onlyUnassigned = searchParams.get("onlyUnassigned") === "true";
   const onlyPendingAssignment =
     searchParams.get("onlyPendingAssignment") === "true";
+  const onlyOverdueFollowUp =
+    searchParams.get("onlyOverdueFollowUp") === "true";
+  const onlyFollowUpDueToday =
+    searchParams.get("onlyFollowUpDueToday") === "true";
+  const excludeAssessmentInProgress =
+    searchParams.get("excludeAssessmentInProgress") === "true";
+  const onlyStaleNew = searchParams.get("onlyStaleNew") === "true";
   const onlyHot = searchParams.get("onlyHot") === "true";
   const onlyMine = searchParams.get("onlyMine") === "true";
 
@@ -122,6 +129,10 @@ export function validateConsultationListFilter(
     assignedToId,
     onlyUnassigned,
     onlyPendingAssignment,
+    onlyOverdueFollowUp,
+    onlyFollowUpDueToday,
+    excludeAssessmentInProgress,
+    onlyStaleNew,
     onlyHot,
     onlyMine,
     page,

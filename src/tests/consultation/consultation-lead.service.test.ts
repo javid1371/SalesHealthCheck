@@ -18,7 +18,29 @@ const repoMock = vi.hoisted(() => ({
   findConsultationRequestsByIds: vi.fn(),
 }));
 
+const mockRescheduleCallScheduledForFollowUp = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
+
+vi.mock("@/modules/sms-funnel/enrollment.service", () => ({
+  rescheduleCallScheduledForFollowUp: (...args: unknown[]) =>
+    mockRescheduleCallScheduledForFollowUp(...args),
+}));
+
+vi.mock("@/modules/consultation/lead-config.service", () => ({
+  getLeadSettings: vi.fn().mockResolvedValue({
+    autoAssignEnabled: true,
+    systemAssignDelayHours: 24,
+    expertNewLeadSms: "لید جدید داری\nچک کن",
+    maxOpenLeadsPerExpert: 30,
+    hotLeadDirectAssigneeId: null,
+    assessmentIncompleteAfterHours: 24,
+    autoAssignExcludeStaffIds: [],
+    staleNewLeadHours: 24,
+  }),
+}));
 
 import {
   addLeadNote,
@@ -243,6 +265,66 @@ describe("updateConsultationLeadStatus", () => {
     expect(result.adminProbabilityOverridePercent).toBe(90);
     expect(result.purchaseProbabilityPercent).toBe(90);
   });
+
+  it("reschedules call-scheduled SMS when nextFollowUpAt is set", async () => {
+    const followUp = new Date("2026-07-30T12:00:00.000Z");
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      assessmentSessionId: "session-1",
+      assessmentSession: {
+        userId: "user-1",
+        user: { id: "user-1", phone: "09120000001" },
+        organization: { businessName: "Acme" },
+        overallScore: null,
+        bottlenecks: [],
+        diagnoses: [],
+      },
+    });
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      nextFollowUpAt: followUp,
+    });
+
+    await updateConsultationLeadStatus(
+      "lead-1",
+      { nextFollowUpAt: followUp },
+      expertAccess,
+    );
+
+    expect(mockRescheduleCallScheduledForFollowUp).toHaveBeenCalledWith({
+      userId: "user-1",
+      assessmentSessionId: "session-1",
+      nextFollowUpAt: followUp,
+    });
+  });
+
+  it("does not reschedule SMS when nextFollowUpAt is cleared", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      nextFollowUpAt: new Date("2026-07-30T12:00:00.000Z"),
+      assessmentSessionId: "session-1",
+      assessmentSession: {
+        userId: "user-1",
+        user: { id: "user-1", phone: "09120000001" },
+        organization: { businessName: "Acme" },
+        overallScore: null,
+        bottlenecks: [],
+        diagnoses: [],
+      },
+    });
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      nextFollowUpAt: null,
+    });
+
+    await updateConsultationLeadStatus(
+      "lead-1",
+      { nextFollowUpAt: null },
+      expertAccess,
+    );
+
+    expect(mockRescheduleCallScheduledForFollowUp).not.toHaveBeenCalled();
+  });
 });
 
 describe("bulkUpdateLeads", () => {
@@ -291,6 +373,25 @@ describe("bulkUpdateLeads", () => {
 
     expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
       status: "contacted",
+      firstContactedAt: expect.any(Date),
+    });
+  });
+
+  it("sets firstContactedAt when status moves to meeting_scheduled", async () => {
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      status: "meeting_scheduled",
+      firstContactedAt: new Date(),
+    });
+
+    await updateConsultationLeadStatus(
+      "lead-1",
+      { status: "meeting_scheduled" },
+      expertAccess,
+    );
+
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
+      status: "meeting_scheduled",
       firstContactedAt: expect.any(Date),
     });
   });

@@ -1,5 +1,6 @@
 import type { LeadStatus, PurchaseProbability } from "@prisma/client";
 
+/** Fallback when lead setting `stale_new_lead_hours` is unset. */
 export const STALE_NEW_LEAD_HOURS = 24;
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
@@ -21,17 +22,22 @@ export interface LeadSlaFlags {
   severity: LeadSlaSeverity;
 }
 
-export function computeLeadSlaFlags(row: {
-  status: LeadStatus;
-  createdAt: Date;
-  nextFollowUpAt: Date | null;
-  assignedToId: string | null;
-  purchaseProbabilityBand: PurchaseProbability | null;
-}): LeadSlaFlags {
+export function computeLeadSlaFlags(
+  row: {
+    status: LeadStatus;
+    createdAt: Date;
+    nextFollowUpAt: Date | null;
+    assignedToId: string | null;
+    purchaseProbabilityBand: PurchaseProbability | null;
+  },
+  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+): LeadSlaFlags {
+  const hours =
+    Number.isFinite(staleNewLeadHours) && staleNewLeadHours > 0
+      ? staleNewLeadHours
+      : STALE_NEW_LEAD_HOURS;
   const now = new Date();
-  const staleThreshold = new Date(
-    now.getTime() - STALE_NEW_LEAD_HOURS * 60 * 60 * 1000,
-  );
+  const staleThreshold = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
   const staleNew = row.status === "new" && row.createdAt < staleThreshold;
   const overdueFollowUp = Boolean(

@@ -45,6 +45,43 @@ export async function enqueueSmsFunnelJob(
   });
 }
 
+export async function removeSmsFunnelJob(dedupeKey: string): Promise<void> {
+  const q = getSmsFunnelQueue();
+  if (!q) return;
+
+  const job = await q.getJob(toBullMqJobId(dedupeKey));
+  if (job) {
+    await job.remove();
+  }
+}
+
+/**
+ * Remove any existing delayed job and enqueue with a new delay.
+ * Throws when the queue is unavailable so callers do not silently keep a
+ * stale BullMQ delay after updating `scheduledFor` in the database.
+ */
+export async function rescheduleSmsFunnelJob(
+  payload: SmsFunnelJobPayload,
+  delayMs: number,
+): Promise<void> {
+  const q = getSmsFunnelQueue();
+  if (!q) {
+    throw new Error(
+      `[sms-funnel] queue unavailable; cannot reschedule ${payload.dedupeKey}`,
+    );
+  }
+
+  const job = await q.getJob(toBullMqJobId(payload.dedupeKey));
+  if (job) {
+    await job.remove();
+  }
+
+  await q.add("send", payload, {
+    jobId: toBullMqJobId(payload.dedupeKey),
+    delay: Math.max(0, delayMs),
+  });
+}
+
 export async function closeSmsFunnelQueueForTests(): Promise<void> {
   if (queue) {
     await queue.close();

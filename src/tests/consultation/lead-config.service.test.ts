@@ -5,6 +5,7 @@ vi.mock("@/lib/env", () => ({
     leadAutoAssignEnabled: true,
     leadSystemAssignDelayHours: 24,
     leadAssessmentIncompleteAfterHours: 24,
+    appBaseUrl: "https://app.example.com",
   },
 }));
 
@@ -46,6 +47,7 @@ describe("lead-config.service", () => {
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
     });
   });
 
@@ -58,6 +60,7 @@ describe("lead-config.service", () => {
       { key: "hot_lead_direct_assignee_id", value: "expert-1" },
       { key: "assessment_incomplete_after_hours", value: "48" },
       { key: "auto_assign_exclude_staff_ids", value: "expert-2,expert-3" },
+      { key: "stale_new_lead_hours", value: "36" },
     ]);
 
     const { getLeadSettings } = await import(
@@ -72,6 +75,7 @@ describe("lead-config.service", () => {
       hotLeadDirectAssigneeId: "expert-1",
       assessmentIncompleteAfterHours: 48,
       autoAssignExcludeStaffIds: ["expert-2", "expert-3"],
+      staleNewLeadHours: 36,
     });
   });
 
@@ -117,12 +121,51 @@ describe("lead-config.service", () => {
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
+  it("persists staleNewLeadHours", async () => {
+    mockUpsert.mockResolvedValue({});
+    mockFindMany.mockResolvedValue([
+      { key: "stale_new_lead_hours", value: "48" },
+    ]);
+
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const settings = await updateLeadSettings({ staleNewLeadHours: 48 });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "stale_new_lead_hours" },
+        create: { key: "stale_new_lead_hours", value: "48" },
+      }),
+    );
+    expect(settings.staleNewLeadHours).toBe(48);
+  });
+
+  it("rejects invalid staleNewLeadHours", async () => {
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    await expect(
+      updateLeadSettings({ staleNewLeadHours: 0 }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
   it("rejects empty expertNewLeadSms", async () => {
     const { updateLeadSettings } = await import(
       "@/modules/consultation/lead-config.service"
     );
     await expect(
       updateLeadSettings({ expertNewLeadSms: "   " }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("rejects expertNewLeadSms that overflows after placeholder interpolation", async () => {
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const template = `${"ن".repeat(420)} {{name}} {{detailUrl}}`;
+    await expect(
+      updateLeadSettings({ expertNewLeadSms: template }),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 

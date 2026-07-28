@@ -10,6 +10,44 @@ import type { ConsultationListItem } from "@/modules/consultation/consultation.t
 import { isManualStatusTransitionAllowed } from "@/modules/consultation/lead-status";
 import type { LeadStatus } from "@prisma/client";
 
+const QUICK_ACTION_HIDDEN_STATUSES = new Set<LeadStatus>([
+  "assessment_in_progress",
+  "closed_won",
+  "closed_lost",
+]);
+
+function canShowQuickActions(status: LeadStatus): boolean {
+  return !QUICK_ACTION_HIDDEN_STATUSES.has(status);
+}
+
+function canMarkContacted(status: LeadStatus): boolean {
+  return (
+    status !== "contacted" &&
+    isManualStatusTransitionAllowed(status, "contacted")
+  );
+}
+
+/** Local calendar day + N days, as ISO (same shape as detail date field). */
+function followUpAtIsoDaysFromNow(days: number): string {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return new Date(`${yyyy}-${mm}-${dd}`).toISOString();
+}
+
+function formatFollowUpLabel(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return iso.slice(0, 10);
+  }
+  return new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "medium",
+  }).format(parsed);
+}
+
 const KANBAN_COLUMNS: Array<{
   status: LeadStatus;
   label: string;
@@ -111,6 +149,36 @@ export function ConsultationKanbanView({
     return isManualStatusTransitionAllowed(lead.status, status);
   }
 
+  async function applyLeadPatch(
+    leadId: string,
+    patch: { status?: LeadStatus; nextFollowUpAt?: string },
+    optimistic: (item: ConsultationListItem) => ConsultationListItem,
+  ) {
+    setUpdatingId(leadId);
+    setError(null);
+
+    const previous = requests;
+    setRequests((current) =>
+      current.map((item) => (item.id === leadId ? optimistic(item) : item)),
+    );
+
+    try {
+      await updateConsultationLeadRequest(leadId, patch);
+      router.refresh();
+    } catch (err) {
+      setRequests(previous);
+      setError(
+        err instanceof ApiClientError
+          ? err.message
+          : "خطا در به‌روزرسانی لید.",
+      );
+    } finally {
+      setUpdatingId(null);
+      setDraggingId(null);
+      setDropTargetStatus(null);
+    }
+  }
+
   async function moveLead(leadId: string, newStatus: LeadStatus) {
     const lead = requests.find((item) => item.id === leadId);
     if (!lead || lead.status === newStatus) {
@@ -124,39 +192,35 @@ export function ConsultationKanbanView({
       return;
     }
 
-    setUpdatingId(leadId);
-    setError(null);
+    await applyLeadPatch(leadId, { status: newStatus }, (item) => ({
+      ...item,
+      status: newStatus,
+      statusLabel:
+        KANBAN_COLUMNS.find((column) => column.status === newStatus)?.label ??
+        item.statusLabel,
+    }));
+  }
 
-    const previous = requests;
-    setRequests((current) =>
-      current.map((item) =>
-        item.id === leadId
-          ? {
-              ...item,
-              status: newStatus,
-              statusLabel:
-                KANBAN_COLUMNS.find((column) => column.status === newStatus)
-                  ?.label ?? item.statusLabel,
-            }
-          : item,
-      ),
-    );
-
-    try {
-      await updateConsultationLeadRequest(leadId, { status: newStatus });
-      router.refresh();
-    } catch (err) {
-      setRequests(previous);
-      setError(
-        err instanceof ApiClientError
-          ? err.message
-          : "خطا در تغییر وضعیت لید.",
-      );
-    } finally {
-      setUpdatingId(null);
-      setDraggingId(null);
-      setDropTargetStatus(null);
+  async function markContacted(leadId: string) {
+    const lead = requests.find((item) => item.id === leadId);
+    if (!lead || !canMarkContacted(lead.status)) {
+      return;
     }
+    await moveLead(leadId, "contacted");
+  }
+
+  async function setFollowUpInDays(leadId: string, days: number) {
+    const lead = requests.find((item) => item.id === leadId);
+    if (!lead || !canShowQuickActions(lead.status)) {
+      return;
+    }
+
+    const nextFollowUpAt = followUpAtIsoDaysFromNow(days);
+    await applyLeadPatch(leadId, { nextFollowUpAt }, (item) => ({
+      ...item,
+      nextFollowUpAt: formatFollowUpLabel(nextFollowUpAt),
+      nextFollowUpAtIso: nextFollowUpAt.slice(0, 10),
+    }));
   }
 
   function handleDragStart(leadId: string) {
@@ -244,6 +308,11 @@ export function ConsultationKanbanView({
                     key={item.id}
                     draggable={updatingId !== item.id}
                     onDragStart={(event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (target?.closest("button, a, input, textarea, select")) {
+                        event.preventDefault();
+                        return;
+                      }
                       event.dataTransfer.setData("text/plain", item.id);
                       event.dataTransfer.effectAllowed = "move";
                       handleDragStart(item.id);
@@ -322,6 +391,55 @@ export function ConsultationKanbanView({
                     ) : (
                       <p className="mt-2 text-xs text-zinc-400">بدون تخصیص</p>
                     )}
+
+                    {item.nextFollowUpAt ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        پیگیری: {item.nextFollowUpAt}
+                      </p>
+                    ) : null}
+
+                    {canShowQuickActions(item.status) ? (
+                      <div
+                        className="mt-2 flex flex-wrap gap-1"
+                        onMouseDown={(event) => event.stopPropagation()}
+                      >
+                        {canMarkContacted(item.status) ? (
+                          <button
+                            type="button"
+                            disabled={updatingId === item.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void markContacted(item.id);
+                            }}
+                            className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            تماس گرفتم
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={updatingId === item.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void setFollowUpInDays(item.id, 1);
+                          }}
+                          className="rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          فردا
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingId === item.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void setFollowUpInDays(item.id, 3);
+                          }}
+                          className="rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          ۳ روز
+                        </button>
+                      </div>
+                    ) : null}
                   </article>
                 ))
               )}
