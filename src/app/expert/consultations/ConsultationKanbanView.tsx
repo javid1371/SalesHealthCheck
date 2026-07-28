@@ -10,12 +10,14 @@ import {
   logConsultationCallRequest,
   updateConsultationLeadRequest,
 } from "@/lib/expert-client";
+import { buildConsultationLeadDetailHref } from "@/modules/consultation/consultation-list.validators";
 import type { ConsultationListItem } from "@/modules/consultation/consultation.types";
 import {
   CALL_OUTCOME_LABELS,
   LOST_REASON_LABELS,
   LOST_REASONS,
   QUICK_CALL_OUTCOMES,
+  resolveQuickCallLogFields,
 } from "@/modules/consultation/lead-activity";
 import { isManualStatusTransitionAllowed } from "@/modules/consultation/lead-status";
 import type { CallOutcome, LeadStatus, LostReason } from "@prisma/client";
@@ -80,7 +82,7 @@ const KANBAN_COLUMNS: Array<{
   },
   {
     status: "new",
-    label: "درخواست مشاوره",
+    label: "آماده تماس",
     color: "border-sky-200 bg-sky-50/60",
   },
   {
@@ -113,11 +115,13 @@ const KANBAN_COLUMNS: Array<{
 interface ConsultationKanbanViewProps {
   requests: ConsultationListItem[];
   showClaimActions?: boolean;
+  queueQueryString?: string;
 }
 
 export function ConsultationKanbanView({
   requests: initialRequests,
   showClaimActions = false,
+  queueQueryString = "",
 }: ConsultationKanbanViewProps) {
   const router = useRouter();
   const [requests, setRequests] = useState(initialRequests);
@@ -134,6 +138,8 @@ export function ConsultationKanbanView({
   const [pendingLostMove, setPendingLostMove] = useState<{
     leadId: string;
     leadName: string;
+    /** When set, confirm logs a quick call instead of a status-only move. */
+    callOutcome?: CallOutcome;
   } | null>(null);
   const [pendingLostReason, setPendingLostReason] = useState<LostReason | "">(
     "",
@@ -284,10 +290,17 @@ export function ConsultationKanbanView({
     if (!pendingLostMove || !pendingLostReason) {
       return;
     }
-    const { leadId } = pendingLostMove;
+    const { leadId, callOutcome } = pendingLostMove;
     const lostNote =
       pendingLostReason === "other" ? pendingLostNote.trim() || null : null;
     setPendingLostMove(null);
+    if (callOutcome) {
+      await logQuickCall(leadId, callOutcome, {
+        lostReason: pendingLostReason,
+        lostNote,
+      });
+      return;
+    }
     await moveLead(leadId, "closed_lost", {
       lostReason: pendingLostReason,
       lostNote,
@@ -316,11 +329,44 @@ export function ConsultationKanbanView({
     }));
   }
 
-  async function logQuickCall(leadId: string, outcome: CallOutcome) {
+  async function logQuickCall(
+    leadId: string,
+    outcome: CallOutcome,
+    lost?: { lostReason: LostReason; lostNote?: string | null },
+  ) {
     const lead = requests.find((item) => item.id === leadId);
     if (!lead || !canShowQuickActions(lead.status)) {
       return;
     }
+
+    const fields = resolveQuickCallLogFields(outcome, lost);
+    if (fields.needsLostReason) {
+      setPendingLostMove({ leadId, leadName: lead.name, callOutcome: outcome });
+      setPendingLostReason("");
+      setPendingLostNote("");
+      return;
+    }
+
+    const payload: Parameters<typeof logConsultationCallRequest>[1] = {
+      outcome,
+    };
+    if (fields.status !== undefined) {
+      payload.status = fields.status;
+    }
+    if (fields.nextFollowUpDays !== undefined) {
+      payload.nextFollowUpAt =
+        fields.nextFollowUpDays === null
+          ? null
+          : followUpAtIsoDaysFromNow(fields.nextFollowUpDays);
+    }
+    if (fields.lostReason) {
+      payload.lostReason = fields.lostReason;
+      if (fields.lostReason === "other") {
+        payload.lostNote = fields.lostNote ?? null;
+      }
+    }
+
+    const lostReason = fields.lostReason;
 
     setUpdatingId(leadId);
     setError(null);
@@ -330,6 +376,8 @@ export function ConsultationKanbanView({
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date());
+    const nextStatus = payload.status;
+    const nextFollowUpAt = payload.nextFollowUpAt;
     setRequests((current) =>
       current.map((item) =>
         item.id === leadId
@@ -338,13 +386,40 @@ export function ConsultationKanbanView({
               lastCallOutcome: outcome,
               lastCallOutcomeLabel: CALL_OUTCOME_LABELS[outcome],
               lastCalledAt: nowLabel,
+              ...(nextStatus
+                ? {
+                    status: nextStatus,
+                    statusLabel:
+                      KANBAN_COLUMNS.find(
+                        (column) => column.status === nextStatus,
+                      )?.label ?? item.statusLabel,
+                  }
+                : {}),
+              ...(nextFollowUpAt !== undefined
+                ? {
+                    nextFollowUpAt: nextFollowUpAt
+                      ? formatFollowUpLabel(nextFollowUpAt)
+                      : null,
+                    nextFollowUpAtIso: nextFollowUpAt
+                      ? nextFollowUpAt.slice(0, 10)
+                      : null,
+                  }
+                : {}),
+              ...(lostReason
+                ? {
+                    lostReason,
+                    lostReasonLabel: LOST_REASON_LABELS[lostReason],
+                    lostNote:
+                      lostReason === "other" ? (lost?.lostNote ?? null) : null,
+                  }
+                : {}),
             }
           : item,
       ),
     );
 
     try {
-      await logConsultationCallRequest(leadId, { outcome });
+      await logConsultationCallRequest(leadId, payload);
       router.refresh();
     } catch (err) {
       setRequests(previous);
@@ -534,7 +609,10 @@ export function ConsultationKanbanView({
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <Link
-                        href={item.detailUrl}
+                        href={buildConsultationLeadDetailHref(
+                          item.id,
+                          queueQueryString,
+                        )}
                         className="font-medium text-emerald-800 hover:text-emerald-900"
                         onClick={(event) => event.stopPropagation()}
                       >

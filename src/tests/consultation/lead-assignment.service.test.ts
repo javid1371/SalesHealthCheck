@@ -371,6 +371,12 @@ describe("lead-assignment.service", () => {
       source: "system",
       status: "assessment_in_progress",
     });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "system-lead-1",
+      staffUserId: null,
+      type: "created",
+      detail: "assessment_start",
+    });
     expect(staffMock.pickNextSalesExpert).toHaveBeenCalled();
     expect(repoMock.assignLeadToExpertIfUnassigned).toHaveBeenCalledWith(
       "system-lead-1",
@@ -398,6 +404,9 @@ describe("lead-assignment.service", () => {
     });
 
     expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.createLeadActivity).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "created", detail: "assessment_start" }),
+    );
     expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
       "existing-lead",
       expect.objectContaining({

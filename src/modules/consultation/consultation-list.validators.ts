@@ -49,6 +49,45 @@ function parseOptionalDate(value: string | null): Date | undefined {
   return parsed;
 }
 
+/** Pagination / view chrome — not part of the call-queue identity. */
+const QUEUE_EXCLUDED_PARAMS = new Set(["page", "pageSize", "view"]);
+
+/** Queue filter query string for detail ↔ list navigation (no page/view). */
+export function consultationQueueQueryString(
+  searchParams: URLSearchParams,
+): string {
+  const next = new URLSearchParams();
+  for (const [key, value] of searchParams.entries()) {
+    if (QUEUE_EXCLUDED_PARAMS.has(key)) {
+      continue;
+    }
+    if (value !== "") {
+      next.set(key, value);
+    }
+  }
+  return next.toString();
+}
+
+export function buildConsultationLeadDetailHref(
+  leadId: string,
+  queueQueryString?: string | null,
+): string {
+  const base = `/expert/consultations/${leadId}`;
+  if (!queueQueryString) {
+    return base;
+  }
+  return `${base}?${queueQueryString}`;
+}
+
+export function buildConsultationListHref(
+  queueQueryString?: string | null,
+): string {
+  if (!queueQueryString) {
+    return "/expert/consultations";
+  }
+  return `/expert/consultations?${queueQueryString}`;
+}
+
 export function validateConsultationListFilter(
   searchParams: URLSearchParams,
 ): ConsultationListFilter {

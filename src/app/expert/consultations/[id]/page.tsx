@@ -10,17 +10,49 @@ import { AppError } from "@/lib/errors";
 import {
   getConsultationLeadDetail,
   getConsultationLeadSmsHistory,
+  getNextConsultationLeadId,
 } from "@/modules/consultation/consultation.service";
+import {
+  buildConsultationListHref,
+  consultationQueueQueryString,
+  validateConsultationListFilter,
+} from "@/modules/consultation/consultation-list.validators";
 import { listStaffUsers } from "@/modules/staff/staff.service";
+import type { LeadTimelineEntry } from "@/modules/consultation/consultation.types";
 import { ExpertNav } from "../../ExpertNav";
+import { resolveLeadActionHint } from "@/modules/consultation/lead-sla";
 import { LeadDetailClient } from "./LeadDetailClient";
+import { LeadPhoneField } from "./LeadPhoneField";
 import { LeadSmsHistoryPanel } from "./LeadSmsHistoryPanel";
 
 interface LeadDetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
+function timelineBadgeClass(entry: LeadTimelineEntry): string {
+  if (entry.kind === "note") {
+    return "bg-emerald-100 text-emerald-800";
+  }
+  if (entry.kind === "sms") {
+    return "bg-sky-100 text-sky-800";
+  }
+  switch (entry.activityType) {
+    case "created":
+      return "bg-indigo-100 text-indigo-800";
+    case "call_logged":
+      return "bg-amber-100 text-amber-900";
+    case "status_change":
+      return "bg-violet-100 text-violet-800";
+    default:
+      return "bg-zinc-100 text-zinc-700";
+  }
+}
+
+export default async function LeadDetailPage({
+  params,
+  searchParams,
+}: LeadDetailPageProps) {
   const adminSession = await readAdminSession();
   const salesExpertSession = await readSalesExpertSession();
 
@@ -31,6 +63,17 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
   const { id } = await params;
   const access = { adminSession, salesExpertSession };
 
+  const rawParams = await searchParams;
+  const urlSearchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawParams)) {
+    if (typeof value === "string") {
+      urlSearchParams.set(key, value);
+    } else if (Array.isArray(value) && value[0]) {
+      urlSearchParams.set(key, value[0]);
+    }
+  }
+  const queueQueryString = consultationQueueQueryString(urlSearchParams);
+
   let lead;
   try {
     lead = await getConsultationLeadDetail(id, access);
@@ -39,9 +82,19 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
       notFound();
     }
     if (error instanceof AppError && error.status === 403) {
-      redirect("/expert/consultations");
+      redirect(buildConsultationListHref(queueQueryString));
     }
     throw error;
+  }
+
+  let nextLeadId: string | null = null;
+  if (queueQueryString) {
+    try {
+      const filter = validateConsultationListFilter(urlSearchParams);
+      nextLeadId = await getNextConsultationLeadId(id, filter, access);
+    } catch {
+      nextLeadId = null;
+    }
   }
 
   const currentStaffUserId =
@@ -70,6 +123,14 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
     getConsultationLeadSmsHistory(id, access),
   ]);
 
+  const actionHint = resolveLeadActionHint({
+    sla: lead.sla,
+    slaReason: lead.slaReason,
+    nextFollowUpAtIso: lead.nextFollowUpAtIso,
+    lastCallOutcomeLabel: lead.lastCallOutcomeLabel,
+    status: lead.status,
+  });
+
   const leadSummary = (
     <section aria-labelledby="lead-summary-heading" className="space-y-4">
       <h2
@@ -79,16 +140,18 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         خلاصه لید
       </h2>
 
-      {lead.sla.severity !== "none" ? (
-        <div
+      {actionHint ? (
+        <p
           className={`rounded-xl border px-4 py-3 text-sm ${
-            lead.sla.severity === "red"
+            actionHint.severity === "red"
               ? "border-red-200 bg-red-50 text-red-800"
-              : "border-amber-200 bg-amber-50 text-amber-800"
+              : actionHint.severity === "amber"
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-zinc-200 bg-zinc-50 text-zinc-700"
           }`}
         >
-          {lead.slaReason}
-        </div>
+          {actionHint.text}
+        </p>
       ) : null}
 
       <Card>
@@ -99,8 +162,10 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
           </div>
           <div>
             <dt className="text-sm text-zinc-600">موبایل</dt>
-            <dd className="font-medium text-zinc-900" dir="ltr">
-              {lead.phone ?? lead.assessmentUserPhone ?? "—"}
+            <dd>
+              <LeadPhoneField
+                phone={lead.phone ?? lead.assessmentUserPhone ?? null}
+              />
             </dd>
           </div>
           <div>
@@ -278,11 +343,7 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          entry.kind === "note"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-zinc-100 text-zinc-700"
-                        }`}
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${timelineBadgeClass(entry)}`}
                       >
                         {entry.label}
                       </span>
@@ -313,7 +374,7 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
       title={`لید — ${lead.name}`}
       subtitle="اقدام بعدی، خلاصه لید و تاریخچه پیگیری."
       showBack
-      backHref="/expert/consultations"
+      backHref={buildConsultationListHref(queueQueryString)}
       maxWidth="5xl"
       footer="minimal"
     >
@@ -334,6 +395,8 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
         canTransfer={canTransfer}
         canClaim={canClaim}
         assigneeOptions={assigneeOptions}
+        queueQueryString={queueQueryString}
+        nextLeadId={nextLeadId}
         leadSummary={leadSummary}
         historyExtras={historyExtras}
       />

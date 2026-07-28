@@ -137,7 +137,7 @@ export function LeadSettingsForm({
               className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
             />
             <p className="mt-1 text-xs text-zinc-500">
-              الان در مانیتورینگ اعمال می‌شود؛ لیدهای «درخواست مشاوره» قدیمی‌تر از
+              الان در مانیتورینگ اعمال می‌شود؛ لیدهای «آماده تماس» قدیمی‌تر از
               این مدت در KPI و هشدارها کهنه محسوب می‌شوند.
             </p>
           </div>

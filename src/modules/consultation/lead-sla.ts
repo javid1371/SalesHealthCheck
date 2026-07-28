@@ -75,3 +75,58 @@ export function slaReasonLabel(flags: LeadSlaFlags): string | null {
   }
   return null;
 }
+
+export type LeadActionHintSeverity = "red" | "amber" | "neutral";
+
+export interface LeadActionHint {
+  text: string;
+  severity: LeadActionHintSeverity;
+}
+
+/**
+ * Single next-action line for lead detail.
+ * Priority: SLA reason → follow-up due today/overdue → last call → ready for first call.
+ */
+export function resolveLeadActionHint(input: {
+  sla: LeadSlaFlags;
+  slaReason: string | null;
+  nextFollowUpAtIso: string | null;
+  lastCallOutcomeLabel: string | null;
+  status: LeadStatus;
+  now?: Date;
+}): LeadActionHint | null {
+  if (input.sla.severity !== "none" && input.slaReason) {
+    return {
+      text: input.slaReason,
+      severity: input.sla.severity,
+    };
+  }
+
+  const now = input.now ?? new Date();
+  if (input.nextFollowUpAtIso) {
+    const followUpAt = new Date(input.nextFollowUpAtIso);
+    if (!Number.isNaN(followUpAt.getTime())) {
+      const endOfToday = new Date(now);
+      endOfToday.setHours(23, 59, 59, 999);
+      if (followUpAt < now) {
+        return { text: "پیگیری عقب‌افتاده", severity: "red" };
+      }
+      if (followUpAt <= endOfToday) {
+        return { text: "پیگیری امروز", severity: "amber" };
+      }
+    }
+  }
+
+  if (input.lastCallOutcomeLabel) {
+    return {
+      text: `آخرین تماس: ${input.lastCallOutcomeLabel}`,
+      severity: "neutral",
+    };
+  }
+
+  if (input.status === "new") {
+    return { text: "آماده اولین تماس", severity: "neutral" };
+  }
+
+  return null;
+}

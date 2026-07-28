@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { computeLeadSlaFlags, slaReasonLabel } from "@/modules/consultation/lead-sla";
+import {
+  computeLeadSlaFlags,
+  resolveLeadActionHint,
+  slaReasonLabel,
+  type LeadSlaFlags,
+} from "@/modules/consultation/lead-sla";
+
+const noSla: LeadSlaFlags = {
+  staleNew: false,
+  overdueFollowUp: false,
+  highProbabilityUnassigned: false,
+  severity: "none",
+};
 
 describe("computeLeadSlaFlags", () => {
   const now = new Date("2026-06-02T12:00:00Z");
@@ -58,5 +70,100 @@ describe("computeLeadSlaFlags", () => {
     expect(flags.highProbabilityUnassigned).toBe(true);
     expect(flags.severity).toBe("amber");
     expect(slaReasonLabel(flags)).toBe("احتمال بالا — بدون تخصیص");
+  });
+});
+
+describe("resolveLeadActionHint", () => {
+  // Midday local so "later today" / "tomorrow" stay on clear calendar sides.
+  const now = new Date(2026, 5, 2, 12, 0, 0, 0);
+
+  it("prefers SLA reason over other hints", () => {
+    const laterToday = new Date(2026, 5, 2, 18, 0, 0, 0);
+    const hint = resolveLeadActionHint({
+      sla: {
+        staleNew: true,
+        overdueFollowUp: false,
+        highProbabilityUnassigned: false,
+        severity: "amber",
+      },
+      slaReason: "لید جدید کهنه",
+      nextFollowUpAtIso: laterToday.toISOString(),
+      lastCallOutcomeLabel: "عدم پاسخ",
+      status: "new",
+      now,
+    });
+
+    expect(hint).toEqual({ text: "لید جدید کهنه", severity: "amber" });
+  });
+
+  it("returns follow-up today when due later today", () => {
+    const laterToday = new Date(2026, 5, 2, 18, 0, 0, 0);
+    const hint = resolveLeadActionHint({
+      sla: noSla,
+      slaReason: null,
+      nextFollowUpAtIso: laterToday.toISOString(),
+      lastCallOutcomeLabel: "عدم پاسخ",
+      status: "contacted",
+      now,
+    });
+
+    expect(hint).toEqual({ text: "پیگیری امروز", severity: "amber" });
+  });
+
+  it("returns overdue follow-up when past and SLA is none", () => {
+    const yesterday = new Date(2026, 5, 1, 10, 0, 0, 0);
+    const hint = resolveLeadActionHint({
+      sla: noSla,
+      slaReason: null,
+      nextFollowUpAtIso: yesterday.toISOString(),
+      lastCallOutcomeLabel: null,
+      status: "contacted",
+      now,
+    });
+
+    expect(hint).toEqual({ text: "پیگیری عقب‌افتاده", severity: "red" });
+  });
+
+  it("returns last call label when no SLA or follow-up due", () => {
+    const future = new Date(2026, 5, 5, 10, 0, 0, 0);
+    const hint = resolveLeadActionHint({
+      sla: noSla,
+      slaReason: null,
+      nextFollowUpAtIso: future.toISOString(),
+      lastCallOutcomeLabel: "عدم پاسخ",
+      status: "contacted",
+      now,
+    });
+
+    expect(hint).toEqual({
+      text: "آخرین تماس: عدم پاسخ",
+      severity: "neutral",
+    });
+  });
+
+  it("returns ready-for-first-call for new leads", () => {
+    const hint = resolveLeadActionHint({
+      sla: noSla,
+      slaReason: null,
+      nextFollowUpAtIso: null,
+      lastCallOutcomeLabel: null,
+      status: "new",
+      now,
+    });
+
+    expect(hint).toEqual({ text: "آماده اولین تماس", severity: "neutral" });
+  });
+
+  it("returns null when nothing actionable", () => {
+    const hint = resolveLeadActionHint({
+      sla: noSla,
+      slaReason: null,
+      nextFollowUpAtIso: null,
+      lastCallOutcomeLabel: null,
+      status: "contacted",
+      now,
+    });
+
+    expect(hint).toBeNull();
   });
 });

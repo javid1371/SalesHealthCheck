@@ -614,18 +614,23 @@ async function hydrateConsultationListRows(ids: string[]) {
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
 }
 
-export async function findConsultationRequests(filter: ConsultationListFilter) {
-  // Rank with a light query first — never join report/org for every lead just to paginate.
+/** Ranked lead ids for the call queue (same order as list/kanban). */
+export async function findConsultationRequestIdsInCallQueueOrder(
+  filter: Omit<ConsultationListFilter, "page" | "pageSize">,
+): Promise<string[]> {
   const rankingRows = await db.consultationRequest.findMany({
     where: buildConsultationWhere(filter),
     select: { id: true, status: true, createdAt: true },
   });
   rankingRows.sort(compareLeadsByCallQueuePriority);
+  return rankingRows.map((row) => row.id);
+}
 
+export async function findConsultationRequests(filter: ConsultationListFilter) {
+  // Rank with a light query first — never join report/org for every lead just to paginate.
+  const rankedIds = await findConsultationRequestIdsInCallQueueOrder(filter);
   const start = (filter.page - 1) * filter.pageSize;
-  const pageIds = rankingRows
-    .slice(start, start + filter.pageSize)
-    .map((row) => row.id);
+  const pageIds = rankedIds.slice(start, start + filter.pageSize);
 
   return hydrateConsultationListRows(pageIds);
 }

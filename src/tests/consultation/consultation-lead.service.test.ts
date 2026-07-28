@@ -7,6 +7,7 @@ import {
 const repoMock = vi.hoisted(() => ({
   countConsultationRequests: vi.fn(),
   findConsultationRequests: vi.fn(),
+  findConsultationRequestIdsInCallQueueOrder: vi.fn(),
   findConsultationRequestById: vi.fn(),
   updateConsultationLead: vi.fn(),
   addConsultationNote: vi.fn(),
@@ -42,12 +43,18 @@ const leadAssignmentMock = vi.hoisted(() => ({
   notifyLeadTransferToExpert: vi.fn(),
 }));
 
+const funnelRepoMock = vi.hoisted(() => ({
+  listLeadSmsHistory: vi.fn(),
+}));
+
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 
 vi.mock("@/modules/sms-funnel/enrollment.service", () => ({
   rescheduleCallScheduledForFollowUp: (...args: unknown[]) =>
     mockRescheduleCallScheduledForFollowUp(...args),
 }));
+
+vi.mock("@/modules/sms-funnel/funnel.repository", () => funnelRepoMock);
 
 vi.mock("@/modules/staff/staff.repository", () => staffRepoMock);
 
@@ -74,6 +81,7 @@ import {
   exportLeadsToCsv,
   getConsultationLeadDetail,
   getExpertDashboard,
+  getNextConsultationLeadId,
   listConsultationRequests,
   logCall,
   transferLead,
@@ -186,6 +194,10 @@ describe("listConsultationRequests access scoping", () => {
 describe("getConsultationLeadDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    funnelRepoMock.listLeadSmsHistory.mockResolvedValue({
+      messages: [],
+      activeEnrollments: [],
+    });
   });
 
   it("allows admin to view any lead", async () => {
@@ -226,6 +238,93 @@ describe("getConsultationLeadDetail", () => {
     await expect(
       getConsultationLeadDetail("lead-1", expertAccess),
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+  });
+
+  it("merges SMS and journey labels into timeline and synthesizes created", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      leadActivities: [
+        {
+          id: "act-status",
+          type: "status_change",
+          detail: "assessment_in_progress→assessment_completed",
+          createdAt: new Date("2026-06-01T12:00:00Z"),
+          staffUser: null,
+        },
+        {
+          id: "act-new",
+          type: "status_change",
+          detail: "assessment_completed→new",
+          createdAt: new Date("2026-06-01T13:00:00Z"),
+          staffUser: null,
+        },
+      ],
+    });
+    funnelRepoMock.listLeadSmsHistory.mockResolvedValue({
+      activeEnrollments: [],
+      messages: [
+        {
+          id: "sms-1",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-1",
+          status: "sent",
+          scheduledFor: new Date("2026-06-01T11:00:00Z"),
+          sentAt: new Date("2026-06-01T11:05:00Z"),
+          createdAt: new Date("2026-06-01T11:00:00Z"),
+          error: null,
+        },
+      ],
+    });
+
+    const lead = await getConsultationLeadDetail("lead-1", adminAccess);
+
+    expect(funnelRepoMock.listLeadSmsHistory).toHaveBeenCalled();
+    expect(lead.timeline.some((e) => e.kind === "sms" && e.label === "پیامک قیف")).toBe(
+      true,
+    );
+    expect(
+      lead.timeline.some(
+        (e) => e.activityType === "status_change" && e.label === "تست تکمیل شد",
+      ),
+    ).toBe(true);
+    expect(
+      lead.timeline.some(
+        (e) =>
+          e.activityType === "status_change" &&
+          e.label === "درخواست مشاوره ثبت شد",
+      ),
+    ).toBe(true);
+    expect(
+      lead.timeline.some(
+        (e) => e.id === "synthetic-created-lead-1" && e.activityType === "created",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not synthesize created when a created activity already exists", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      leadActivities: [
+        {
+          id: "act-created",
+          type: "created",
+          detail: "assessment_start",
+          createdAt: new Date("2026-06-01T10:00:00Z"),
+          staffUser: null,
+        },
+      ],
+    });
+
+    const lead = await getConsultationLeadDetail("lead-1", adminAccess);
+
+    expect(
+      lead.timeline.filter((e) => e.activityType === "created"),
+    ).toHaveLength(1);
+    expect(lead.timeline[0]).toMatchObject({
+      id: "act-created",
+      detail: "شروع تست / ایجاد لید سیستمی",
+    });
   });
 });
 
@@ -913,6 +1012,69 @@ describe("logCall", () => {
     );
   });
 
+  it("applies optional status and follow-up and records both activities", async () => {
+    const followUpAt = new Date("2026-07-29T00:00:00.000Z");
+    repoMock.findConsultationRequestById
+      .mockResolvedValueOnce(baseRow)
+      .mockResolvedValueOnce({
+        ...baseRow,
+        lastCallOutcome: "callback_requested",
+        lastCalledAt: new Date("2026-07-28T10:00:00Z"),
+      });
+    repoMock.updateConsultationLead
+      .mockResolvedValueOnce({
+        ...baseRow,
+        lastCallOutcome: "callback_requested",
+        lastCalledAt: new Date("2026-07-28T10:00:00Z"),
+      })
+      .mockResolvedValueOnce({
+        ...baseRow,
+        status: "contacted",
+        lastCallOutcome: "callback_requested",
+        lastCalledAt: new Date("2026-07-28T10:00:00Z"),
+        nextFollowUpAt: followUpAt,
+        firstContactedAt: new Date("2026-07-28T10:00:00Z"),
+      });
+
+    const result = await logCall(
+      "lead-1",
+      {
+        outcome: "callback_requested",
+        status: "contacted",
+        nextFollowUpAt: followUpAt,
+      },
+      expertAccess,
+    );
+
+    expect(result.status).toBe("contacted");
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "call_logged",
+      detail: serializeCallLoggedDetail("callback_requested", null),
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "status_change",
+      detail: "new→contacted",
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "follow_up_set",
+      detail: followUpAt.toISOString(),
+    });
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledWith(
+      "lead-1",
+      expect.objectContaining({
+        status: "contacted",
+        nextFollowUpAt: followUpAt,
+        firstContactedAt: expect.any(Date),
+      }),
+    );
+  });
+
   it("forbids expert from logging a call on another expert's lead", async () => {
     repoMock.findConsultationRequestById.mockResolvedValue({
       ...baseRow,
@@ -1110,5 +1272,72 @@ describe("getExpertDashboard", () => {
       (call) => call[0]?.status === "new",
     );
     expect(newLeadsCountCall?.[0]).not.toHaveProperty("assignedToId");
+  });
+});
+
+describe("getNextConsultationLeadId", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repoMock.findConsultationRequestIdsInCallQueueOrder.mockResolvedValue([
+      "lead-a",
+      "lead-b",
+      "lead-c",
+    ]);
+  });
+
+  it("returns the next id in call-queue order", async () => {
+    const nextId = await getNextConsultationLeadId(
+      "lead-a",
+      { onlyOverdueFollowUp: true, page: 1, pageSize: 20 },
+      expertAccess,
+    );
+
+    expect(nextId).toBe("lead-b");
+    expect(
+      repoMock.findConsultationRequestIdsInCallQueueOrder,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onlyOverdueFollowUp: true,
+        assignedToId: "expert-1",
+      }),
+    );
+  });
+
+  it("returns null at the end of the queue", async () => {
+    const nextId = await getNextConsultationLeadId(
+      "lead-c",
+      { page: 1, pageSize: 20 },
+      expertAccess,
+    );
+
+    expect(nextId).toBeNull();
+  });
+
+  it("returns null when current id is not in the queue", async () => {
+    const nextId = await getNextConsultationLeadId(
+      "lead-missing",
+      { page: 1, pageSize: 20 },
+      expertAccess,
+    );
+
+    expect(nextId).toBeNull();
+  });
+
+  it("scopes team queue to unassigned leads for experts", async () => {
+    await getNextConsultationLeadId(
+      "lead-a",
+      { onlyTeamQueue: true, page: 1, pageSize: 20 },
+      expertAccess,
+    );
+
+    const callFilter =
+      repoMock.findConsultationRequestIdsInCallQueueOrder.mock.calls[0]?.[0];
+    expect(callFilter).toEqual(
+      expect.objectContaining({
+        onlyTeamQueue: true,
+        onlyUnassigned: true,
+      }),
+    );
+    expect(callFilter?.assignedToId).toBeUndefined();
   });
 });

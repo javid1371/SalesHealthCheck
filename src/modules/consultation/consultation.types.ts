@@ -120,7 +120,7 @@ export interface ConsultationNoteItem {
 
 export interface LeadTimelineEntry {
   id: string;
-  kind: "note" | "activity";
+  kind: "note" | "activity" | "sms";
   label: string;
   detail: string | null;
   authorName: string | null;

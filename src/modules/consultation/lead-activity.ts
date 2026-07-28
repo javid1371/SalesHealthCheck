@@ -42,6 +42,83 @@ export const QUICK_CALL_OUTCOMES: CallOutcome[] = [
   "callback_requested",
 ];
 
+/** Suggested lead fields after selecting a call outcome (UI defaults; overridable). */
+export type AfterCallSuggestion = {
+  /** Omit when status should stay unchanged. */
+  status?: LeadStatus;
+  /**
+   * Days from today for next follow-up.
+   * `null` = clear / leave empty; `undefined` = do not suggest a follow-up change.
+   */
+  nextFollowUpDays?: number | null;
+  lostReason?: LostReason;
+};
+
+export function suggestAfterCallDefaults(
+  outcome: CallOutcome,
+): AfterCallSuggestion {
+  switch (outcome) {
+    case "no_answer":
+    case "busy":
+      return { nextFollowUpDays: 1 };
+    case "callback_requested":
+      return { status: "contacted", nextFollowUpDays: 1 };
+    case "connected_interested":
+      return { status: "contacted", nextFollowUpDays: null };
+    case "connected_not_interested":
+      return { status: "closed_lost" };
+    case "wrong_number":
+      return { status: "closed_lost", lostReason: "low_quality" };
+    default: {
+      const _exhaustive: never = outcome;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Fields to send with a kanban quick-call log (no extra UI unless reason required). */
+export type QuickCallLogFields =
+  | { needsLostReason: true }
+  | {
+      needsLostReason: false;
+      status?: LeadStatus;
+      nextFollowUpDays?: number | null;
+      lostReason?: LostReason;
+      lostNote?: string | null;
+    };
+
+/**
+ * Apply suggestAfterCallDefaults for kanban logQuickCall.
+ * Returns needsLostReason when closed_lost has no suggested/provided reason.
+ */
+export function resolveQuickCallLogFields(
+  outcome: CallOutcome,
+  lost?: { lostReason: LostReason; lostNote?: string | null },
+): QuickCallLogFields {
+  const suggestion = suggestAfterCallDefaults(outcome);
+  const lostReason = lost?.lostReason ?? suggestion.lostReason;
+
+  if (suggestion.status === "closed_lost" && !lostReason) {
+    return { needsLostReason: true };
+  }
+
+  return {
+    needsLostReason: false,
+    ...(suggestion.status !== undefined ? { status: suggestion.status } : {}),
+    ...(suggestion.nextFollowUpDays !== undefined
+      ? { nextFollowUpDays: suggestion.nextFollowUpDays }
+      : {}),
+    ...(suggestion.status === "closed_lost" && lostReason
+      ? {
+          lostReason,
+          ...(lostReason === "other"
+            ? { lostNote: lost?.lostNote ?? null }
+            : {}),
+        }
+      : {}),
+  };
+}
+
 export const LEAD_TRANSFER_REASONS: LeadTransferReason[] = [
   "workload",
   "leave",
@@ -84,7 +161,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   assessment_in_progress: "در حال انجام تست",
   assessment_incomplete: "پیگیری تکمیل تست",
   assessment_completed: "تست تکمیل‌شده",
-  new: "درخواست مشاوره",
+  new: "آماده تماس",
   contacted: "تماس گرفته‌شده",
   meeting_scheduled: "جلسه تنظیم‌شده",
   closed_won: "بسته — موفق",
@@ -174,6 +251,60 @@ export function formatStatusChangeDetail(
   return `${STATUS_LABELS[from]} → ${STATUS_LABELS[to]}`;
 }
 
+/**
+ * Journey-oriented label for known status transitions (timeline badge).
+ * Returns null when the generic "تغییر وضعیت" label should be used.
+ */
+export function formatStatusChangeJourneyLabel(
+  from: LeadStatus,
+  to: LeadStatus,
+): string | null {
+  if (
+    from === "assessment_in_progress" &&
+    to === "assessment_completed"
+  ) {
+    return "تست تکمیل شد";
+  }
+  if (to === "assessment_incomplete") {
+    return "تست نیمه‌کاره شد";
+  }
+  if (to === "new") {
+    return "درخواست مشاوره ثبت شد";
+  }
+  return null;
+}
+
+export function parseStatusChangeDetail(
+  detail: string,
+): { from: LeadStatus; to: LeadStatus } | null {
+  const [fromRaw, toRaw] = detail.split("→");
+  if (!fromRaw || !toRaw) {
+    return null;
+  }
+  const from = fromRaw.trim() as LeadStatus;
+  const to = toRaw.trim() as LeadStatus;
+  if (!STATUS_LABELS[from] || !STATUS_LABELS[to]) {
+    return null;
+  }
+  return { from, to };
+}
+
+export function resolveActivityTimelineLabel(
+  type: LeadActivityType,
+  detail: string | null,
+): string {
+  if (type === "status_change" && detail) {
+    const parsed = parseStatusChangeDetail(detail);
+    if (parsed) {
+      const journey = formatStatusChangeJourneyLabel(parsed.from, parsed.to);
+      if (journey) {
+        return journey;
+      }
+    }
+  }
+  return LEAD_ACTIVITY_LABELS[type];
+}
+
 export function formatActivityDetail(
   type: LeadActivityType,
   detail: string | null,
@@ -183,13 +314,9 @@ export function formatActivityDetail(
   }
 
   if (type === "status_change") {
-    const [from, to] = detail.split("→");
-    if (from && to) {
-      const fromStatus = from.trim() as LeadStatus;
-      const toStatus = to.trim() as LeadStatus;
-      if (STATUS_LABELS[fromStatus] && STATUS_LABELS[toStatus]) {
-        return formatStatusChangeDetail(fromStatus, toStatus);
-      }
+    const parsed = parseStatusChangeDetail(detail);
+    if (parsed) {
+      return formatStatusChangeDetail(parsed.from, parsed.to);
     }
   }
 
@@ -199,6 +326,10 @@ export function formatActivityDetail(
 
   if (type === "created" && detail === "manual") {
     return "ثبت دستی توسط ادمین";
+  }
+
+  if (type === "created" && detail === "assessment_start") {
+    return "شروع تست / ایجاد لید سیستمی";
   }
 
   if (type === "probability_override") {

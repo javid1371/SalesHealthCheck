@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,10 @@ import {
   updateConsultationLeadRequest,
 } from "@/lib/expert-client";
 import {
+  buildConsultationLeadDetailHref,
+  buildConsultationListHref,
+} from "@/modules/consultation/consultation-list.validators";
+import {
   CALL_OUTCOME_LABELS,
   CALL_OUTCOMES,
   LEAD_TRANSFER_REASON_LABELS,
@@ -24,6 +29,7 @@ import {
   LOST_REASON_LABELS,
   LOST_REASONS,
   TRANSFER_NOTE_MIN_LENGTH,
+  suggestAfterCallDefaults,
 } from "@/modules/consultation/lead-activity";
 import type {
   CallOutcome,
@@ -36,13 +42,24 @@ const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
   { value: "assessment_in_progress", label: "در حال انجام تست" },
   { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
   { value: "assessment_completed", label: "تست تکمیل‌شده" },
-  { value: "new", label: "درخواست مشاوره" },
+  { value: "new", label: "آماده تماس" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },
   { value: "closed_lost", label: "بسته — ناموفق" },
   { value: "unreachable", label: "در دسترس نیست" },
 ];
+
+/** Local calendar day + N days as `YYYY-MM-DD` for date inputs. */
+function localDateDaysFromNow(days: number): string {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 interface AssigneeOption {
   id: string;
@@ -62,6 +79,8 @@ interface LeadDetailClientProps {
   canTransfer: boolean;
   canClaim?: boolean;
   assigneeOptions: AssigneeOption[];
+  queueQueryString?: string;
+  nextLeadId?: string | null;
   leadSummary?: ReactNode;
   historyExtras?: ReactNode;
 }
@@ -79,6 +98,8 @@ export function LeadDetailClient({
   canTransfer,
   canClaim = false,
   assigneeOptions,
+  queueQueryString = "",
+  nextLeadId = null,
   leadSummary,
   historyExtras,
 }: LeadDetailClientProps) {
@@ -107,6 +128,12 @@ export function LeadDetailClient({
   );
   const [transferNote, setTransferNote] = useState("");
   const [callOutcome, setCallOutcome] = useState<CallOutcome | "">("");
+  const [callStatus, setCallStatus] = useState<LeadStatus>(initialStatus);
+  const [callNextFollowUpAt, setCallNextFollowUpAt] = useState(
+    initialNextFollowUpAtIso ?? "",
+  );
+  const [callLostReason, setCallLostReason] = useState<LostReason | "">("");
+  const [callLostNote, setCallLostNote] = useState("");
   const [callNote, setCallNote] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +144,30 @@ export function LeadDetailClient({
     (option) =>
       option.id !== currentStaffUserId && option.id !== (assignedToId || null),
   );
+
+  function applyAfterCallSuggestions(outcome: CallOutcome | "") {
+    if (!outcome) {
+      setCallStatus(initialStatus);
+      setCallNextFollowUpAt(initialNextFollowUpAtIso ?? "");
+      setCallLostReason("");
+      setCallLostNote("");
+      return;
+    }
+
+    const suggestion = suggestAfterCallDefaults(outcome);
+    setCallStatus(suggestion.status ?? initialStatus);
+
+    if (suggestion.nextFollowUpDays === undefined) {
+      setCallNextFollowUpAt(initialNextFollowUpAtIso ?? "");
+    } else if (suggestion.nextFollowUpDays === null) {
+      setCallNextFollowUpAt("");
+    } else {
+      setCallNextFollowUpAt(localDateDaysFromNow(suggestion.nextFollowUpDays));
+    }
+
+    setCallLostReason(suggestion.lostReason ?? "");
+    setCallLostNote("");
+  }
 
   async function handleUpdateLead(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -260,19 +311,59 @@ export function LeadDetailClient({
       return;
     }
 
+    if (callStatus === "closed_lost" && !callLostReason) {
+      setError("برای بستن ناموفق، دلیل باخت الزامی است.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
       const note = callNote.trim();
-      await logConsultationCallRequest(leadId, {
+      const payload: Parameters<typeof logConsultationCallRequest>[1] = {
         outcome: callOutcome,
+        status: callStatus,
+        nextFollowUpAt: callNextFollowUpAt
+          ? new Date(callNextFollowUpAt).toISOString()
+          : null,
         ...(note ? { note } : {}),
-      });
+      };
+
+      if (callStatus === "closed_lost" && callLostReason) {
+        payload.lostReason = callLostReason;
+        if (callLostReason === "other") {
+          payload.lostNote = callLostNote.trim() || null;
+        }
+      }
+
+      await logConsultationCallRequest(leadId, payload);
       setCallOutcome("");
       setCallNote("");
-      setSuccess("تماس ثبت شد.");
+      setCallLostReason("");
+      setCallLostNote("");
+      setCallStatus(callStatus);
+      setStatus(callStatus);
+      setNextFollowUpAt(callNextFollowUpAt);
+      if (callStatus === "closed_lost" && callLostReason) {
+        setLostReason(callLostReason);
+        setLostNote(callLostReason === "other" ? callLostNote : "");
+      }
+
+      // Queue context: advance to next lead, or return to the filtered list.
+      if (queueQueryString) {
+        if (nextLeadId) {
+          router.push(
+            buildConsultationLeadDetailHref(nextLeadId, queueQueryString),
+          );
+        } else {
+          router.push(buildConsultationListHref(queueQueryString));
+        }
+        return;
+      }
+
+      setSuccess("تماس و پیگیری ثبت شد.");
       router.refresh();
     } catch (err) {
       setError(
@@ -355,6 +446,16 @@ export function LeadDetailClient({
 
   return (
     <div className="space-y-6">
+      {queueQueryString && nextLeadId ? (
+        <p className="text-sm text-zinc-500">
+          <Link
+            href={buildConsultationLeadDetailHref(nextLeadId, queueQueryString)}
+            className="hover:text-zinc-700 hover:underline"
+          >
+            سرنخ بعدی
+          </Link>
+        </p>
+      ) : null}
       <section aria-labelledby="lead-next-action-heading">
         <h2
           id="lead-next-action-heading"
@@ -365,8 +466,150 @@ export function LeadDetailClient({
         <div className="space-y-4">
           <Card>
             <h3 className="mb-4 text-base font-semibold text-zinc-900">
+              بعد از تماس
+            </h3>
+            <form onSubmit={handleLogCall} className="grid gap-4 sm:grid-cols-2">
+              <FieldLabel label="نتیجه تماس" htmlFor="lead-call-outcome">
+                <Select
+                  id="lead-call-outcome"
+                  value={callOutcome}
+                  onChange={(event) => {
+                    const next = event.target.value as CallOutcome | "";
+                    setCallOutcome(next);
+                    applyAfterCallSuggestions(next);
+                  }}
+                  disabled={loading}
+                  required
+                >
+                  <option value="">انتخاب نتیجه</option>
+                  {CALL_OUTCOMES.map((outcome) => (
+                    <option key={outcome} value={outcome}>
+                      {CALL_OUTCOME_LABELS[outcome]}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel label="وضعیت" htmlFor="lead-call-status">
+                <Select
+                  id="lead-call-status"
+                  value={callStatus}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value as LeadStatus;
+                    setCallStatus(nextStatus);
+                    if (nextStatus !== "closed_lost") {
+                      setCallLostReason("");
+                      setCallLostNote("");
+                    }
+                  }}
+                  disabled={loading || !callOutcome}
+                >
+                  {STATUS_OPTIONS.filter(
+                    (option) =>
+                      option.value !== "assessment_in_progress" ||
+                      callStatus === "assessment_in_progress",
+                  ).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel label="پیگیری بعدی" htmlFor="lead-call-follow-up">
+                <Input
+                  id="lead-call-follow-up"
+                  type="date"
+                  value={callNextFollowUpAt}
+                  onChange={(event) => setCallNextFollowUpAt(event.target.value)}
+                  disabled={loading || !callOutcome}
+                />
+              </FieldLabel>
+
+              {callStatus === "closed_lost" ? (
+                <>
+                  <FieldLabel
+                    label="دلیل باخت"
+                    htmlFor="lead-call-lost-reason"
+                  >
+                    <Select
+                      id="lead-call-lost-reason"
+                      value={callLostReason}
+                      onChange={(event) =>
+                        setCallLostReason(event.target.value as LostReason | "")
+                      }
+                      disabled={loading || !callOutcome}
+                      required
+                    >
+                      <option value="">انتخاب دلیل</option>
+                      {LOST_REASONS.map((reason) => (
+                        <option key={reason} value={reason}>
+                          {LOST_REASON_LABELS[reason]}
+                        </option>
+                      ))}
+                    </Select>
+                  </FieldLabel>
+
+                  {callLostReason === "other" ? (
+                    <div className="sm:col-span-2">
+                      <FieldLabel
+                        label="توضیح باخت (اختیاری)"
+                        htmlFor="lead-call-lost-note"
+                      >
+                        <textarea
+                          id="lead-call-lost-note"
+                          rows={2}
+                          className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                          value={callLostNote}
+                          onChange={(event) =>
+                            setCallLostNote(event.target.value)
+                          }
+                          disabled={loading}
+                          placeholder="توضیح کوتاه دربارهٔ دلیل باخت…"
+                        />
+                      </FieldLabel>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              <div className="sm:col-span-2">
+                <FieldLabel label="یادداشت (اختیاری)" htmlFor="lead-call-note">
+                  <textarea
+                    id="lead-call-note"
+                    rows={2}
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    value={callNote}
+                    onChange={(event) => setCallNote(event.target.value)}
+                    disabled={loading}
+                    placeholder="خلاصه کوتاه از تماس…"
+                  />
+                </FieldLabel>
+              </div>
+
+              <div className="flex items-end sm:col-span-2">
+                <Button
+                  type="submit"
+                  loading={loading}
+                  loadingLabel="در حال ثبت…"
+                  disabled={
+                    !callOutcome ||
+                    (callStatus === "closed_lost" && !callLostReason)
+                  }
+                >
+                  ثبت
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          <Card>
+            <h3 className="mb-1 text-base font-semibold text-zinc-900">
               وضعیت و پیگیری
             </h3>
+            <p className="mb-4 text-sm text-zinc-500">
+              برای تغییر بدون ثبت تماس
+            </p>
             <form
               onSubmit={handleUpdateLead}
               className="grid gap-4 sm:grid-cols-2"
@@ -473,62 +716,12 @@ export function LeadDetailClient({
               <div className="flex items-end sm:col-span-2">
                 <Button
                   type="submit"
+                  variant="secondary"
                   loading={loading}
                   loadingLabel="در حال ذخیره…"
                   disabled={status === "closed_lost" && !lostReason}
                 >
                   ذخیره تغییرات
-                </Button>
-              </div>
-            </form>
-          </Card>
-
-          <Card>
-            <h3 className="mb-4 text-base font-semibold text-zinc-900">
-              ثبت تماس / نتیجه
-            </h3>
-            <form onSubmit={handleLogCall} className="grid gap-4 sm:grid-cols-2">
-              <FieldLabel label="نتیجه تماس" htmlFor="lead-call-outcome">
-                <Select
-                  id="lead-call-outcome"
-                  value={callOutcome}
-                  onChange={(event) =>
-                    setCallOutcome(event.target.value as CallOutcome | "")
-                  }
-                  disabled={loading}
-                  required
-                >
-                  <option value="">انتخاب نتیجه</option>
-                  {CALL_OUTCOMES.map((outcome) => (
-                    <option key={outcome} value={outcome}>
-                      {CALL_OUTCOME_LABELS[outcome]}
-                    </option>
-                  ))}
-                </Select>
-              </FieldLabel>
-
-              <div className="sm:col-span-2">
-                <FieldLabel label="یادداشت (اختیاری)" htmlFor="lead-call-note">
-                  <textarea
-                    id="lead-call-note"
-                    rows={2}
-                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                    value={callNote}
-                    onChange={(event) => setCallNote(event.target.value)}
-                    disabled={loading}
-                    placeholder="خلاصه کوتاه از تماس…"
-                  />
-                </FieldLabel>
-              </div>
-
-              <div className="flex items-end sm:col-span-2">
-                <Button
-                  type="submit"
-                  loading={loading}
-                  loadingLabel="در حال ثبت…"
-                  disabled={!callOutcome}
-                >
-                  ثبت تماس
                 </Button>
               </div>
             </form>

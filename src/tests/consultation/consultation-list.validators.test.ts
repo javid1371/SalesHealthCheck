@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "@/lib/errors";
-import { validateConsultationListFilter } from "@/modules/consultation/consultation-list.validators";
+import {
+  buildConsultationLeadDetailHref,
+  buildConsultationListHref,
+  consultationQueueQueryString,
+  validateConsultationListFilter,
+} from "@/modules/consultation/consultation-list.validators";
 
 describe("validateConsultationListFilter", () => {
   it("defaults new additive filters to off", () => {
@@ -107,5 +112,34 @@ describe("validateConsultationListFilter", () => {
         new URLSearchParams({ lastCallOutcome: "picked_up" }),
       ),
     ).toThrow(AppError);
+  });
+});
+
+describe("consultation queue query helpers", () => {
+  it("strips page, pageSize, and view from the queue query", () => {
+    const params = new URLSearchParams({
+      onlyOverdueFollowUp: "true",
+      status: "new",
+      page: "2",
+      pageSize: "50",
+      view: "kanban",
+    });
+
+    expect(consultationQueueQueryString(params)).toBe(
+      "onlyOverdueFollowUp=true&status=new",
+    );
+  });
+
+  it("builds detail and list hrefs with optional queue query", () => {
+    expect(buildConsultationLeadDetailHref("lead-1")).toBe(
+      "/expert/consultations/lead-1",
+    );
+    expect(
+      buildConsultationLeadDetailHref("lead-1", "onlyOverdueFollowUp=true"),
+    ).toBe("/expert/consultations/lead-1?onlyOverdueFollowUp=true");
+    expect(buildConsultationListHref()).toBe("/expert/consultations");
+    expect(buildConsultationListHref("status=new")).toBe(
+      "/expert/consultations?status=new",
+    );
   });
 });

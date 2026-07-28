@@ -586,6 +586,21 @@ function countDistinctActors(
   return actors.size;
 }
 
+/** Distinct visitors/users for a funnel event type (same rules as conversion funnel). */
+export async function countDistinctFunnelActorsByType(
+  type: FunnelEventType,
+): Promise<number> {
+  const events = await db.funnelEvent.findMany({
+    where: { type },
+    select: {
+      userId: true,
+      assessmentSessionId: true,
+      metadata: true,
+    },
+  });
+  return countDistinctActors(events);
+}
+
 function dropOffPercent(previous: number, current: number): number | null {
   if (previous <= 0) {
     return null;

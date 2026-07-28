@@ -77,6 +77,10 @@ export async function logConsultationCallRequest(
   input: {
     outcome: CallOutcome;
     note?: string;
+    status?: LeadStatus;
+    nextFollowUpAt?: string | null;
+    lostReason?: LostReason;
+    lostNote?: string | null;
   },
 ): Promise<{ lead: ConsultationListItem }> {
   return apiPost<{ lead: ConsultationListItem }>(

@@ -3,7 +3,10 @@ import {
   formatActivityDetail,
   formatAssignmentChangeDetail,
   formatCallLoggedDetail,
+  formatStatusChangeDetail,
+  formatStatusChangeJourneyLabel,
   formatTransferNoteBody,
+  resolveActivityTimelineLabel,
   serializeAssignmentChangeDetail,
   serializeCallLoggedDetail,
 } from "@/modules/consultation/lead-activity";
@@ -48,6 +51,48 @@ describe("assignment_change activity formatting", () => {
   it("builds transfer note with reason prefix", () => {
     expect(formatTransferNoteBody("leave", "تا پنجشنبه در دسترس نیستم")).toBe(
       "انتقال: مرخصی — تا پنجشنبه در دسترس نیستم",
+    );
+  });
+});
+
+describe("status_change journey labels", () => {
+  it("labels status=new as آماده تماس (column name, not journey event)", () => {
+    expect(formatStatusChangeDetail("new", "contacted")).toBe(
+      "آماده تماس → تماس گرفته‌شده",
+    );
+  });
+
+  it("maps known assessment journey transitions", () => {
+    expect(
+      formatStatusChangeJourneyLabel(
+        "assessment_in_progress",
+        "assessment_completed",
+      ),
+    ).toBe("تست تکمیل شد");
+    expect(
+      formatStatusChangeJourneyLabel("assessment_in_progress", "assessment_incomplete"),
+    ).toBe("تست نیمه‌کاره شد");
+    expect(
+      formatStatusChangeJourneyLabel("assessment_completed", "new"),
+    ).toBe("درخواست مشاوره ثبت شد");
+    expect(formatStatusChangeJourneyLabel("new", "contacted")).toBeNull();
+  });
+
+  it("uses journey label on timeline for status_change activities", () => {
+    expect(
+      resolveActivityTimelineLabel(
+        "status_change",
+        "assessment_in_progress→assessment_completed",
+      ),
+    ).toBe("تست تکمیل شد");
+    expect(resolveActivityTimelineLabel("status_change", "new→contacted")).toBe(
+      "تغییر وضعیت",
+    );
+  });
+
+  it("formats assessment_start created detail", () => {
+    expect(formatActivityDetail("created", "assessment_start")).toBe(
+      "شروع تست / ایجاد لید سیستمی",
     );
   });
 });

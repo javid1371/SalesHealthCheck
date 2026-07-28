@@ -14,6 +14,7 @@ import {
   createManualLeadRequest,
 } from "@/lib/admin-client";
 import { claimConsultationLeadRequest } from "@/lib/expert-client";
+import { buildConsultationLeadDetailHref } from "@/modules/consultation/consultation-list.validators";
 import type { ConsultationListItem } from "@/modules/consultation/consultation.types";
 import {
   LOST_REASON_LABELS,
@@ -25,7 +26,7 @@ const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
   { value: "assessment_in_progress", label: "در حال انجام تست" },
   { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
   { value: "assessment_completed", label: "تست تکمیل‌شده" },
-  { value: "new", label: "درخواست مشاوره" },
+  { value: "new", label: "آماده تماس" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },
@@ -44,6 +45,7 @@ interface ConsultationListWithAdminProps {
   exportQueryString: string;
   isAdmin: boolean;
   showClaimActions?: boolean;
+  queueQueryString?: string;
 }
 
 export function ConsultationListWithAdmin({
@@ -52,6 +54,7 @@ export function ConsultationListWithAdmin({
   exportQueryString,
   isAdmin,
   showClaimActions = false,
+  queueQueryString = "",
 }: ConsultationListWithAdminProps) {
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -414,7 +417,9 @@ export function ConsultationListWithAdmin({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {requests.map((item) => (
+            {requests.map((item) => {
+              const phone = item.phone ?? item.assessmentUserPhone;
+              return (
               <tr
                 key={item.id}
                 className={`align-top hover:bg-zinc-50/80 ${
@@ -500,7 +505,16 @@ export function ConsultationListWithAdmin({
                   {item.name}
                 </td>
                 <td className="px-4 py-3 text-zinc-600" dir="ltr">
-                  {item.phone ?? item.assessmentUserPhone ?? "—"}
+                  {phone ? (
+                    <a
+                      href={`tel:${phone}`}
+                      className="font-medium text-emerald-700 hover:text-emerald-800"
+                    >
+                      {phone}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3 text-zinc-600">
                   {item.businessName ?? "—"}
@@ -535,7 +549,10 @@ export function ConsultationListWithAdmin({
                       </Button>
                     ) : null}
                     <Link
-                      href={item.detailUrl}
+                      href={buildConsultationLeadDetailHref(
+                        item.id,
+                        queueQueryString,
+                      )}
                       className="font-medium text-emerald-700 hover:text-emerald-800"
                     >
                       جزئیات لید
@@ -575,7 +592,8 @@ export function ConsultationListWithAdmin({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

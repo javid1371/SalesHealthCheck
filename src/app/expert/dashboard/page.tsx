@@ -8,6 +8,7 @@ import {
   readAdminSession,
   readSalesExpertSession,
 } from "@/lib/session";
+import { buildConsultationLeadDetailHref } from "@/modules/consultation/consultation-list.validators";
 import type { ExpertDashboardFollowUpRow } from "@/modules/consultation/consultation.types";
 import { getExpertDashboard } from "@/modules/consultation/consultation.service";
 import { ExpertNav } from "../ExpertNav";
@@ -65,10 +66,12 @@ function PriorityLeadTable({
   rows,
   emptyMessage,
   showAssignee,
+  queueQueryString,
 }: {
   rows: ExpertDashboardFollowUpRow[];
   emptyMessage: string;
   showAssignee: boolean;
+  queueQueryString: string;
 }) {
   if (rows.length === 0) {
     return (
@@ -127,7 +130,10 @@ function PriorityLeadTable({
               </td>
               <td className="px-4 py-3">
                 <Link
-                  href={row.detailUrl}
+                  href={buildConsultationLeadDetailHref(
+                    row.id,
+                    queueQueryString,
+                  )}
                   className="font-medium text-emerald-700 hover:text-emerald-800"
                 >
                   جزئیات
@@ -149,6 +155,7 @@ function PrioritySection({
   rows,
   emptyMessage,
   showAssignee,
+  queueQueryString,
   tone = "default",
 }: {
   title: string;
@@ -158,6 +165,7 @@ function PrioritySection({
   rows: ExpertDashboardFollowUpRow[];
   emptyMessage: string;
   showAssignee: boolean;
+  queueQueryString: string;
   tone?: "default" | "danger";
 }) {
   return (
@@ -182,6 +190,7 @@ function PrioritySection({
         rows={rows}
         emptyMessage={emptyMessage}
         showAssignee={showAssignee}
+        queueQueryString={queueQueryString}
       />
     </section>
   );
@@ -279,6 +288,7 @@ export default async function ExpertDashboardPage() {
         rows={dashboard.overdueFollowUps}
         emptyMessage="پیگیری عقب‌افتاده‌ای ندارید."
         showAssignee={isAdminView}
+        queueQueryString="onlyOverdueFollowUp=true"
         tone="danger"
       />
 
@@ -290,6 +300,7 @@ export default async function ExpertDashboardPage() {
         rows={dashboard.todayFollowUps}
         emptyMessage="برای امروز پیگیری باقی‌مانده‌ای ثبت نشده است."
         showAssignee={isAdminView}
+        queueQueryString="onlyFollowUpDueToday=true"
       />
 
       <PrioritySection
@@ -300,6 +311,7 @@ export default async function ExpertDashboardPage() {
         rows={dashboard.newLeadRows}
         emptyMessage="لید جدیدی در صف نیست."
         showAssignee={isAdminView}
+        queueQueryString="status=new"
       />
     </PageLayout>
   );

@@ -331,6 +331,7 @@ describe("getAdminDashboard", () => {
       assessmentsThisWeek: 25,
       assessmentsThisMonth: 80,
     });
+    // funnel.consultations is distinct consultation_submitted actors (not ConsultationRequest rows)
     expect(dashboard.funnel).toEqual({
       started: 100,
       completed: 60,

@@ -1,6 +1,7 @@
 import type { AssessmentStatus, LeadStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { STALE_NEW_LEAD_HOURS } from "@/modules/consultation/lead-sla";
+import { countDistinctFunnelActorsByType } from "@/modules/sms-funnel/funnel.repository";
 import type { AdminAssessmentFilter } from "./admin.types";
 
 export { STALE_NEW_LEAD_HOURS };
@@ -206,28 +207,14 @@ export async function countUsersCompletedInRange(
   });
 }
 
+/** Attraction-funnel consultations: distinct actors with consultation_submitted. */
 export async function countUsersWithConsultation(): Promise<number> {
-  return db.user.count({
-    where: {
-      assessmentSessions: {
-        some: {
-          consultationRequests: { some: {} },
-        },
-      },
-    },
-  });
+  return countDistinctFunnelActorsByType("consultation_submitted");
 }
 
+/** Internal KPI — same definition as attraction-funnel consultations (submitted). */
 export async function countUsersWithNewConsultation(): Promise<number> {
-  return db.user.count({
-    where: {
-      assessmentSessions: {
-        some: {
-          consultationRequests: { some: { status: "new" } },
-        },
-      },
-    },
-  });
+  return countDistinctFunnelActorsByType("consultation_submitted");
 }
 
 export async function countUsersCriticalLeads(): Promise<number> {

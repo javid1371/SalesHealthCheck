@@ -7,11 +7,31 @@ import { readAdminSession } from "@/lib/session";
 import { startOfWeek } from "@/modules/admin/admin.repository";
 import { getAdminDashboard } from "@/modules/admin/admin.service";
 import type {
+  AdminExpertPerformanceRow,
   AdminFullConversionFunnel,
   AdminLeadStatusFunnel,
 } from "@/modules/admin/admin.types";
 import { AdminNav } from "../AdminNav";
 import { ExpertPerformanceTable } from "./ExpertPerformanceTable";
+
+function sortExpertsForAttention(
+  rows: AdminExpertPerformanceRow[],
+): AdminExpertPerformanceRow[] {
+  return [...rows].sort((a, b) => {
+    if (b.overdueFollowUpOpen !== a.overdueFollowUpOpen) {
+      return b.overdueFollowUpOpen - a.overdueFollowUpOpen;
+    }
+    return b.open - a.open;
+  });
+}
+
+function expertQueueHref(row: AdminExpertPerformanceRow): string {
+  const params = new URLSearchParams({ assignedToId: row.staffUserId });
+  if (row.overdueFollowUpOpen > 0) {
+    params.set("onlyOverdueFollowUp", "true");
+  }
+  return `/expert/consultations?${params.toString()}`;
+}
 
 function toDateInputValue(date: Date): string {
   const year = date.getFullYear();
@@ -98,7 +118,7 @@ function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
     },
     {
       key: "new",
-      label: "درخواست مشاوره",
+      label: "آماده تماس",
       count: funnel.new,
       color: "bg-sky-500",
     },
@@ -326,6 +346,11 @@ export default async function AdminDashboardPage() {
     "/expert/consultations?onlyPendingAssignment=true";
   const consultationsOverdueHref =
     "/expert/consultations?onlyOverdueFollowUp=true";
+  const consultationsStaleNewHref =
+    "/expert/consultations?status=new&onlyStaleNew=true";
+  const consultationsHotUnassignedHref =
+    "/expert/consultations?onlyHot=true&onlyUnassigned=true";
+  const attentionExperts = sortExpertsForAttention(dashboard.expertPerformance);
 
   const avgDaysDisplay =
     dashboard.salesMetrics.avgDaysToFirstContact === null
@@ -400,7 +425,7 @@ export default async function AdminDashboardPage() {
               قیف جذب
             </h2>
             <p className="mb-4 text-sm text-zinc-500">
-              شروع → تکمیل → مشاوره (هر نفر یک‌بار)
+              شروع → تکمیل → ثبت درخواست مشاوره توسط کاربر (هر نفر یک‌بار)
             </p>
             <AttractionFunnelCard
               started={dashboard.funnel.started}
@@ -449,15 +474,141 @@ export default async function AdminDashboardPage() {
               عملکرد کارشناسان
             </h2>
             <p className="mt-1 text-sm text-zinc-600">
-              لیدهای باز، تماس ۷ روز و نرخ وصل علاقه‌مند — جزئیات نتیجه تماس را
-              باز کنید.
+              توجه صف و بار کارشناسان — جزئیات کامل در پایین جمع‌وجور است.
             </p>
           </div>
           <LinkButton href="/admin/staff" variant="secondary" size="sm">
             مدیریت کاربران
           </LinkButton>
         </div>
-        <ExpertPerformanceTable rows={dashboard.expertPerformance} />
+
+        <Card className="mb-4">
+          <h3 className="mb-3 text-sm font-semibold text-zinc-800">توجه صف</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Link
+              href={consultationsOverdueHref}
+              className="rounded-xl border border-zinc-100 px-3 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            >
+              <p className="text-xs text-zinc-600">پیگیری عقب‌افتاده</p>
+              <p
+                className={`mt-1 text-2xl font-semibold ${
+                  dashboard.leadKpis.overdueFollowUps > 0
+                    ? "text-red-700"
+                    : "text-zinc-900"
+                }`}
+              >
+                {dashboard.leadKpis.overdueFollowUps.toLocaleString("fa-IR")}
+              </p>
+            </Link>
+            <Link
+              href={consultationsStaleNewHref}
+              className="rounded-xl border border-zinc-100 px-3 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            >
+              <p className="text-xs text-zinc-600">لید کهنه آماده تماس</p>
+              <p
+                className={`mt-1 text-2xl font-semibold ${
+                  dashboard.leadKpis.staleNewLeads > 0
+                    ? "text-amber-700"
+                    : "text-zinc-900"
+                }`}
+              >
+                {dashboard.leadKpis.staleNewLeads.toLocaleString("fa-IR")}
+              </p>
+            </Link>
+            <Link
+              href={consultationsHotUnassignedHref}
+              className="rounded-xl border border-zinc-100 px-3 py-2 text-center transition-colors hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+            >
+              <p className="text-xs text-zinc-600">احتمال‌بالای بدون تخصیص</p>
+              <p
+                className={`mt-1 text-2xl font-semibold ${
+                  dashboard.leadKpis.highProbabilityUnassigned > 0
+                    ? "text-amber-700"
+                    : "text-zinc-900"
+                }`}
+              >
+                {dashboard.leadKpis.highProbabilityUnassigned.toLocaleString(
+                  "fa-IR",
+                )}
+              </p>
+            </Link>
+          </div>
+        </Card>
+
+        {attentionExperts.length === 0 ? (
+          <Card className="mb-4 text-center">
+            <p className="text-zinc-600">هنوز کارشناس فعالی ثبت نشده است.</p>
+          </Card>
+        ) : (
+          <div className="mb-4 overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-right">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-zinc-700">نام</th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">باز</th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">
+                    عقب‌افتاده
+                  </th>
+                  <th className="px-4 py-3 font-medium text-zinc-700">
+                    تماس ۷روز
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {attentionExperts.map((row) => {
+                  const href = expertQueueHref(row);
+                  return (
+                    <tr key={row.staffUserId} className="hover:bg-zinc-50/80">
+                      <td className="p-0">
+                        <Link
+                          href={href}
+                          className="block px-4 py-3 font-medium text-zinc-900"
+                        >
+                          {row.name}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          href={href}
+                          className="block px-4 py-3 text-zinc-600"
+                        >
+                          {row.open.toLocaleString("fa-IR")}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          href={href}
+                          className={`block px-4 py-3 ${
+                            row.overdueFollowUpOpen > 0
+                              ? "font-medium text-red-700"
+                              : "text-zinc-600"
+                          }`}
+                        >
+                          {row.overdueFollowUpOpen.toLocaleString("fa-IR")}
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link
+                          href={href}
+                          className="block px-4 py-3 text-zinc-600"
+                        >
+                          {row.totalCalls.toLocaleString("fa-IR")}
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <details>
+          <summary className="mb-3 cursor-pointer select-none text-sm font-medium text-zinc-800">
+            جزئیات عملکرد
+          </summary>
+          <ExpertPerformanceTable rows={dashboard.expertPerformance} />
+        </details>
       </section>
 
       <section className="mb-8">

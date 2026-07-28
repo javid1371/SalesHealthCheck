@@ -487,6 +487,13 @@ export async function createLeadOnAssessmentStart(input: {
     status: "assessment_in_progress",
   });
 
+  await createLeadActivity({
+    consultationRequestId: lead.id,
+    staffUserId: null,
+    type: "created",
+    detail: "assessment_start",
+  });
+
   await finalizeNewLead(lead.id, {
     assessmentSessionId: input.assessmentSessionId,
     mode: "immediate",

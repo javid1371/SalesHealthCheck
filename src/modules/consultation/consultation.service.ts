@@ -25,6 +25,7 @@ import {
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestByUserId,
   findConsultationRequestById,
+  findConsultationRequestIdsInCallQueueOrder,
   findConsultationRequests,
   findConsultationRequestsByIds,
   findConsultationRequestsForKanban,
@@ -73,8 +74,8 @@ import {
   CALL_OUTCOME_LABELS,
   formatActivityDetail,
   formatTransferNoteBody,
-  LEAD_ACTIVITY_LABELS,
   LOST_REASON_LABELS,
+  resolveActivityTimelineLabel,
   serializeAssignmentChangeDetail,
   serializeCallLoggedDetail,
 } from "./lead-activity";
@@ -91,7 +92,7 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   assessment_in_progress: "در حال انجام تست",
   assessment_incomplete: "پیگیری تکمیل تست",
   assessment_completed: "تست تکمیل‌شده",
-  new: "درخواست مشاوره",
+  new: "آماده تماس",
   contacted: "تماس گرفته‌شده",
   meeting_scheduled: "جلسه تنظیم‌شده",
   closed_won: "بسته — موفق",
@@ -584,7 +585,20 @@ type ConsultationDetailRow = NonNullable<
   Awaited<ReturnType<typeof findConsultationRequestById>>
 >;
 
-function buildLeadTimeline(row: ConsultationDetailRow): LeadTimelineEntry[] {
+type TimelineSmsMessage = {
+  id: string;
+  sequenceKey: string;
+  stepKey: string;
+  status: string;
+  scheduledFor: Date;
+  sentAt: Date | null;
+  createdAt: Date;
+};
+
+function buildLeadTimeline(
+  row: ConsultationDetailRow,
+  smsMessages: TimelineSmsMessage[] = [],
+): LeadTimelineEntry[] {
   const entries: LeadTimelineEntry[] = [];
 
   for (const note of row.consultationNotes) {
@@ -599,20 +613,52 @@ function buildLeadTimeline(row: ConsultationDetailRow): LeadTimelineEntry[] {
     });
   }
 
+  let hasCreatedActivity = false;
   for (const activity of row.leadActivities) {
     if (activity.type === "note_added") {
       continue;
+    }
+    if (activity.type === "created") {
+      hasCreatedActivity = true;
     }
 
     entries.push({
       id: activity.id,
       kind: "activity",
-      label: LEAD_ACTIVITY_LABELS[activity.type],
+      label: resolveActivityTimelineLabel(activity.type, activity.detail),
       detail: formatActivityDetail(activity.type, activity.detail),
       authorName: activity.staffUser?.name ?? null,
       createdAt: formatConsultationDate(activity.createdAt),
       createdAtIso: activity.createdAt.toISOString(),
       activityType: activity.type,
+    });
+  }
+
+  if (!hasCreatedActivity) {
+    entries.push({
+      id: `synthetic-created-${row.id}`,
+      kind: "activity",
+      label: "ایجاد لید",
+      detail: null,
+      authorName: null,
+      createdAt: formatConsultationDate(row.createdAt),
+      createdAtIso: row.createdAt.toISOString(),
+      activityType: "created",
+    });
+  }
+
+  for (const message of smsMessages) {
+    const at = message.sentAt ?? message.createdAt;
+    const statusLabel = SMS_STATUS_LABELS[message.status] ?? message.status;
+    const seqLabel = sequenceLabel(message.sequenceKey);
+    entries.push({
+      id: `sms-${message.id}`,
+      kind: "sms",
+      label: "پیامک قیف",
+      detail: `${seqLabel} / ${message.stepKey} — ${statusLabel}`,
+      authorName: null,
+      createdAt: formatConsultationDate(at),
+      createdAtIso: at.toISOString(),
     });
   }
 
@@ -768,6 +814,7 @@ async function syncCallScheduledSmsForFollowUp(params: {
 function toConsultationLeadDetail(
   row: ConsultationDetailRow,
   staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  smsMessages: TimelineSmsMessage[] = [],
 ): ConsultationLeadDetail {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
@@ -819,7 +866,7 @@ function toConsultationLeadDetail(
       severity: item.severity,
     })),
     notes: row.consultationNotes.map(toConsultationNoteItem),
-    timeline: buildLeadTimeline(row),
+    timeline: buildLeadTimeline(row, smsMessages),
     ...mapLeadAssignmentState(row),
     ...mapLeadSla(row, staleNewLeadHours),
   };
@@ -906,6 +953,38 @@ export async function listConsultationRequests(
   };
 }
 
+/**
+ * Next lead in the same call-queue ranking as list/kanban.
+ * Returns null when current is missing or is the last in the filtered queue.
+ */
+export async function getNextConsultationLeadId(
+  currentId: string,
+  filter: ConsultationListFilter,
+  access: ConsultationsAccessInput,
+): Promise<string | null> {
+  requireConsultationsAccess(access);
+
+  const effectiveFilter = resolveListFilter(filter, access);
+  if (effectiveFilter.assignedToId === "__none__") {
+    return null;
+  }
+
+  const { page: _page, pageSize: _pageSize, ...listFilter } = effectiveFilter;
+  const settingsForFilter = listFilter.onlyStaleNew
+    ? await getLeadSettings()
+    : null;
+  const queryFilter = settingsForFilter
+    ? applyStaleNewListFilter(listFilter, settingsForFilter.staleNewLeadHours)
+    : listFilter;
+
+  const ids = await findConsultationRequestIdsInCallQueueOrder(queryFilter);
+  const index = ids.indexOf(currentId);
+  if (index < 0 || index >= ids.length - 1) {
+    return null;
+  }
+  return ids[index + 1] ?? null;
+}
+
 /** Kanban board: all matching leads with lean payload (no 100-row cap). */
 export async function listConsultationRequestsForKanban(
   filter: Omit<ConsultationListFilter, "page" | "pageSize">,
@@ -973,8 +1052,25 @@ export async function getConsultationLeadDetail(
   }
 
   assertLeadAccess(row.assignedToId, access);
-  const settings = await getLeadSettings();
-  return toConsultationLeadDetail(row, settings.staleNewLeadHours);
+
+  const phones = [
+    row.phone,
+    row.assessmentSession?.user.phone ?? null,
+  ].filter((phone): phone is string => Boolean(phone));
+
+  const [settings, smsHistory] = await Promise.all([
+    getLeadSettings(),
+    listLeadSmsHistory({
+      phones,
+      assessmentSessionId: row.assessmentSessionId,
+    }),
+  ]);
+
+  return toConsultationLeadDetail(
+    row,
+    settings.staleNewLeadHours,
+    smsHistory.messages,
+  );
 }
 
 export async function getConsultationLeadSmsHistory(
@@ -1573,6 +1669,29 @@ export async function logCall(
     type: "call_logged",
     detail: serializeCallLoggedDetail(input.outcome, note),
   });
+
+  const leadUpdate: UpdateConsultationLeadInput = {};
+  if (input.status !== undefined) {
+    leadUpdate.status = input.status;
+  }
+  if (input.nextFollowUpAt !== undefined) {
+    leadUpdate.nextFollowUpAt = input.nextFollowUpAt;
+  }
+  if (input.lostReason !== undefined) {
+    leadUpdate.lostReason = input.lostReason;
+  }
+  if (input.lostNote !== undefined) {
+    leadUpdate.lostNote = input.lostNote;
+  }
+
+  if (
+    leadUpdate.status !== undefined ||
+    leadUpdate.nextFollowUpAt !== undefined ||
+    leadUpdate.lostReason !== undefined ||
+    leadUpdate.lostNote !== undefined
+  ) {
+    return updateConsultationLeadStatus(id, leadUpdate, access);
+  }
 
   const settings = await getLeadSettings();
   return toConsultationListItem(updated, settings.staleNewLeadHours);

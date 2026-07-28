@@ -12,7 +12,10 @@ import {
   listConsultationRequests,
   listConsultationRequestsForKanban,
 } from "@/modules/consultation/consultation.service";
-import { validateConsultationListFilter } from "@/modules/consultation/consultation-list.validators";
+import {
+  consultationQueueQueryString,
+  validateConsultationListFilter,
+} from "@/modules/consultation/consultation-list.validators";
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import { ExpertNav } from "@/app/expert/ExpertNav";
 import { ExpertConsultationFilters } from "./ExpertConsultationFilters";
@@ -69,6 +72,7 @@ export default async function ExpertConsultationsPage({
   exportQueryParams.delete("page");
   exportQueryParams.delete("pageSize");
   const exportQueryString = exportQueryParams.toString();
+  const queueQueryString = consultationQueueQueryString(urlSearchParams);
 
   const assigneeOptions = adminSession
     ? (await listStaffUsers())
@@ -129,6 +133,7 @@ export default async function ExpertConsultationsPage({
         <ConsultationKanbanView
           requests={requests}
           showClaimActions={isTeamQueue}
+          queueQueryString={queueQueryString}
         />
       ) : (
         <ConsultationListWithAdmin
@@ -137,6 +142,7 @@ export default async function ExpertConsultationsPage({
           exportQueryString={exportQueryString}
           isAdmin={Boolean(adminSession)}
           showClaimActions={isTeamQueue}
+          queueQueryString={queueQueryString}
         />
       )}
 

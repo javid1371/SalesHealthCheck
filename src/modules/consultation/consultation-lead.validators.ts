@@ -361,6 +361,10 @@ export function validateAddConsultationNoteRequest(body: unknown): string {
 export type LogCallInput = {
   outcome: CallOutcome;
   note?: string;
+  status?: LeadStatus;
+  nextFollowUpAt?: Date | null;
+  lostReason?: LostReason;
+  lostNote?: string | null;
 };
 
 export function validateLogCallRequest(body: unknown): LogCallInput {
@@ -392,9 +396,33 @@ export function validateLogCallRequest(body: unknown): LogCallInput {
     }
   }
 
+  const status = parseOptionalLeadStatus(data.status);
+  const lostReason = parseOptionalLostReason(data.lostReason);
+  const lostNote = parseOptionalLostNote(data.lostNote, lostReason);
+  let nextFollowUpAt: Date | null | undefined;
+
+  if (data.nextFollowUpAt === null) {
+    nextFollowUpAt = null;
+  } else if (data.nextFollowUpAt !== undefined) {
+    nextFollowUpAt = parseOptionalDate(data.nextFollowUpAt, "nextFollowUpAt");
+  }
+
+  if (status === "closed_lost" && lostReason === undefined) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "برای بستن ناموفق، دلیل باخت الزامی است.",
+      400,
+      { field: "lostReason" },
+    );
+  }
+
   return {
     outcome: data.outcome as CallOutcome,
     ...(note !== undefined ? { note } : {}),
+    ...(status !== undefined ? { status } : {}),
+    ...(nextFollowUpAt !== undefined ? { nextFollowUpAt } : {}),
+    ...(lostReason !== undefined ? { lostReason } : {}),
+    ...(lostNote !== undefined ? { lostNote } : {}),
   };
 }
 

@@ -17,7 +17,7 @@ const STATUS_OPTIONS = [
   { value: "assessment_in_progress", label: "در حال انجام تست" },
   { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
   { value: "assessment_completed", label: "تست تکمیل‌شده" },
-  { value: "new", label: "درخواست مشاوره" },
+  { value: "new", label: "آماده تماس" },
   { value: "contacted", label: "تماس گرفته‌شده" },
   { value: "meeting_scheduled", label: "جلسه تنظیم‌شده" },
   { value: "closed_won", label: "بسته — موفق" },
