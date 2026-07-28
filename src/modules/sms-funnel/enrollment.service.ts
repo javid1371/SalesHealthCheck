@@ -21,11 +21,6 @@ import {
   type SequenceKey,
 } from "./sequences";
 import { buildDedupeKey } from "./sms-funnel.types";
-import {
-  enqueueSmsFunnelJob,
-  removeSmsFunnelJob,
-  rescheduleSmsFunnelJob,
-} from "./sms-funnel.queue";
 import { processSmsFunnelJob } from "./sms-funnel.processor";
 
 export interface EnrollContext {
@@ -103,12 +98,11 @@ export async function enrollAndSchedule(
       smsMessageId: smsMessage.id,
     };
 
-    const queue = await import("./sms-funnel.queue").then((m) =>
-      m.getSmsFunnelQueue(),
-    );
+    const queueModule = await import("./sms-funnel.queue");
+    const queue = queueModule.getSmsFunnelQueue();
 
     if (queue) {
-      await enqueueSmsFunnelJob(payload, delayMs);
+      await queueModule.enqueueSmsFunnelJob(payload, delayMs);
     } else if (delayMs === 0) {
       await processSmsFunnelJob(payload);
     }
@@ -318,16 +312,18 @@ export async function rescheduleCallScheduledForFollowUp(input: {
 
   const now = input.now ?? new Date();
 
+  const queueModule = await import("./sms-funnel.queue");
+
   for (const action of actions) {
     if (action.type === "cancel") {
       await cancelPendingSmsMessage(action.messageId, "follow_up_reschedule_past");
-      await removeSmsFunnelJob(action.dedupeKey);
+      await queueModule.removeSmsFunnelJob(action.dedupeKey);
       continue;
     }
 
     await updateSmsMessageScheduledFor(action.messageId, action.scheduledFor);
     const delayMs = Math.max(0, action.scheduledFor.getTime() - now.getTime());
-    await rescheduleSmsFunnelJob(
+    await queueModule.rescheduleSmsFunnelJob(
       {
         enrollmentId: action.enrollmentId,
         sequenceKey: action.sequenceKey,

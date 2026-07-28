@@ -53,7 +53,6 @@ import type {
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
 import { SEQUENCE_LABELS } from "@/modules/sms-funnel/funnel-config.service";
-import { rescheduleCallScheduledForFollowUp } from "@/modules/sms-funnel/enrollment.service";
 import { listLeadSmsHistory } from "@/modules/sms-funnel/funnel.repository";
 import { hookConsultationSubmitted } from "@/modules/sms-funnel/hooks";
 import type { SequenceKey } from "@/modules/sms-funnel/sequences";
@@ -748,6 +747,9 @@ async function syncCallScheduledSmsForFollowUp(params: {
   if (!userId) return;
 
   try {
+    const { rescheduleCallScheduledForFollowUp } = await import(
+      "@/modules/sms-funnel/enrollment.service"
+    );
     await rescheduleCallScheduledForFollowUp({
       userId,
       assessmentSessionId: params.assessmentSessionId,

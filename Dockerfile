@@ -50,6 +50,19 @@ COPY --from=builder /app/src/config ./src/config
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/sms-funnel-worker.bundle.cjs ./scripts/sms-funnel-worker.bundle.cjs
 
+# Next.js 16 Turbopack may emit hashed externals that point at nested deps
+# npm already hoisted away (e.g. bullmq/node_modules/ioredis). Repair those.
+RUN if [ -d .next/node_modules ]; then \
+      find .next/node_modules -maxdepth 1 -type l | while read -r link; do \
+        if [ ! -e "$link" ]; then \
+          name="$(basename "$(readlink "$link")")"; \
+          if [ -e "node_modules/$name" ]; then \
+            ln -sfn "../../node_modules/$name" "$link"; \
+          fi; \
+        fi; \
+      done; \
+    fi
+
 # Prisma migrate/seed tools in a separate dir — must not overwrite standalone node_modules
 RUN mkdir -p /prisma-tools && \
     cd /prisma-tools && \

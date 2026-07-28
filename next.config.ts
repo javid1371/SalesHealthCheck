@@ -3,7 +3,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["playwright"],
+  // Keep Redis/BullMQ unbundled so Turbopack hashed externals resolve to
+  // top-level packages in the standalone image (nested hoists break otherwise).
+  serverExternalPackages: ["playwright", "ioredis", "bullmq"],
 };
 
 export default withSentryConfig(nextConfig, {
