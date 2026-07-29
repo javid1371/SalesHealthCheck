@@ -14,6 +14,8 @@ const { envMock, repoMock } = vi.hoisted(() => ({
     findStaffUsers: vi.fn(),
     createStaffUser: vi.fn(),
     setStaffUserActive: vi.fn(),
+    setStaffAssignmentPaused: vi.fn(),
+    setStaffMaxDailyCalls: vi.fn(),
     updateStaffUserPassword: vi.fn(),
     countStaffUsersByRole: vi.fn(),
     countActiveAdmins: vi.fn(),
@@ -43,6 +45,9 @@ const adminUser = {
   role: "admin" as const,
   isActive: true,
   lastLoginAt: null,
+  assignmentPausedAt: null,
+  assignmentPausedReason: null,
+  maxDailyCalls: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
 };
@@ -55,6 +60,9 @@ const expertUser = {
   role: "sales_expert" as const,
   isActive: true,
   lastLoginAt: null,
+  assignmentPausedAt: null,
+  assignmentPausedReason: null,
+  maxDailyCalls: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
 };

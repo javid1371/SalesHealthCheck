@@ -2,7 +2,10 @@ import type {
   AssessmentStatus,
   CallOutcome,
   HealthLevel,
+  LeadSource,
+  LeadStatus,
   LostReason,
+  PurchaseProbability,
 } from "@prisma/client";
 
 export interface AdminLoginInput {
@@ -189,4 +192,89 @@ export interface AdminDashboardData {
   expertPerformance: AdminExpertPerformanceRow[];
   lostReasonBreakdownLast30Days: AdminLostReasonBreakdownRow[];
   smsFunnel: AdminSmsFunnelMetrics;
+}
+
+export interface OpsQueueLeadRow {
+  id: string;
+  name: string;
+  phone: string | null;
+  status: LeadStatus;
+  statusLabel: string;
+  source: LeadSource;
+  purchaseProbabilityBand: PurchaseProbability | null;
+  nextFollowUpAt: string | null;
+  createdAt: string;
+  assignScheduledFor: string | null;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  detailUrl: string;
+  firstContactSlaBreached: boolean;
+  firstContactSlaMinutes: number | null;
+  slaReason: string | null;
+}
+
+export interface OpsQueueSection {
+  key:
+    | "pendingAssignment"
+    | "unassignedOpen"
+    | "overdueFollowUps"
+    | "staleNew"
+    | "hotUnassigned"
+    | "firstContactSla";
+  title: string;
+  description: string;
+  count: number;
+  listHref: string;
+  leads: OpsQueueLeadRow[];
+}
+
+export interface OpsExpertCapacityRow {
+  staffUserId: string;
+  name: string;
+  openLeads: number;
+  maxOpenLeads: number;
+  utilizationPercent: number;
+  nearCapacity: boolean;
+  assignmentPaused: boolean;
+  assignmentPausedReason: string | null;
+  callsToday: number;
+  maxDailyCalls: number | null;
+  dailyCapReached: boolean;
+  queueHref: string;
+}
+
+export interface OpsAutomationHeartbeatRow {
+  key: string;
+  label: string;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastError: string | null;
+}
+
+export interface OpsAssigneeOption {
+  id: string;
+  name: string;
+}
+
+export interface OpsCommandCenterData {
+  queues: OpsQueueSection[];
+  expertCapacity: OpsExpertCapacityRow[];
+  assignees: OpsAssigneeOption[];
+  automation: {
+    heartbeats: OpsAutomationHeartbeatRow[];
+    stalePendingSmsCount: number;
+    stalePendingSmsMinutes: number;
+  };
+  smsFunnel: {
+    funnelEnabled: boolean;
+  };
+  settings: {
+    maxOpenLeadsPerExpert: number;
+    staleNewLeadHours: number;
+    firstContactSlaMinutesByBand: {
+      high: number;
+      mid: number;
+      low: number;
+    };
+  };
 }

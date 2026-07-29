@@ -43,6 +43,9 @@ export default async function AdminStaffPage() {
                 <th className="px-4 py-3 font-medium text-zinc-700">
                   آخرین ورود
                 </th>
+                <th className="px-4 py-3 font-medium text-zinc-700">
+                  سقف تماس روزانه
+                </th>
                 <th className="px-4 py-3 font-medium text-zinc-700" aria-label="عملیات" />
               </tr>
             </thead>

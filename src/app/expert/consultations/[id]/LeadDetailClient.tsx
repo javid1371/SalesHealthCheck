@@ -30,6 +30,7 @@ import {
   LOST_REASONS,
   TRANSFER_NOTE_MIN_LENGTH,
   suggestAfterCallDefaults,
+  type CallOutcomeMatrix,
 } from "@/modules/consultation/lead-activity";
 import type {
   CallOutcome,
@@ -83,6 +84,7 @@ interface LeadDetailClientProps {
   nextLeadId?: string | null;
   leadSummary?: ReactNode;
   historyExtras?: ReactNode;
+  callOutcomeMatrix?: CallOutcomeMatrix;
 }
 
 export function LeadDetailClient({
@@ -102,6 +104,7 @@ export function LeadDetailClient({
   nextLeadId = null,
   leadSummary,
   historyExtras,
+  callOutcomeMatrix,
 }: LeadDetailClientProps) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
@@ -154,7 +157,7 @@ export function LeadDetailClient({
       return;
     }
 
-    const suggestion = suggestAfterCallDefaults(outcome);
+    const suggestion = suggestAfterCallDefaults(outcome, callOutcomeMatrix);
     setCallStatus(suggestion.status ?? initialStatus);
 
     if (suggestion.nextFollowUpDays === undefined) {

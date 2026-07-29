@@ -19,6 +19,7 @@ import {
   toScoringDomainInputs,
   toScoringLayerInputs,
 } from "@/modules/question-bank/question-bank.repository";
+import { getCapacityMode } from "@/modules/report/report-config.service";
 import { buildFullReport, type ComposerAnswerInput } from "@/modules/report/report.builder";
 import {
   ensureReportSpec,
@@ -535,6 +536,7 @@ export async function finishAssessment(
         ? computeValueAtStake(structuredDiagnosis, valueAtStakeInput)
         : null;
 
+    const capacityMode = await getCapacityMode();
     const { structuredReport, reportSpec } = buildFullReport({
       overallScore,
       domainScores,
@@ -545,7 +547,7 @@ export async function finishAssessment(
       structuredDiagnosis,
       answers: composerAnswers,
       valueAtStake,
-      capacityMode: env.capacityMode,
+      capacityMode,
     });
 
     const { report } = await persistAssessmentResults({

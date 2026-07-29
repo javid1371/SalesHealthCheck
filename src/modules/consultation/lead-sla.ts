@@ -1,4 +1,6 @@
 import type { LeadStatus, PurchaseProbability } from "@prisma/client";
+import type { FirstContactSlaMinutesByBand } from "./lead-config.service";
+import { DEFAULT_ROUTING_RULES } from "./lead-config.service";
 
 /** Fallback when lead setting `stale_new_lead_hours` is unset. */
 export const STALE_NEW_LEAD_HOURS = 24;
@@ -19,7 +21,52 @@ export interface LeadSlaFlags {
   staleNew: boolean;
   overdueFollowUp: boolean;
   highProbabilityUnassigned: boolean;
+  firstContactSlaBreached: boolean;
   severity: LeadSlaSeverity;
+}
+
+export type LeadSlaOptions = {
+  staleNewLeadHours?: number;
+  firstContactedAt?: Date | null;
+  firstContactSlaMinutesByBand?: FirstContactSlaMinutesByBand;
+  now?: Date;
+};
+
+export function resolveFirstContactSlaMinutes(
+  band: PurchaseProbability | null | undefined,
+  minutesByBand: FirstContactSlaMinutesByBand = DEFAULT_ROUTING_RULES.firstContactSlaMinutesByBand,
+): number {
+  if (band === "high") {
+    return minutesByBand.high;
+  }
+  if (band === "low") {
+    return minutesByBand.low;
+  }
+  return minutesByBand.mid;
+}
+
+export function isFirstContactSlaBreached(input: {
+  status: LeadStatus;
+  createdAt: Date;
+  firstContactedAt?: Date | null;
+  purchaseProbabilityBand: PurchaseProbability | null;
+  firstContactSlaMinutesByBand?: FirstContactSlaMinutesByBand;
+  now?: Date;
+}): boolean {
+  if (!OPEN_LEAD_STATUSES.includes(input.status)) {
+    return false;
+  }
+  if (input.firstContactedAt) {
+    return false;
+  }
+
+  const minutes = resolveFirstContactSlaMinutes(
+    input.purchaseProbabilityBand,
+    input.firstContactSlaMinutesByBand,
+  );
+  const now = input.now ?? new Date();
+  const deadline = new Date(input.createdAt.getTime() + minutes * 60 * 1000);
+  return now > deadline;
 }
 
 export function computeLeadSlaFlags(
@@ -29,14 +76,21 @@ export function computeLeadSlaFlags(
     nextFollowUpAt: Date | null;
     assignedToId: string | null;
     purchaseProbabilityBand: PurchaseProbability | null;
+    firstContactedAt?: Date | null;
   },
-  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  staleNewLeadHoursOrOptions: number | LeadSlaOptions = STALE_NEW_LEAD_HOURS,
 ): LeadSlaFlags {
+  const options: LeadSlaOptions =
+    typeof staleNewLeadHoursOrOptions === "number"
+      ? { staleNewLeadHours: staleNewLeadHoursOrOptions }
+      : staleNewLeadHoursOrOptions;
+
   const hours =
-    Number.isFinite(staleNewLeadHours) && staleNewLeadHours > 0
-      ? staleNewLeadHours
+    Number.isFinite(options.staleNewLeadHours) &&
+    (options.staleNewLeadHours ?? 0) > 0
+      ? (options.staleNewLeadHours as number)
       : STALE_NEW_LEAD_HOURS;
-  const now = new Date();
+  const now = options.now ?? new Date();
   const staleThreshold = new Date(now.getTime() - hours * 60 * 60 * 1000);
 
   const staleNew = row.status === "new" && row.createdAt < staleThreshold;
@@ -47,11 +101,28 @@ export function computeLeadSlaFlags(
   );
   const highProbabilityUnassigned =
     row.assignedToId == null && row.purchaseProbabilityBand === "high";
+  const firstContactSlaBreached = isFirstContactSlaBreached({
+    status: row.status,
+    createdAt: row.createdAt,
+    firstContactedAt: row.firstContactedAt ?? options.firstContactedAt,
+    purchaseProbabilityBand: row.purchaseProbabilityBand,
+    firstContactSlaMinutesByBand: options.firstContactSlaMinutesByBand,
+    now,
+  });
 
   let severity: LeadSlaSeverity = "none";
   if (overdueFollowUp) {
     severity = "red";
-  } else if (staleNew || highProbabilityUnassigned) {
+  } else if (
+    firstContactSlaBreached &&
+    row.purchaseProbabilityBand === "high"
+  ) {
+    severity = "red";
+  } else if (
+    staleNew ||
+    highProbabilityUnassigned ||
+    firstContactSlaBreached
+  ) {
     severity = "amber";
   }
 
@@ -59,6 +130,7 @@ export function computeLeadSlaFlags(
     staleNew,
     overdueFollowUp,
     highProbabilityUnassigned,
+    firstContactSlaBreached,
     severity,
   };
 }
@@ -66,6 +138,9 @@ export function computeLeadSlaFlags(
 export function slaReasonLabel(flags: LeadSlaFlags): string | null {
   if (flags.overdueFollowUp) {
     return "پیگیری عقب‌افتاده";
+  }
+  if (flags.firstContactSlaBreached) {
+    return "گذشته از SLA تماس اول";
   }
   if (flags.highProbabilityUnassigned) {
     return "احتمال بالا — بدون تخصیص";

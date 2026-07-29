@@ -5,8 +5,7 @@ import {
   parseAdminSessionCookie,
 } from "@/lib/session";
 import { requireAdminSession } from "@/modules/admin/admin.service";
-import { setStaffUserActiveByAdmin } from "@/modules/staff/staff.service";
-import { validateSetStaffUserActiveRequest } from "@/modules/staff/staff.validators";
+import { patchStaffUserByAdmin } from "@/modules/staff/staff.service";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -21,11 +20,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const body = await request.json();
-    const { isActive } = validateSetStaffUserActiveRequest(body);
-
-    const user = await setStaffUserActiveByAdmin(
+    const user = await patchStaffUserByAdmin(
       id,
-      isActive,
+      body,
       session.staffUserId ?? id,
     );
 

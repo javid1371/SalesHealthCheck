@@ -28,6 +28,10 @@ vi.mock("@/modules/question-bank/question-bank.service", () => ({
   validateOptionBelongsToQuestion: vi.fn(),
 }));
 
+vi.mock("@/modules/report/report-config.service", () => ({
+  getCapacityMode: vi.fn(async () => "free" as const),
+}));
+
 vi.mock("@/modules/question-bank/question-bank.repository", () => ({
   countActiveQuestions: vi.fn(),
   loadDomainsWithQuestions: vi.fn(),

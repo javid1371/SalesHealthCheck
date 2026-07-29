@@ -10,6 +10,10 @@ vi.mock("@/lib/env", () => ({
   env: mockEnv,
 }));
 
+vi.mock("@/modules/report/report-config.service", () => ({
+  getCapacityMode: vi.fn(async () => mockEnv.capacityMode),
+}));
+
 vi.mock("@/modules/assessment/assessment.repository", () => ({
   findReportById: vi.fn(),
   findAssessmentForResult: vi.fn(),
@@ -158,6 +162,7 @@ describe("report-spec.service", () => {
     expect(result).toEqual(rebuiltSpec);
     expect(mockBuildReportSpec).toHaveBeenCalledWith(
       expect.objectContaining({
+        capacityMode: "free",
         domainScores: [
           expect.objectContaining({ domainSlug: "persona", percentage: 53 }),
         ],

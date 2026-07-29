@@ -105,6 +105,19 @@ describe("suggestAfterCallDefaults", () => {
       lostReason: "low_quality",
     });
   });
+
+  it("uses a custom call outcome matrix when provided", () => {
+    expect(
+      suggestAfterCallDefaults("no_answer", {
+        no_answer: { status: "unreachable", nextFollowUpDays: 3 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      }),
+    ).toEqual({ status: "unreachable", nextFollowUpDays: 3 });
+  });
 });
 
 describe("resolveQuickCallLogFields (kanban logQuickCall)", () => {

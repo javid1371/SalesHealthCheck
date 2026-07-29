@@ -123,3 +123,95 @@ export function validateSetStaffUserActiveRequest(
 
   return { isActive };
 }
+
+export function validatePatchStaffUserRequest(body: unknown): {
+  isActive?: boolean;
+  assignmentPaused?: boolean;
+  assignmentPausedReason?: string | null;
+  maxDailyCalls?: number | null;
+} {
+  if (!body || typeof body !== "object") {
+    throw new AppError("VALIDATION_ERROR", "Request body is required", 400);
+  }
+
+  const data = body as Record<string, unknown>;
+  const result: {
+    isActive?: boolean;
+    assignmentPaused?: boolean;
+    assignmentPausedReason?: string | null;
+    maxDailyCalls?: number | null;
+  } = {};
+
+  if (data.isActive !== undefined) {
+    if (typeof data.isActive !== "boolean") {
+      throw new AppError("VALIDATION_ERROR", "isActive must be a boolean", 400, {
+        field: "isActive",
+      });
+    }
+    result.isActive = data.isActive;
+  }
+
+  if (data.assignmentPaused !== undefined) {
+    if (typeof data.assignmentPaused !== "boolean") {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "assignmentPaused must be a boolean",
+        400,
+        { field: "assignmentPaused" },
+      );
+    }
+    result.assignmentPaused = data.assignmentPaused;
+  }
+
+  if (data.assignmentPausedReason !== undefined) {
+    if (
+      data.assignmentPausedReason !== null &&
+      typeof data.assignmentPausedReason !== "string"
+    ) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "assignmentPausedReason must be a string or null",
+        400,
+        { field: "assignmentPausedReason" },
+      );
+    }
+    result.assignmentPausedReason =
+      typeof data.assignmentPausedReason === "string"
+        ? data.assignmentPausedReason.trim() || null
+        : null;
+  }
+
+  if (data.maxDailyCalls !== undefined) {
+    if (data.maxDailyCalls === null) {
+      result.maxDailyCalls = null;
+    } else if (
+      typeof data.maxDailyCalls !== "number" ||
+      !Number.isInteger(data.maxDailyCalls) ||
+      data.maxDailyCalls < 1
+    ) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "maxDailyCalls must be a positive integer or null",
+        400,
+        { field: "maxDailyCalls" },
+      );
+    } else {
+      result.maxDailyCalls = data.maxDailyCalls;
+    }
+  }
+
+  if (
+    result.isActive === undefined &&
+    result.assignmentPaused === undefined &&
+    result.assignmentPausedReason === undefined &&
+    result.maxDailyCalls === undefined
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "At least one staff field is required",
+      400,
+    );
+  }
+
+  return result;
+}

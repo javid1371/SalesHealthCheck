@@ -1,8 +1,10 @@
-import type { AssessmentStatus, LeadStatus, Prisma } from "@prisma/client";
+import type { AssessmentStatus, LeadSource, LeadStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { STALE_NEW_LEAD_HOURS } from "@/modules/consultation/lead-sla";
-import { countDistinctFunnelActorsByType } from "@/modules/sms-funnel/funnel.repository";
 import type { AdminAssessmentFilter } from "./admin.types";
+
+/** User-initiated consultation sources (excludes auto-created system leads). */
+const USER_CONSULTATION_SOURCES: LeadSource[] = ["direct", "messenger"];
 
 export { STALE_NEW_LEAD_HOURS };
 
@@ -207,14 +209,30 @@ export async function countUsersCompletedInRange(
   });
 }
 
-/** Attraction-funnel consultations: distinct actors with consultation_submitted. */
+/**
+ * Completers with ≥1 real user consultation request (direct/messenger).
+ * System-only leads and FunnelEvent consultation_submitted are excluded.
+ */
 export async function countUsersWithConsultation(): Promise<number> {
-  return countDistinctFunnelActorsByType("consultation_submitted");
+  return db.user.count({
+    where: {
+      assessmentSessions: {
+        some: {
+          status: "completed",
+          consultationRequests: {
+            some: {
+              source: { in: USER_CONSULTATION_SOURCES },
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
-/** Internal KPI — same definition as attraction-funnel consultations (submitted). */
+/** Same definition as countUsersWithConsultation — shared KPI numerator. */
 export async function countUsersWithNewConsultation(): Promise<number> {
-  return countDistinctFunnelActorsByType("consultation_submitted");
+  return countUsersWithConsultation();
 }
 
 export async function countUsersCriticalLeads(): Promise<number> {
@@ -300,6 +318,191 @@ export async function countHighProbabilityUnassigned() {
     where: {
       assignedToId: null,
       purchaseProbabilityBand: "high",
+    },
+  });
+}
+
+export async function countUnassignedOpenLeads() {
+  return db.consultationRequest.count({
+    where: {
+      assignedToId: null,
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+  });
+}
+
+const OPS_QUEUE_LEAD_SELECT = {
+  id: true,
+  name: true,
+  phone: true,
+  status: true,
+  source: true,
+  purchaseProbabilityBand: true,
+  nextFollowUpAt: true,
+  createdAt: true,
+  firstContactedAt: true,
+  assignScheduledFor: true,
+  assignedToId: true,
+  assignedTo: { select: { id: true, name: true } },
+} as const;
+
+const DEFAULT_OPS_QUEUE_LIMIT = 15;
+
+export async function findPendingAssignmentLeads(
+  limit = DEFAULT_OPS_QUEUE_LIMIT,
+) {
+  return db.consultationRequest.findMany({
+    where: {
+      source: "system",
+      assignedToId: null,
+      assignScheduledFor: { not: null },
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: [{ assignScheduledFor: "asc" }, { createdAt: "asc" }],
+    take: limit,
+  });
+}
+
+export async function findUnassignedOpenLeads(limit = DEFAULT_OPS_QUEUE_LIMIT) {
+  return db.consultationRequest.findMany({
+    where: {
+      assignedToId: null,
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+}
+
+export async function findOverdueFollowUpLeads(limit = DEFAULT_OPS_QUEUE_LIMIT) {
+  return db.consultationRequest.findMany({
+    where: {
+      nextFollowUpAt: { lt: new Date() },
+      status: { in: OPEN_LEAD_STATUSES },
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: { nextFollowUpAt: "asc" },
+    take: limit,
+  });
+}
+
+export async function findStaleNewLeadsForOps(
+  hours: number,
+  limit = DEFAULT_OPS_QUEUE_LIMIT,
+) {
+  const threshold = new Date(Date.now() - hours * 60 * 60 * 1000);
+  return db.consultationRequest.findMany({
+    where: {
+      status: "new",
+      createdAt: { lt: threshold },
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+}
+
+export async function findHighProbabilityUnassignedLeads(
+  limit = DEFAULT_OPS_QUEUE_LIMIT,
+) {
+  return db.consultationRequest.findMany({
+    where: {
+      assignedToId: null,
+      purchaseProbabilityBand: "high",
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+}
+
+export async function findFirstContactSlaBreachedLeads(
+  minutesByBand: { high: number; mid: number; low: number },
+  limit = DEFAULT_OPS_QUEUE_LIMIT,
+) {
+  const now = Date.now();
+  const highThreshold = new Date(now - minutesByBand.high * 60 * 1000);
+  const midThreshold = new Date(now - minutesByBand.mid * 60 * 1000);
+  const lowThreshold = new Date(now - minutesByBand.low * 60 * 1000);
+
+  return db.consultationRequest.findMany({
+    where: {
+      firstContactedAt: null,
+      status: { in: OPEN_LEAD_STATUSES },
+      OR: [
+        {
+          purchaseProbabilityBand: "high",
+          createdAt: { lt: highThreshold },
+        },
+        {
+          purchaseProbabilityBand: "medium",
+          createdAt: { lt: midThreshold },
+        },
+        {
+          purchaseProbabilityBand: "low",
+          createdAt: { lt: lowThreshold },
+        },
+        {
+          purchaseProbabilityBand: null,
+          createdAt: { lt: midThreshold },
+        },
+      ],
+    },
+    select: OPS_QUEUE_LEAD_SELECT,
+    orderBy: { createdAt: "asc" },
+    take: limit,
+  });
+}
+
+export async function countFirstContactSlaBreachedLeads(
+  minutesByBand: { high: number; mid: number; low: number },
+) {
+  const now = Date.now();
+  const highThreshold = new Date(now - minutesByBand.high * 60 * 1000);
+  const midThreshold = new Date(now - minutesByBand.mid * 60 * 1000);
+  const lowThreshold = new Date(now - minutesByBand.low * 60 * 1000);
+
+  return db.consultationRequest.count({
+    where: {
+      firstContactedAt: null,
+      status: { in: OPEN_LEAD_STATUSES },
+      OR: [
+        {
+          purchaseProbabilityBand: "high",
+          createdAt: { lt: highThreshold },
+        },
+        {
+          purchaseProbabilityBand: "medium",
+          createdAt: { lt: midThreshold },
+        },
+        {
+          purchaseProbabilityBand: "low",
+          createdAt: { lt: lowThreshold },
+        },
+        {
+          purchaseProbabilityBand: null,
+          createdAt: { lt: midThreshold },
+        },
+      ],
+    },
+  });
+}
+
+export async function countCallsByStaffSince(from: Date) {
+  return db.leadCallLog.groupBy({
+    by: ["staffUserId"],
+    _count: { id: true },
+    where: { createdAt: { gte: from } },
+  });
+}
+
+export async function countStalePendingSmsMessages(olderThanMinutes: number) {
+  const threshold = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+  return db.smsMessage.count({
+    where: {
+      status: "pending",
+      scheduledFor: { lt: threshold },
     },
   });
 }
@@ -406,7 +609,13 @@ export async function findUrgentLeads(
 export async function findActiveSalesExperts() {
   return db.staffUser.findMany({
     where: { role: "sales_expert", isActive: true },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      assignmentPausedAt: true,
+      assignmentPausedReason: true,
+      maxDailyCalls: true,
+    },
     orderBy: { name: "asc" },
   });
 }

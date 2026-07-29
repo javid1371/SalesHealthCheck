@@ -18,6 +18,7 @@ import {
   LOST_REASONS,
   QUICK_CALL_OUTCOMES,
   resolveQuickCallLogFields,
+  type CallOutcomeMatrix,
 } from "@/modules/consultation/lead-activity";
 import { isManualStatusTransitionAllowed } from "@/modules/consultation/lead-status";
 import type { CallOutcome, LeadStatus, LostReason } from "@prisma/client";
@@ -116,12 +117,14 @@ interface ConsultationKanbanViewProps {
   requests: ConsultationListItem[];
   showClaimActions?: boolean;
   queueQueryString?: string;
+  callOutcomeMatrix?: CallOutcomeMatrix;
 }
 
 export function ConsultationKanbanView({
   requests: initialRequests,
   showClaimActions = false,
   queueQueryString = "",
+  callOutcomeMatrix,
 }: ConsultationKanbanViewProps) {
   const router = useRouter();
   const [requests, setRequests] = useState(initialRequests);
@@ -339,7 +342,7 @@ export function ConsultationKanbanView({
       return;
     }
 
-    const fields = resolveQuickCallLogFields(outcome, lost);
+    const fields = resolveQuickCallLogFields(outcome, lost, callOutcomeMatrix);
     if (fields.needsLostReason) {
       setPendingLostMove({ leadId, leadName: lead.name, callOutcome: outcome });
       setPendingLostReason("");

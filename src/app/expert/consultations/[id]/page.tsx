@@ -19,6 +19,7 @@ import {
 } from "@/modules/consultation/consultation-list.validators";
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import type { LeadTimelineEntry } from "@/modules/consultation/consultation.types";
+import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 import { ExpertNav } from "../../ExpertNav";
 import { resolveLeadActionHint } from "@/modules/consultation/lead-sla";
 import { LeadDetailClient } from "./LeadDetailClient";
@@ -112,7 +113,7 @@ export default async function LeadDetailPage({
       lead.status !== "closed_lost",
   );
 
-  const [assigneeOptions, smsHistory] = await Promise.all([
+  const [assigneeOptions, smsHistory, leadSettings] = await Promise.all([
     canTransfer
       ? listStaffUsers().then((users) =>
           users
@@ -121,6 +122,7 @@ export default async function LeadDetailPage({
         )
       : Promise.resolve([] as Array<{ id: string; name: string }>),
     getConsultationLeadSmsHistory(id, access),
+    getLeadSettings(),
   ]);
 
   const actionHint = resolveLeadActionHint({
@@ -399,6 +401,7 @@ export default async function LeadDetailPage({
         nextLeadId={nextLeadId}
         leadSummary={leadSummary}
         historyExtras={historyExtras}
+        callOutcomeMatrix={leadSettings.callOutcomeMatrix}
       />
     </PageLayout>
   );

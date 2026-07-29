@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
+import {
+  AUTOMATION_HEARTBEAT_KEYS,
+  recordAutomationFailure,
+  recordAutomationSuccess,
+} from "@/modules/admin/automation-heartbeat.service";
 import { enqueueSmsFunnelJob } from "@/modules/sms-funnel/sms-funnel.queue";
 
 export const dynamic = "force-dynamic";
-
-function assertCronAuth(request: Request): void {
-  const secret = env.smsFunnelCronSecret;
-  if (!secret) {
-    throw new Error("SMS_FUNNEL_CRON_SECRET is not configured");
-  }
-
-  const header = request.headers.get("authorization");
-  if (header !== `Bearer ${secret}`) {
-    throw new Error("Unauthorized");
-  }
-}
 
 export async function POST(request: Request) {
   try {
@@ -24,36 +17,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const now = new Date();
-  const stale = await db.smsMessage.findMany({
-    where: {
-      status: "pending",
-      scheduledFor: { lte: now },
-    },
-    take: 100,
-    select: {
-      id: true,
-      dedupeKey: true,
-      enrollmentId: true,
-      sequenceKey: true,
-      stepKey: true,
-    },
-  });
+  const key = AUTOMATION_HEARTBEAT_KEYS.smsFunnel;
 
-  let requeued = 0;
-  for (const row of stale) {
-    await enqueueSmsFunnelJob(
-      {
-        enrollmentId: row.enrollmentId,
-        sequenceKey: row.sequenceKey,
-        stepKey: row.stepKey,
-        dedupeKey: row.dedupeKey,
-        smsMessageId: row.id,
+  try {
+    const now = new Date();
+    const stale = await db.smsMessage.findMany({
+      where: {
+        status: "pending",
+        scheduledFor: { lte: now },
       },
-      0,
-    );
-    requeued += 1;
-  }
+      take: 100,
+      select: {
+        id: true,
+        dedupeKey: true,
+        enrollmentId: true,
+        sequenceKey: true,
+        stepKey: true,
+      },
+    });
 
-  return NextResponse.json({ requeued, checked: stale.length });
+    let requeued = 0;
+    for (const row of stale) {
+      await enqueueSmsFunnelJob(
+        {
+          enrollmentId: row.enrollmentId,
+          sequenceKey: row.sequenceKey,
+          stepKey: row.stepKey,
+          dedupeKey: row.dedupeKey,
+          smsMessageId: row.id,
+        },
+        0,
+      );
+      requeued += 1;
+    }
+
+    await recordAutomationSuccess(key);
+    return NextResponse.json({ requeued, checked: stale.length });
+  } catch (error) {
+    await recordAutomationFailure(key, error);
+    return NextResponse.json(
+      { error: "cron_failed", message: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
+  }
 }

@@ -7,10 +7,13 @@ import { AdminLogoutButton } from "@/app/admin/assessments/AdminLogoutButton";
 
 const NAV_ITEMS = [
   { href: "/admin/dashboard", label: "داشبورد" },
+  { href: "/admin/ops", label: "عملیات" },
   { href: "/expert/dashboard", label: "نمای کارشناس" },
   { href: "/admin/assessments", label: "ارزیابی‌ها" },
   { href: "/admin/sms-funnel", label: "قیف پیامکی" },
   { href: "/admin/leads-settings", label: "تنظیمات لید" },
+  { href: "/admin/report-settings", label: "تنظیمات گزارش" },
+  { href: "/admin/messenger-labels", label: "برچسب پیام‌رسان" },
   { href: "/expert/consultations", label: "لیدها" },
   { href: "/admin/staff", label: "کاربران" },
 ] as const;

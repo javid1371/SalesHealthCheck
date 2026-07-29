@@ -16,6 +16,7 @@ import {
   consultationQueueQueryString,
   validateConsultationListFilter,
 } from "@/modules/consultation/consultation-list.validators";
+import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 import { listStaffUsers } from "@/modules/staff/staff.service";
 import { ExpertNav } from "@/app/expert/ExpertNav";
 import { ExpertConsultationFilters } from "./ExpertConsultationFilters";
@@ -74,11 +75,16 @@ export default async function ExpertConsultationsPage({
   const exportQueryString = exportQueryParams.toString();
   const queueQueryString = consultationQueueQueryString(urlSearchParams);
 
-  const assigneeOptions = adminSession
-    ? (await listStaffUsers())
-        .filter((user) => user.role === "sales_expert" && user.isActive)
-        .map((user) => ({ id: user.id, name: user.name }))
-    : [];
+  const [assigneeOptions, leadSettings] = await Promise.all([
+    adminSession
+      ? listStaffUsers().then((users) =>
+          users
+            .filter((user) => user.role === "sales_expert" && user.isActive)
+            .map((user) => ({ id: user.id, name: user.name })),
+        )
+      : Promise.resolve([] as Array<{ id: string; name: string }>),
+    getLeadSettings(),
+  ]);
 
   const isTeamQueue = Boolean(filter.onlyTeamQueue && !adminSession);
   const pageTitle = adminSession
@@ -134,6 +140,7 @@ export default async function ExpertConsultationsPage({
           requests={requests}
           showClaimActions={isTeamQueue}
           queueQueryString={queueQueryString}
+          callOutcomeMatrix={leadSettings.callOutcomeMatrix}
         />
       ) : (
         <ConsultationListWithAdmin

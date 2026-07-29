@@ -32,6 +32,18 @@ export async function setStaffUserActiveRequest(
   return apiPatch<{ user: StaffUserSummary }>(`/api/staff/${id}`, { isActive });
 }
 
+export async function patchStaffUserRequest(
+  id: string,
+  input: {
+    isActive?: boolean;
+    assignmentPaused?: boolean;
+    assignmentPausedReason?: string | null;
+    maxDailyCalls?: number | null;
+  },
+): Promise<{ user: StaffUserSummary }> {
+  return apiPatch<{ user: StaffUserSummary }>(`/api/staff/${id}`, input);
+}
+
 export async function resetStaffUserPasswordRequest(
   id: string,
   password: string,
@@ -87,10 +99,35 @@ export async function updateLeadSettingsRequest(input: {
   assessmentIncompleteAfterHours?: number;
   autoAssignExcludeStaffIds?: string[];
   staleNewLeadHours?: number;
+  routingRules?: import("@/modules/consultation/lead-config.service").LeadRoutingRules;
+  callOutcomeMatrix?: import("@/modules/consultation/lead-activity").CallOutcomeMatrix;
+  requireCallOutcomeBeforeClose?: boolean;
+  createLeadOnAssessmentStart?: boolean;
+  pauseSystemLeadCreation?: boolean;
+  adminOverdueFollowUpSmsEnabled?: boolean;
 }) {
   return apiPatch<{
     settings: import("@/modules/consultation/lead-config.service").LeadSettings;
   }>("/api/admin/leads/settings", input);
+}
+
+export async function updateReportSettingsRequest(input: {
+  capacityMode?: import("@/types/report-spec").CapacityMode;
+}) {
+  return apiPatch<{
+    settings: import("@/modules/report/report-config.service").ReportSettings;
+  }>("/api/admin/report/settings", input);
+}
+
+export async function updateMessengerLabelsRequest(
+  updates: {
+    optionId: string;
+    messengerLabel: string | null;
+  }[],
+) {
+  return apiPatch<{ updated: number }>("/api/admin/messenger-labels", {
+    updates,
+  });
 }
 
 export async function bulkUpdateLeadsRequest(input: {

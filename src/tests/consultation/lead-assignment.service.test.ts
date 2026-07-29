@@ -75,6 +75,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
@@ -83,6 +100,7 @@ describe("lead-assignment.service", () => {
       assignedToId: null,
       assessmentSessionId: null,
       status: "new",
+      source: "system",
       purchaseProbabilityPercent: null,
       purchaseProbabilityBand: null,
       adminProbabilityOverridePercent: null,
@@ -171,6 +189,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-9",
@@ -179,6 +214,7 @@ describe("lead-assignment.service", () => {
       assignedToId: null,
       assessmentSessionId: null,
       status: "new",
+      source: "system",
       purchaseProbabilityPercent: 72,
       purchaseProbabilityBand: "high",
       adminProbabilityOverridePercent: null,
@@ -207,6 +243,22 @@ describe("lead-assignment.service", () => {
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
       staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-long",
@@ -215,6 +267,7 @@ describe("lead-assignment.service", () => {
       assignedToId: null,
       assessmentSessionId: null,
       status: "new",
+      source: "system",
       purchaseProbabilityPercent: null,
       purchaseProbabilityBand: null,
       adminProbabilityOverridePercent: null,
@@ -245,6 +298,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: ["amin-id"],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
 
     const { autoAssignAndNotifyLead } = await import(
@@ -269,6 +339,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: "hot-expert",
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
@@ -277,6 +364,7 @@ describe("lead-assignment.service", () => {
       assignedToId: null,
       assessmentSessionId: null,
       status: "new",
+      source: "system",
       purchaseProbabilityPercent: 80,
       purchaseProbabilityBand: "high",
       adminProbabilityOverridePercent: null,
@@ -304,6 +392,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: "hot-expert",
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
     repoMock.findConsultationRequestById.mockResolvedValue({
       id: "lead-1",
@@ -312,6 +417,7 @@ describe("lead-assignment.service", () => {
       assignedToId: null,
       assessmentSessionId: null,
       status: "assessment_in_progress",
+      source: "system",
       purchaseProbabilityPercent: null,
       purchaseProbabilityBand: null,
       adminProbabilityOverridePercent: null,
@@ -330,6 +436,150 @@ describe("lead-assignment.service", () => {
     });
   });
 
+  it("prefers assignee by source when hot prefer is unset", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 20,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: { messenger: "messenger-expert" },
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      source: "messenger",
+      purchaseProbabilityPercent: 40,
+      purchaseProbabilityBand: "medium",
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 20,
+      preferStaffId: "messenger-expert",
+    });
+  });
+
+  it("keeps hot assignee ahead of source prefer", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 20,
+      hotLeadDirectAssigneeId: "hot-expert",
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: { direct: "direct-expert" },
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      source: "direct",
+      purchaseProbabilityPercent: 90,
+      purchaseProbabilityBand: "high",
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 20,
+      preferStaffId: "hot-expert",
+    });
+  });
+
+  it("skips auto-assign when lead source is excluded", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 30,
+      hotLeadDirectAssigneeId: null,
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: ["system"],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1");
+
+    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(repoMock.assignLeadToExpertIfUnassigned).not.toHaveBeenCalled();
+  });
+
   it("skips assignment when feature flag is disabled", async () => {
     leadConfigMock.getLeadSettings.mockResolvedValue({
       autoAssignEnabled: false,
@@ -339,6 +589,23 @@ describe("lead-assignment.service", () => {
       hotLeadDirectAssigneeId: null,
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
     });
 
     const { autoAssignAndNotifyLead } = await import(
@@ -444,6 +711,67 @@ describe("lead-assignment.service", () => {
     expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(
       "status",
     );
+  });
+
+  it("createLeadOnAssessmentStart no-ops when createLeadOnAssessmentStart setting is false", async () => {
+    const baseSettings = await leadConfigMock.getLeadSettings();
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      ...baseSettings,
+      createLeadOnAssessmentStart: false,
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-1",
+      name: "Test User",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart skips new system lead when pauseSystemLeadCreation is true", async () => {
+    const baseSettings = await leadConfigMock.getLeadSettings();
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      ...baseSettings,
+      pauseSystemLeadCreation: true,
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-1",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+  });
+
+  it("transitionLeadOnAssessmentComplete skips creating missing lead when pauseSystemLeadCreation is true", async () => {
+    const baseSettings = await leadConfigMock.getLeadSettings();
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      ...baseSettings,
+      pauseSystemLeadCreation: true,
+    });
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+
+    const { transitionLeadOnAssessmentComplete } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await transitionLeadOnAssessmentComplete({
+      assessmentSessionId: "assessment-1",
+      reportId: "report-1",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
   });
 
   it("transitionLeadOnAssessmentComplete moves in-progress lead to completed", async () => {

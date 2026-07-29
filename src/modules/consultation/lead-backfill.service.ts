@@ -241,6 +241,11 @@ export async function backfillAssessmentLeads(input: {
       );
 
       if (existingLeads.length === 0) {
+        if (settings.pauseSystemLeadCreation) {
+          result.skipped += 1;
+          continue;
+        }
+
         if (dryRun) {
           console.log(
             `[dry-run] create user=${latest.userId} assessment=${latest.id} → ${pipelineStatus}`,

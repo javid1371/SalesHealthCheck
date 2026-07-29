@@ -1,4 +1,4 @@
-import type { LeadStatus, LostReason } from "@prisma/client";
+import type { CallOutcome, LeadStatus, LostReason } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { healthLevelLabelFa } from "@/lib/health-level";
@@ -79,14 +79,35 @@ import {
   serializeAssignmentChangeDetail,
   serializeCallLoggedDetail,
 } from "./lead-activity";
-import { getLeadSettings } from "./lead-config.service";
+import {
+  getLeadSettings,
+  type FirstContactSlaMinutesByBand,
+} from "./lead-config.service";
 import {
   computeLeadSlaFlags,
   slaReasonLabel,
   STALE_NEW_LEAD_HOURS,
 } from "./lead-sla";
 import { isManualStatusTransitionAllowed } from "./lead-status";
-import { findStaffUserById } from "@/modules/staff/staff.repository";
+import {
+  countCallsForStaffSince,
+  findStaffUserById,
+  startOfTehranDay,
+} from "@/modules/staff/staff.repository";
+
+type LeadListMappingOptions = {
+  staleNewLeadHours?: number;
+  firstContactSlaMinutesByBand?: FirstContactSlaMinutesByBand;
+};
+
+function resolveLeadListMappingOptions(
+  value: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
+): LeadListMappingOptions {
+  if (typeof value === "number") {
+    return { staleNewLeadHours: value };
+  }
+  return value;
+}
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   assessment_in_progress: "در حال انجام تست",
@@ -443,6 +464,34 @@ function mapLeadLostState(row: {
   };
 }
 
+function assertCallOutcomeBeforeClose(
+  existing: {
+    status: LeadStatus;
+    lastCallOutcome: CallOutcome | null;
+  },
+  nextStatus: LeadStatus | undefined,
+  requireCallOutcomeBeforeClose: boolean,
+): void {
+  if (!requireCallOutcomeBeforeClose || nextStatus === undefined) {
+    return;
+  }
+  if (nextStatus === existing.status) {
+    return;
+  }
+  if (nextStatus !== "closed_lost" && nextStatus !== "unreachable") {
+    return;
+  }
+  if (existing.lastCallOutcome) {
+    return;
+  }
+  throw new AppError(
+    "VALIDATION_ERROR",
+    "قبل از بستن لید یا علامت‌گذاری به‌عنوان در دسترس نیست، ثبت نتیجه تماس الزامی است.",
+    400,
+    { field: "lastCallOutcome" },
+  );
+}
+
 function resolveLostReasonUpdates(
   existing: {
     status: LeadStatus;
@@ -501,9 +550,17 @@ function resolveLostReasonUpdates(
 }
 
 function mapLeadSla(
-  row: ConsultationRow,
-  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  row: {
+    status: ConsultationRow["status"];
+    createdAt: Date;
+    nextFollowUpAt: Date | null;
+    assignedToId: string | null;
+    purchaseProbabilityBand: ConsultationRow["purchaseProbabilityBand"];
+    firstContactedAt: Date | null;
+  },
+  options: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
 ) {
+  const mapping = resolveLeadListMappingOptions(options);
   const sla = computeLeadSlaFlags(
     {
       status: row.status,
@@ -511,8 +568,12 @@ function mapLeadSla(
       nextFollowUpAt: row.nextFollowUpAt,
       assignedToId: row.assignedToId,
       purchaseProbabilityBand: row.purchaseProbabilityBand,
+      firstContactedAt: row.firstContactedAt,
     },
-    staleNewLeadHours,
+    {
+      staleNewLeadHours: mapping.staleNewLeadHours,
+      firstContactSlaMinutesByBand: mapping.firstContactSlaMinutesByBand,
+    },
   );
 
   return {
@@ -523,10 +584,11 @@ function mapLeadSla(
 
 function toConsultationListItem(
   row: ConsultationRow,
-  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  options: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
 ): ConsultationListItem {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
+  const mapping = resolveLeadListMappingOptions(options);
 
   return {
     id: row.id,
@@ -566,7 +628,18 @@ function toConsultationListItem(
       : null,
     detailUrl: `/expert/consultations/${row.id}`,
     ...mapLeadAssignmentState(row),
-    ...mapLeadSla(row, staleNewLeadHours),
+    ...mapLeadSla(row, mapping),
+  };
+}
+
+function mappingOptionsFromLeadSettings(settings: {
+  staleNewLeadHours: number;
+  routingRules: { firstContactSlaMinutesByBand: FirstContactSlaMinutesByBand };
+}): LeadListMappingOptions {
+  return {
+    staleNewLeadHours: settings.staleNewLeadHours,
+    firstContactSlaMinutesByBand:
+      settings.routingRules.firstContactSlaMinutesByBand,
   };
 }
 
@@ -648,6 +721,9 @@ function buildLeadTimeline(
   }
 
   for (const message of smsMessages) {
+    // Timeline shows only messages that actually fired; pending/canceled/skipped stay in history APIs.
+    if (message.status !== "sent" && message.status !== "failed") continue;
+
     const at = message.sentAt ?? message.createdAt;
     const statusLabel = SMS_STATUS_LABELS[message.status] ?? message.status;
     const seqLabel = sequenceLabel(message.sequenceKey);
@@ -813,12 +889,13 @@ async function syncCallScheduledSmsForFollowUp(params: {
 
 function toConsultationLeadDetail(
   row: ConsultationDetailRow,
-  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  options: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
   smsMessages: TimelineSmsMessage[] = [],
 ): ConsultationLeadDetail {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
   const healthLevel = row.assessmentSession?.overallScore?.healthLevel ?? null;
+  const mapping = resolveLeadListMappingOptions(options);
 
   return {
     id: row.id,
@@ -868,7 +945,7 @@ function toConsultationLeadDetail(
     notes: row.consultationNotes.map(toConsultationNoteItem),
     timeline: buildLeadTimeline(row, smsMessages),
     ...mapLeadAssignmentState(row),
-    ...mapLeadSla(row, staleNewLeadHours),
+    ...mapLeadSla(row, mapping),
   };
 }
 
@@ -938,11 +1015,11 @@ export async function listConsultationRequests(
   ]);
 
   const totalPages = total === 0 ? 0 : Math.ceil(total / filter.pageSize);
-  const staleNewLeadHours = settings.staleNewLeadHours;
+  const mappingOptions = mappingOptionsFromLeadSettings(settings);
 
   return {
     requests: requests.map((row) =>
-      toConsultationListItem(row, staleNewLeadHours),
+      toConsultationListItem(row, mappingOptions),
     ),
     pagination: {
       page: filter.page,
@@ -1025,11 +1102,11 @@ export async function listConsultationRequestsForKanban(
     settingsPromise,
   ]);
   const total = requests.length;
-  const staleNewLeadHours = settings.staleNewLeadHours;
+  const mappingOptions = mappingOptionsFromLeadSettings(settings);
 
   return {
     requests: requests.map((row) =>
-      toConsultationListItem(row, staleNewLeadHours),
+      toConsultationListItem(row, mappingOptions),
     ),
     pagination: {
       page: 1,
@@ -1068,7 +1145,7 @@ export async function getConsultationLeadDetail(
 
   return toConsultationLeadDetail(
     row,
-    settings.staleNewLeadHours,
+    mappingOptionsFromLeadSettings(settings),
     smsHistory.messages,
   );
 }
@@ -1241,7 +1318,7 @@ export async function transferLead(
   });
 
   const settings = await getLeadSettings();
-  return toConsultationListItem(updated, settings.staleNewLeadHours);
+  return toConsultationListItem(updated, mappingOptionsFromLeadSettings(settings));
 }
 
 export async function claimLead(
@@ -1268,6 +1345,14 @@ export async function claimLead(
     );
   }
 
+  if (expert.assignmentPausedAt) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "تخصیص برای حساب شما موقتاً متوقف است؛ با ادمین هماهنگ کنید.",
+      400,
+    );
+  }
+
   const existing = await findConsultationRequestById(id);
   if (!existing) {
     throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
@@ -1290,6 +1375,24 @@ export async function claimLead(
       "لید بسته‌شده قابل برداشتن از صف تیم نیست.",
       400,
     );
+  }
+
+  if (
+    expert.maxDailyCalls != null &&
+    Number.isInteger(expert.maxDailyCalls) &&
+    expert.maxDailyCalls > 0
+  ) {
+    const callsToday = await countCallsForStaffSince(
+      staffUserId,
+      startOfTehranDay(),
+    );
+    if (callsToday >= expert.maxDailyCalls) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "سقف تماس روزانه شما تکمیل است؛ فردا دوباره تلاش کنید یا با ادمین هماهنگ کنید.",
+        400,
+      );
+    }
   }
 
   const settings = await getLeadSettings();
@@ -1340,7 +1443,10 @@ export async function claimLead(
     throw new AppError("NOT_FOUND", "لید یافت نشد.", 404, { id });
   }
 
-  return toConsultationListItem(updated, settings.staleNewLeadHours);
+  return toConsultationListItem(
+    updated,
+    mappingOptionsFromLeadSettings(settings),
+  );
 }
 
 export async function updateConsultationLeadStatus(
@@ -1388,6 +1494,13 @@ export async function updateConsultationLeadStatus(
     );
   }
 
+  const settings = await getLeadSettings();
+  assertCallOutcomeBeforeClose(
+    existing,
+    input.status,
+    settings.requireCallOutcomeBeforeClose,
+  );
+
   const staffUserId =
     access.adminSession?.staffUserId ??
     access.salesExpertSession?.staffUserId ??
@@ -1421,8 +1534,7 @@ export async function updateConsultationLeadStatus(
     nextFollowUpAt: input.nextFollowUpAt,
   });
 
-  const settings = await getLeadSettings();
-  return toConsultationListItem(updated, settings.staleNewLeadHours);
+  return toConsultationListItem(updated, mappingOptionsFromLeadSettings(settings));
 }
 
 function requireAdminAccess(access: ConsultationsAccessInput): void {
@@ -1444,6 +1556,7 @@ export async function bulkUpdateLeads(
 
   const staffUserId = access.adminSession?.staffUserId ?? null;
   const existingRows = await findConsultationRequestsByIds(input.ids);
+  const settings = await getLeadSettings();
   let updated = 0;
 
   for (const row of existingRows) {
@@ -1478,6 +1591,16 @@ export async function bulkUpdateLeads(
       updateInput.lostReason === undefined &&
       updateInput.lostNote === undefined
     ) {
+      continue;
+    }
+
+    try {
+      assertCallOutcomeBeforeClose(
+        row,
+        updateInput.status,
+        settings.requireCallOutcomeBeforeClose,
+      );
+    } catch {
       continue;
     }
 
@@ -1694,7 +1817,7 @@ export async function logCall(
   }
 
   const settings = await getLeadSettings();
-  return toConsultationListItem(updated, settings.staleNewLeadHours);
+  return toConsultationListItem(updated, mappingOptionsFromLeadSettings(settings));
 }
 
 export function leadStatusLabel(status: LeadStatus): string {
@@ -1709,9 +1832,9 @@ function endOfDay(date = new Date()): Date {
 
 function toFollowUpRow(
   row: ConsultationRow,
-  staleNewLeadHours: number = STALE_NEW_LEAD_HOURS,
+  options: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
 ): ExpertDashboardFollowUpRow {
-  const item = toConsultationListItem(row, staleNewLeadHours);
+  const item = toConsultationListItem(row, options);
   return {
     id: item.id,
     name: item.name,
@@ -1731,7 +1854,7 @@ export async function getExpertDashboard(
   const now = new Date();
   const endOfToday = endOfDay(now);
   const settings = await getLeadSettings();
-  const staleNewLeadHours = settings.staleNewLeadHours;
+  const mappingOptions = mappingOptionsFromLeadSettings(settings);
   const baseFilter = {
     ...(staffUserId ? { assignedToId: staffUserId } : {}),
     page: 1,
@@ -1768,13 +1891,13 @@ export async function getExpertDashboard(
       teamQueue,
     },
     overdueFollowUps: overdueRows.map((row) =>
-      toFollowUpRow(row, staleNewLeadHours),
+      toFollowUpRow(row, mappingOptions),
     ),
     todayFollowUps: todayRows.map((row) =>
-      toFollowUpRow(row, staleNewLeadHours),
+      toFollowUpRow(row, mappingOptions),
     ),
     newLeadRows: newLeadRows.map((row) =>
-      toFollowUpRow(row, staleNewLeadHours),
+      toFollowUpRow(row, mappingOptions),
     ),
   };
 }

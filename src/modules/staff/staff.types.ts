@@ -8,6 +8,16 @@ export type StaffUserSummary = {
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  assignmentPausedAt: string | null;
+  assignmentPausedReason: string | null;
+  maxDailyCalls: number | null;
+};
+
+export type PatchStaffUserInput = {
+  isActive?: boolean;
+  assignmentPaused?: boolean;
+  assignmentPausedReason?: string | null;
+  maxDailyCalls?: number | null;
 };
 
 export type CreateStaffUserInput = {

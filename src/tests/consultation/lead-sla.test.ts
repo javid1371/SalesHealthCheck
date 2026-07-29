@@ -10,6 +10,7 @@ const noSla: LeadSlaFlags = {
   staleNew: false,
   overdueFollowUp: false,
   highProbabilityUnassigned: false,
+  firstContactSlaBreached: false,
   severity: "none",
 };
 
@@ -31,15 +32,20 @@ describe("computeLeadSlaFlags", () => {
   });
 
   it("flags stale new lead as amber", () => {
-    const flags = computeLeadSlaFlags({
-      status: "new",
-      createdAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
-      nextFollowUpAt: null,
-      assignedToId: "expert-1",
-      purchaseProbabilityBand: null,
-    });
+    const flags = computeLeadSlaFlags(
+      {
+        status: "new",
+        createdAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
+        nextFollowUpAt: null,
+        assignedToId: "expert-1",
+        purchaseProbabilityBand: null,
+        firstContactedAt: now,
+      },
+      { staleNewLeadHours: 24, now },
+    );
 
     expect(flags.staleNew).toBe(true);
+    expect(flags.firstContactSlaBreached).toBe(false);
     expect(flags.severity).toBe("amber");
     expect(slaReasonLabel(flags)).toBe("لید جدید کهنه");
   });
@@ -52,6 +58,7 @@ describe("computeLeadSlaFlags", () => {
       nextFollowUpAt: null,
       assignedToId: "expert-1",
       purchaseProbabilityBand: null,
+      firstContactedAt: new Date(),
     };
 
     expect(computeLeadSlaFlags(row, 48).staleNew).toBe(false);
@@ -59,17 +66,65 @@ describe("computeLeadSlaFlags", () => {
   });
 
   it("flags high-probability unassigned as amber", () => {
-    const flags = computeLeadSlaFlags({
-      status: "new",
-      createdAt: now,
-      nextFollowUpAt: null,
-      assignedToId: null,
-      purchaseProbabilityBand: "high",
-    });
+    const flags = computeLeadSlaFlags(
+      {
+        status: "new",
+        createdAt: now,
+        nextFollowUpAt: null,
+        assignedToId: null,
+        purchaseProbabilityBand: "high",
+      },
+      {
+        firstContactSlaMinutesByBand: { high: 60, mid: 120, low: 240 },
+        now,
+      },
+    );
 
     expect(flags.highProbabilityUnassigned).toBe(true);
+    expect(flags.firstContactSlaBreached).toBe(false);
     expect(flags.severity).toBe("amber");
     expect(slaReasonLabel(flags)).toBe("احتمال بالا — بدون تخصیص");
+  });
+
+  it("flags first-contact SLA breach by band minutes", () => {
+    const flags = computeLeadSlaFlags(
+      {
+        status: "new",
+        createdAt: new Date(now.getTime() - 45 * 60 * 1000),
+        nextFollowUpAt: null,
+        assignedToId: "expert-1",
+        purchaseProbabilityBand: "high",
+        firstContactedAt: null,
+      },
+      {
+        staleNewLeadHours: 24,
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        now,
+      },
+    );
+
+    expect(flags.firstContactSlaBreached).toBe(true);
+    expect(flags.severity).toBe("red");
+    expect(slaReasonLabel(flags)).toBe("گذشته از SLA تماس اول");
+  });
+
+  it("does not flag first-contact SLA after firstContactedAt", () => {
+    const flags = computeLeadSlaFlags(
+      {
+        status: "contacted",
+        createdAt: new Date(now.getTime() - 45 * 60 * 1000),
+        nextFollowUpAt: null,
+        assignedToId: "expert-1",
+        purchaseProbabilityBand: "high",
+        firstContactedAt: new Date(now.getTime() - 10 * 60 * 1000),
+      },
+      {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        now,
+      },
+    );
+
+    expect(flags.firstContactSlaBreached).toBe(false);
   });
 });
 
@@ -84,6 +139,7 @@ describe("resolveLeadActionHint", () => {
         staleNew: true,
         overdueFollowUp: false,
         highProbabilityUnassigned: false,
+        firstContactSlaBreached: false,
         severity: "amber",
       },
       slaReason: "لید جدید کهنه",

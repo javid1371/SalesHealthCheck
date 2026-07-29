@@ -54,26 +54,38 @@ export type AfterCallSuggestion = {
   lostReason?: LostReason;
 };
 
+/** Per-outcome suggestions stored in `LeadSetting.call_outcome_matrix_json`. */
+export type CallOutcomeMatrix = Record<CallOutcome, AfterCallSuggestion>;
+
+/** Built-in matrix (matches historical hard-coded suggestAfterCallDefaults). */
+export const DEFAULT_CALL_OUTCOME_MATRIX: CallOutcomeMatrix = {
+  no_answer: { nextFollowUpDays: 1 },
+  busy: { nextFollowUpDays: 1 },
+  callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+  connected_interested: { status: "contacted", nextFollowUpDays: null },
+  connected_not_interested: { status: "closed_lost" },
+  wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+};
+
+export function cloneDefaultCallOutcomeMatrix(): CallOutcomeMatrix {
+  return {
+    no_answer: { ...DEFAULT_CALL_OUTCOME_MATRIX.no_answer },
+    busy: { ...DEFAULT_CALL_OUTCOME_MATRIX.busy },
+    callback_requested: { ...DEFAULT_CALL_OUTCOME_MATRIX.callback_requested },
+    connected_interested: { ...DEFAULT_CALL_OUTCOME_MATRIX.connected_interested },
+    connected_not_interested: {
+      ...DEFAULT_CALL_OUTCOME_MATRIX.connected_not_interested,
+    },
+    wrong_number: { ...DEFAULT_CALL_OUTCOME_MATRIX.wrong_number },
+  };
+}
+
 export function suggestAfterCallDefaults(
   outcome: CallOutcome,
+  matrix: CallOutcomeMatrix = DEFAULT_CALL_OUTCOME_MATRIX,
 ): AfterCallSuggestion {
-  switch (outcome) {
-    case "no_answer":
-    case "busy":
-      return { nextFollowUpDays: 1 };
-    case "callback_requested":
-      return { status: "contacted", nextFollowUpDays: 1 };
-    case "connected_interested":
-      return { status: "contacted", nextFollowUpDays: null };
-    case "connected_not_interested":
-      return { status: "closed_lost" };
-    case "wrong_number":
-      return { status: "closed_lost", lostReason: "low_quality" };
-    default: {
-      const _exhaustive: never = outcome;
-      return _exhaustive;
-    }
-  }
+  const entry = matrix[outcome] ?? DEFAULT_CALL_OUTCOME_MATRIX[outcome];
+  return { ...entry };
 }
 
 /** Fields to send with a kanban quick-call log (no extra UI unless reason required). */
@@ -94,8 +106,9 @@ export type QuickCallLogFields =
 export function resolveQuickCallLogFields(
   outcome: CallOutcome,
   lost?: { lostReason: LostReason; lostNote?: string | null },
+  matrix: CallOutcomeMatrix = DEFAULT_CALL_OUTCOME_MATRIX,
 ): QuickCallLogFields {
-  const suggestion = suggestAfterCallDefaults(outcome);
+  const suggestion = suggestAfterCallDefaults(outcome, matrix);
   const lostReason = lost?.lostReason ?? suggestion.lostReason;
 
   if (suggestion.status === "closed_lost" && !lostReason) {

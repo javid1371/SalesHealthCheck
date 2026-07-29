@@ -9,6 +9,8 @@ import {
   findStaffUserById,
   findStaffUserByPhone,
   findStaffUsers,
+  setStaffAssignmentPaused,
+  setStaffMaxDailyCalls,
   setStaffUserActive,
   touchLastLogin,
   updateStaffUserPassword,
@@ -16,10 +18,12 @@ import {
 import type {
   AuthenticatedStaff,
   CreateStaffUserInput,
+  PatchStaffUserInput,
   StaffUserSummary,
 } from "./staff.types";
 import {
   validateCreateStaffUserRequest,
+  validatePatchStaffUserRequest,
   validateResetStaffPasswordRequest,
   validateStaffLoginRequest,
 } from "./staff.validators";
@@ -44,6 +48,11 @@ function toStaffUserSummary(
       ? formatStaffDate(user.lastLoginAt)
       : null,
     createdAt: formatStaffDate(user.createdAt),
+    assignmentPausedAt: user.assignmentPausedAt
+      ? formatStaffDate(user.assignmentPausedAt)
+      : null,
+    assignmentPausedReason: user.assignmentPausedReason,
+    maxDailyCalls: user.maxDailyCalls,
   };
 }
 
@@ -228,7 +237,17 @@ export async function setStaffUserActiveByAdmin(
   isActive: boolean,
   actingStaffId: string,
 ): Promise<StaffUserSummary> {
-  if (id === actingStaffId && !isActive) {
+  return patchStaffUserByAdmin(id, { isActive }, actingStaffId);
+}
+
+export async function patchStaffUserByAdmin(
+  id: string,
+  body: unknown,
+  actingStaffId: string,
+): Promise<StaffUserSummary> {
+  const input: PatchStaffUserInput = validatePatchStaffUserRequest(body);
+
+  if (id === actingStaffId && input.isActive === false) {
     throw new AppError(
       "VALIDATION_ERROR",
       "نمی‌توانید حساب خود را غیرفعال کنید.",
@@ -241,7 +260,11 @@ export async function setStaffUserActiveByAdmin(
     throw new AppError("NOT_FOUND", "کاربر یافت نشد.", 404, { id });
   }
 
-  if (!isActive && user.role === "admin" && user.isActive) {
+  if (
+    input.isActive === false &&
+    user.role === "admin" &&
+    user.isActive
+  ) {
     const activeAdmins = await countActiveAdmins();
     if (activeAdmins <= 1) {
       throw new AppError(
@@ -252,7 +275,48 @@ export async function setStaffUserActiveByAdmin(
     }
   }
 
-  const updated = await setStaffUserActive(id, isActive);
+  if (
+    (input.assignmentPaused !== undefined ||
+      input.maxDailyCalls !== undefined ||
+      input.assignmentPausedReason !== undefined) &&
+    user.role !== "sales_expert"
+  ) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "توقف تخصیص و سقف تماس روزانه فقط برای کارشناس فروش است.",
+      400,
+    );
+  }
+
+  let updated = user;
+
+  if (input.isActive !== undefined) {
+    updated = await setStaffUserActive(id, input.isActive);
+  }
+
+  if (input.assignmentPaused !== undefined) {
+    updated = await setStaffAssignmentPaused(
+      id,
+      input.assignmentPaused,
+      input.assignmentPaused
+        ? (input.assignmentPausedReason ?? updated.assignmentPausedReason)
+        : null,
+    );
+  } else if (
+    input.assignmentPausedReason !== undefined &&
+    updated.assignmentPausedAt
+  ) {
+    updated = await setStaffAssignmentPaused(
+      id,
+      true,
+      input.assignmentPausedReason,
+    );
+  }
+
+  if (input.maxDailyCalls !== undefined) {
+    updated = await setStaffMaxDailyCalls(id, input.maxDailyCalls);
+  }
+
   return toStaffUserSummary(updated);
 }
 

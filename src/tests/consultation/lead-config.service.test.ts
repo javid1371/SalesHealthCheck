@@ -38,6 +38,9 @@ describe("lead-config.service", () => {
     const { getLeadSettings, DEFAULT_EXPERT_NEW_LEAD_SMS } = await import(
       "@/modules/consultation/lead-config.service"
     );
+    const { DEFAULT_CALL_OUTCOME_MATRIX } = await import(
+      "@/modules/consultation/lead-activity"
+    );
     const settings = await getLeadSettings();
     expect(settings).toEqual({
       autoAssignEnabled: true,
@@ -48,6 +51,16 @@ describe("lead-config.service", () => {
       assessmentIncompleteAfterHours: 24,
       autoAssignExcludeStaffIds: [],
       staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: DEFAULT_CALL_OUTCOME_MATRIX,
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+      adminOverdueFollowUpSmsEnabled: true,
     });
   });
 
@@ -61,10 +74,14 @@ describe("lead-config.service", () => {
       { key: "assessment_incomplete_after_hours", value: "48" },
       { key: "auto_assign_exclude_staff_ids", value: "expert-2,expert-3" },
       { key: "stale_new_lead_hours", value: "36" },
+      { key: "admin_overdue_follow_up_sms_enabled", value: "false" },
     ]);
 
     const { getLeadSettings } = await import(
       "@/modules/consultation/lead-config.service"
+    );
+    const { DEFAULT_CALL_OUTCOME_MATRIX } = await import(
+      "@/modules/consultation/lead-activity"
     );
     const settings = await getLeadSettings();
     expect(settings).toEqual({
@@ -76,6 +93,16 @@ describe("lead-config.service", () => {
       assessmentIncompleteAfterHours: 48,
       autoAssignExcludeStaffIds: ["expert-2", "expert-3"],
       staleNewLeadHours: 36,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: {},
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: DEFAULT_CALL_OUTCOME_MATRIX,
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+      adminOverdueFollowUpSmsEnabled: false,
     });
   });
 
@@ -230,6 +257,47 @@ describe("lead-config.service", () => {
     expect(settings.hotLeadDirectAssigneeId).toBe("expert-1");
   });
 
+  it("persists routingRules JSON", async () => {
+    mockFindStaffUserById.mockResolvedValue({
+      id: "expert-1",
+      isActive: true,
+      role: "sales_expert",
+    });
+    mockUpsert.mockResolvedValue({});
+    mockFindMany.mockResolvedValue([
+      {
+        key: "routing_rules_json",
+        value: JSON.stringify({
+          firstContactSlaMinutesByBand: { high: 15, mid: 60, low: 180 },
+          preferAssigneeBySource: { messenger: "expert-1" },
+          excludeSourcesFromAutoAssign: ["system"],
+        }),
+      },
+    ]);
+
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const settings = await updateLeadSettings({
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 15, mid: 60, low: 180 },
+        preferAssigneeBySource: { messenger: "expert-1" },
+        excludeSourcesFromAutoAssign: ["system"],
+      },
+    });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "routing_rules_json" },
+      }),
+    );
+    expect(settings.routingRules).toEqual({
+      firstContactSlaMinutesByBand: { high: 15, mid: 60, low: 180 },
+      preferAssigneeBySource: { messenger: "expert-1" },
+      excludeSourcesFromAutoAssign: ["system"],
+    });
+  });
+
   it("persists autoAssignExcludeStaffIds for sales experts", async () => {
     mockFindStaffUserById.mockResolvedValue({
       id: "expert-2",
@@ -255,5 +323,76 @@ describe("lead-config.service", () => {
       }),
     );
     expect(settings.autoAssignExcludeStaffIds).toEqual(["expert-2"]);
+  });
+
+  it("persists call outcome matrix and assessment funnel toggles", async () => {
+    mockUpsert.mockResolvedValue({});
+    const matrix = {
+      no_answer: { nextFollowUpDays: 2 },
+      busy: { nextFollowUpDays: 1 },
+      callback_requested: { status: "contacted" as const, nextFollowUpDays: 1 },
+      connected_interested: {
+        status: "contacted" as const,
+        nextFollowUpDays: null,
+      },
+      connected_not_interested: { status: "closed_lost" as const },
+      wrong_number: {
+        status: "unreachable" as const,
+        lostReason: "low_quality" as const,
+      },
+    };
+    mockFindMany.mockResolvedValue([
+      { key: "call_outcome_matrix_json", value: JSON.stringify(matrix) },
+      { key: "require_call_outcome_before_close", value: "true" },
+      { key: "create_lead_on_assessment_start", value: "false" },
+      { key: "pause_system_lead_creation", value: "true" },
+    ]);
+
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const settings = await updateLeadSettings({
+      callOutcomeMatrix: matrix,
+      requireCallOutcomeBeforeClose: true,
+      createLeadOnAssessmentStart: false,
+      pauseSystemLeadCreation: true,
+    });
+
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "call_outcome_matrix_json" },
+      }),
+    );
+    expect(mockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "require_call_outcome_before_close" },
+        create: { key: "require_call_outcome_before_close", value: "true" },
+      }),
+    );
+    expect(settings.callOutcomeMatrix.wrong_number).toEqual({
+      status: "unreachable",
+      lostReason: "low_quality",
+    });
+    expect(settings.requireCallOutcomeBeforeClose).toBe(true);
+    expect(settings.createLeadOnAssessmentStart).toBe(false);
+    expect(settings.pauseSystemLeadCreation).toBe(true);
+  });
+
+  it("rejects invalid callOutcomeMatrix status", async () => {
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    await expect(
+      updateLeadSettings({
+        callOutcomeMatrix: {
+          no_answer: { status: "not_a_status" as never },
+          busy: {},
+          callback_requested: {},
+          connected_interested: {},
+          connected_not_interested: {},
+          wrong_number: {},
+        },
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 });

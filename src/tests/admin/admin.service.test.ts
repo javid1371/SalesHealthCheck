@@ -67,6 +67,22 @@ vi.mock("@/modules/consultation/lead-config.service", () => ({
     assessmentIncompleteAfterHours: 24,
     autoAssignExcludeStaffIds: [],
     staleNewLeadHours: 24,
+    routingRules: {
+      firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+      preferAssigneeBySource: {},
+      excludeSourcesFromAutoAssign: [],
+    },
+    callOutcomeMatrix: {
+      no_answer: { nextFollowUpDays: 1 },
+      busy: { nextFollowUpDays: 1 },
+      callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+      connected_interested: { status: "contacted", nextFollowUpDays: null },
+      connected_not_interested: { status: "closed_lost" },
+      wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+    },
+    requireCallOutcomeBeforeClose: false,
+    createLeadOnAssessmentStart: true,
+    pauseSystemLeadCreation: false,
   }),
 }));
 
@@ -212,7 +228,13 @@ describe("getAdminDashboard", () => {
       .mockResolvedValueOnce(25)
       .mockResolvedValueOnce(80);
     vi.mocked(findActiveSalesExperts).mockResolvedValue([
-      { id: "expert-1", name: "Expert One" },
+      {
+        id: "expert-1",
+        name: "Expert One",
+        assignmentPausedAt: null,
+        assignmentPausedReason: null,
+        maxDailyCalls: null,
+      },
     ]);
     vi.mocked(groupLeadsByAssignee).mockResolvedValue([
       {
@@ -331,7 +353,7 @@ describe("getAdminDashboard", () => {
       assessmentsThisWeek: 25,
       assessmentsThisMonth: 80,
     });
-    // funnel.consultations is distinct consultation_submitted actors (not ConsultationRequest rows)
+    // funnel.consultations = completers with ≥1 direct/messenger ConsultationRequest
     expect(dashboard.funnel).toEqual({
       started: 100,
       completed: 60,

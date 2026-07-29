@@ -35,6 +35,8 @@ const mockRescheduleCallScheduledForFollowUp = vi.hoisted(() =>
 
 const staffRepoMock = vi.hoisted(() => ({
   findStaffUserById: vi.fn(),
+  countCallsForStaffSince: vi.fn(),
+  startOfTehranDay: vi.fn(() => new Date("2026-07-29T00:00:00.000Z")),
 }));
 
 const leadAssignmentMock = vi.hoisted(() => ({
@@ -60,18 +62,53 @@ vi.mock("@/modules/staff/staff.repository", () => staffRepoMock);
 
 vi.mock("@/modules/consultation/lead-assignment.service", () => leadAssignmentMock);
 
-vi.mock("@/modules/consultation/lead-config.service", () => ({
-  getLeadSettings: vi.fn().mockResolvedValue({
+const { defaultLeadSettings } = vi.hoisted(() => ({
+  defaultLeadSettings: {
     autoAssignEnabled: true,
     systemAssignDelayHours: 24,
     expertNewLeadSms: "لید جدید داری\nچک کن",
     maxOpenLeadsPerExpert: 30,
-    hotLeadDirectAssigneeId: null,
+    hotLeadDirectAssigneeId: null as string | null,
     assessmentIncompleteAfterHours: 24,
-    autoAssignExcludeStaffIds: [],
+    autoAssignExcludeStaffIds: [] as string[],
     staleNewLeadHours: 24,
-  }),
+    routingRules: {
+      firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+      preferAssigneeBySource: {},
+      excludeSourcesFromAutoAssign: [] as Array<
+        "direct" | "system" | "messenger"
+      >,
+    },
+    callOutcomeMatrix: {
+      no_answer: { nextFollowUpDays: 1 },
+      busy: { nextFollowUpDays: 1 },
+      callback_requested: { status: "contacted" as const, nextFollowUpDays: 1 },
+      connected_interested: {
+        status: "contacted" as const,
+        nextFollowUpDays: null,
+      },
+      connected_not_interested: { status: "closed_lost" as const },
+      wrong_number: {
+        status: "closed_lost" as const,
+        lostReason: "low_quality" as const,
+      },
+    },
+    requireCallOutcomeBeforeClose: false,
+    createLeadOnAssessmentStart: true,
+    pauseSystemLeadCreation: false,
+  },
 }));
+
+vi.mock("@/modules/consultation/lead-config.service", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/modules/consultation/lead-config.service")
+    >();
+  return {
+    ...actual,
+    getLeadSettings: vi.fn().mockResolvedValue(defaultLeadSettings),
+  };
+});
 
 import {
   addLeadNote,
@@ -87,6 +124,7 @@ import {
   transferLead,
   updateConsultationLeadStatus,
 } from "@/modules/consultation/consultation.service";
+import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 import { serializeCallLoggedDetail } from "@/modules/consultation/lead-activity";
 
 const baseRow = {
@@ -302,6 +340,81 @@ describe("getConsultationLeadDetail", () => {
     ).toBe(true);
   });
 
+  it("includes only sent/failed SMS on timeline and omits pending/canceled/skipped", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue(baseRow);
+    funnelRepoMock.listLeadSmsHistory.mockResolvedValue({
+      activeEnrollments: [],
+      messages: [
+        {
+          id: "sms-sent",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-1",
+          status: "sent",
+          scheduledFor: new Date("2026-06-01T11:00:00Z"),
+          sentAt: new Date("2026-06-01T11:05:00Z"),
+          createdAt: new Date("2026-06-01T11:00:00Z"),
+          error: null,
+        },
+        {
+          id: "sms-failed",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-2",
+          status: "failed",
+          scheduledFor: new Date("2026-06-01T12:00:00Z"),
+          sentAt: null,
+          createdAt: new Date("2026-06-01T12:00:00Z"),
+          error: "provider error",
+        },
+        {
+          id: "sms-pending",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-3",
+          status: "pending",
+          scheduledFor: new Date("2026-06-01T13:00:00Z"),
+          sentAt: null,
+          createdAt: new Date("2026-06-01T13:00:00Z"),
+          error: null,
+        },
+        {
+          id: "sms-canceled",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-4",
+          status: "canceled",
+          scheduledFor: new Date("2026-06-01T14:00:00Z"),
+          sentAt: null,
+          createdAt: new Date("2026-06-01T14:00:00Z"),
+          error: null,
+        },
+        {
+          id: "sms-skipped",
+          phone: "09120000001",
+          sequenceKey: "seq_nurture",
+          stepKey: "S4-5",
+          status: "skipped",
+          scheduledFor: new Date("2026-06-01T15:00:00Z"),
+          sentAt: null,
+          createdAt: new Date("2026-06-01T15:00:00Z"),
+          error: null,
+        },
+      ],
+    });
+
+    const lead = await getConsultationLeadDetail("lead-1", adminAccess);
+    const smsEntries = lead.timeline.filter((e) => e.kind === "sms");
+
+    expect(smsEntries).toHaveLength(2);
+    expect(smsEntries.map((e) => e.id).sort()).toEqual([
+      "sms-sms-failed",
+      "sms-sms-sent",
+    ]);
+    expect(smsEntries.some((e) => e.detail?.includes("ارسال‌شده"))).toBe(true);
+    expect(smsEntries.some((e) => e.detail?.includes("ناموفق"))).toBe(true);
+  });
+
   it("does not synthesize created when a created activity already exists", async () => {
     repoMock.findConsultationRequestById.mockResolvedValue({
       ...baseRow,
@@ -331,6 +444,7 @@ describe("getConsultationLeadDetail", () => {
 describe("updateConsultationLeadStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getLeadSettings).mockResolvedValue({ ...defaultLeadSettings });
     repoMock.findConsultationRequestById.mockResolvedValue(baseRow);
     repoMock.updateConsultationLead.mockResolvedValue({
       ...baseRow,
@@ -513,6 +627,65 @@ describe("updateConsultationLeadStatus", () => {
       ),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
+  });
+
+  it("rejects closed_lost/unreachable without call outcome when requireCallOutcomeBeforeClose is on", async () => {
+    vi.mocked(getLeadSettings).mockResolvedValue({
+      ...defaultLeadSettings,
+      requireCallOutcomeBeforeClose: true,
+    });
+
+    await expect(
+      updateConsultationLeadStatus(
+        "lead-1",
+        { status: "unreachable" },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      status: 400,
+      details: { field: "lastCallOutcome" },
+    });
+
+    await expect(
+      updateConsultationLeadStatus(
+        "lead-1",
+        { status: "closed_lost", lostReason: "price" },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      details: { field: "lastCallOutcome" },
+    });
+
+    expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
+  });
+
+  it("allows closed_lost when requireCallOutcomeBeforeClose is on and lastCallOutcome exists", async () => {
+    vi.mocked(getLeadSettings).mockResolvedValue({
+      ...defaultLeadSettings,
+      requireCallOutcomeBeforeClose: true,
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      lastCallOutcome: "no_answer",
+    });
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      status: "closed_lost",
+      lostReason: "no_response",
+      lastCallOutcome: "no_answer",
+      closedAt: new Date(),
+    });
+
+    const result = await updateConsultationLeadStatus(
+      "lead-1",
+      { status: "closed_lost", lostReason: "no_response" },
+      expertAccess,
+    );
+
+    expect(result.status).toBe("closed_lost");
+    expect(repoMock.updateConsultationLead).toHaveBeenCalled();
   });
 
   it("saves closed_lost with lostReason and closedAt", async () => {
@@ -863,7 +1036,10 @@ describe("claimLead", () => {
       name: "Expert User",
       role: "sales_expert",
       isActive: true,
+      assignmentPausedAt: null,
+      maxDailyCalls: null,
     });
+    staffRepoMock.countCallsForStaffSince.mockResolvedValue(0);
   });
 
   it("claims unassigned lead for the expert and records activity", async () => {
@@ -928,6 +1104,41 @@ describe("claimLead", () => {
       code: "VALIDATION_ERROR",
       status: 400,
     });
+  });
+
+  it("rejects claim when expert assignment is paused", async () => {
+    staffRepoMock.findStaffUserById.mockResolvedValue({
+      id: "expert-1",
+      name: "Expert User",
+      role: "sales_expert",
+      isActive: true,
+      assignmentPausedAt: new Date("2026-07-29T08:00:00.000Z"),
+      maxDailyCalls: null,
+    });
+
+    await expect(claimLead("lead-1", expertAccess)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      status: 400,
+    });
+    expect(repoMock.claimLeadIfUnassignedUnderCapacity).not.toHaveBeenCalled();
+  });
+
+  it("rejects claim when expert reached maxDailyCalls", async () => {
+    staffRepoMock.findStaffUserById.mockResolvedValue({
+      id: "expert-1",
+      name: "Expert User",
+      role: "sales_expert",
+      isActive: true,
+      assignmentPausedAt: null,
+      maxDailyCalls: 3,
+    });
+    staffRepoMock.countCallsForStaffSince.mockResolvedValue(3);
+
+    await expect(claimLead("lead-1", expertAccess)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+      status: 400,
+    });
+    expect(repoMock.claimLeadIfUnassignedUnderCapacity).not.toHaveBeenCalled();
   });
 
   it("forbids admin-only sessions from claiming", async () => {

@@ -31,7 +31,7 @@ Required variables:
 | `APP_DOMAIN` | Public hostname (e.g. `sales.example.com`) |
 | `EXPERT_VIEW_TOKEN` | Secret for `/expert/[id]?adminToken=` in production |
 | `APP_BASE_URL` | Full public URL (`https://sales.example.com`) — used for result links and email recovery |
-| `CAPACITY_MODE` | `free` (default) or `full` — report CTA routing |
+| `CAPACITY_MODE` | `free` (default) or `full` — report CTA routing fallback; admin can override at `/admin/report-settings` (حالت CTA گزارش) without restart |
 
 Optional (Phase 2 email recovery):
 

@@ -1,25 +1,43 @@
 import { createSmsSenderFromSettings } from "@/modules/auth/sms/kavenegar";
 import { env } from "@/lib/env";
 import { isWithinSmsQuietHours } from "@/modules/sms-funnel/quiet-hours";
-import { listActiveSalesExpertsWithPhone } from "@/modules/staff/staff.repository";
+import {
+  findStaffNamesByIds,
+  listActiveAdminsWithPhone,
+  listActiveSalesExpertsWithPhone,
+} from "@/modules/staff/staff.repository";
 import {
   countFollowUpsDueByAssignee,
   countOverdueFollowUpsByAssignee,
   deleteStaffReminderLog,
   tryCreateStaffReminderLog,
 } from "./consultation.repository";
+import { getLeadSettings } from "./lead-config.service";
 
 /** Morning digest send window in Asia/Tehran (hour start inclusive, end exclusive). */
 export const FOLLOW_UP_DIGEST_WINDOW = { start: 9, end: 11 } as const;
 
 const TEHRAN_OFFSET_MS = 3.5 * 60 * 60 * 1000;
-const REMINDER_TYPE = "follow_up_digest" as const;
+const EXPERT_REMINDER_TYPE = "follow_up_digest" as const;
+const ADMIN_REMINDER_TYPE = "admin_overdue_digest" as const;
+const ADMIN_BREAKDOWN_LIMIT = 5;
 
 export type FollowUpReminderDigestResult = {
   sent: number;
   skippedQuietHours: boolean;
   skippedAlreadySent: number;
   skippedNoDue: number;
+  failed: number;
+  admin: AdminOverdueDigestResult;
+};
+
+export type AdminOverdueDigestResult = {
+  sent: number;
+  skippedDisabled: boolean;
+  skippedQuietHours: boolean;
+  skippedAlreadySent: number;
+  skippedNoOverdue: boolean;
+  skippedNoAdmins: boolean;
   failed: number;
 };
 
@@ -43,12 +61,129 @@ export function buildExpertFollowUpListUrl(): string {
   return `${base}/expert/consultations?onlyFollowUpDueToday=true`;
 }
 
+export function buildAdminOverdueFollowUpListUrl(): string {
+  const base = env.appBaseUrl.replace(/\/$/, "");
+  return `${base}/admin/ops`;
+}
+
 export function renderFollowUpDigestSms(input: {
   dueCount: number;
   overdueCount: number;
   listUrl: string;
 }): string {
   return `امروز ${input.dueCount} پیگیری دارید (از جمله ${input.overdueCount} عقب‌افتاده). لیست: ${input.listUrl}`;
+}
+
+export function renderAdminOverdueDigestSms(input: {
+  total: number;
+  byExpert: { name: string; count: number }[];
+  listUrl: string;
+}): string {
+  if (input.byExpert.length === 1) {
+    const only = input.byExpert[0]!;
+    return `پیگیری عقب‌افتاده نزد ${only.name}: ${only.count} مورد — ${input.listUrl}`;
+  }
+
+  const shown = input.byExpert.slice(0, ADMIN_BREAKDOWN_LIMIT);
+  const parts = shown.map((row) => `${row.name} ${row.count}`).join("، ");
+  const remaining = input.byExpert.length - shown.length;
+  const more =
+    remaining > 0 ? ` و ${remaining} کارشناس دیگر` : "";
+
+  return `${input.total} پیگیری عقب‌افتاده (${parts}${more}) — ${input.listUrl}`;
+}
+
+function emptyAdminResult(
+  overrides: Partial<AdminOverdueDigestResult> = {},
+): AdminOverdueDigestResult {
+  return {
+    sent: 0,
+    skippedDisabled: false,
+    skippedQuietHours: false,
+    skippedAlreadySent: 0,
+    skippedNoOverdue: false,
+    skippedNoAdmins: false,
+    failed: 0,
+    ...overrides,
+  };
+}
+
+export async function processAdminOverdueFollowUpDigests(
+  now = new Date(),
+): Promise<AdminOverdueDigestResult> {
+  if (!isWithinSmsQuietHours(now, FOLLOW_UP_DIGEST_WINDOW)) {
+    return emptyAdminResult({ skippedQuietHours: true });
+  }
+
+  const settings = await getLeadSettings();
+  if (!settings.adminOverdueFollowUpSmsEnabled) {
+    return emptyAdminResult({ skippedDisabled: true });
+  }
+
+  const overdueRows = await countOverdueFollowUpsByAssignee(now);
+  const total = overdueRows.reduce((sum, row) => sum + row.count, 0);
+  if (total < 1) {
+    return emptyAdminResult({ skippedNoOverdue: true });
+  }
+
+  const admins = await listActiveAdminsWithPhone();
+  if (admins.length === 0) {
+    return emptyAdminResult({ skippedNoAdmins: true });
+  }
+
+  const nameById = await findStaffNamesByIds(
+    overdueRows.map((row) => row.assignedToId),
+  );
+  const byExpert = overdueRows
+    .map((row) => ({
+      name: nameById.get(row.assignedToId) ?? "کارشناس",
+      count: row.count,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "fa"));
+
+  const reminderDate = tehranCalendarDate(now);
+  const listUrl = buildAdminOverdueFollowUpListUrl();
+  const body = renderAdminOverdueDigestSms({ total, byExpert, listUrl });
+  const sender = await createSmsSenderFromSettings();
+
+  let sent = 0;
+  let skippedAlreadySent = 0;
+  let failed = 0;
+
+  for (const admin of admins) {
+    const claimed = await tryCreateStaffReminderLog({
+      staffUserId: admin.id,
+      date: reminderDate,
+      type: ADMIN_REMINDER_TYPE,
+    });
+    if (!claimed) {
+      skippedAlreadySent += 1;
+      continue;
+    }
+
+    try {
+      await sender.sendMessage(admin.phone, body);
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        "[follow-up-reminder] failed to send admin overdue digest SMS:",
+        admin.id,
+        error,
+      );
+      await deleteStaffReminderLog({
+        staffUserId: admin.id,
+        date: reminderDate,
+        type: ADMIN_REMINDER_TYPE,
+      });
+    }
+  }
+
+  return emptyAdminResult({
+    sent,
+    skippedAlreadySent,
+    failed,
+  });
 }
 
 export async function processFollowUpReminderDigests(
@@ -61,6 +196,7 @@ export async function processFollowUpReminderDigests(
       skippedAlreadySent: 0,
       skippedNoDue: 0,
       failed: 0,
+      admin: emptyAdminResult({ skippedQuietHours: true }),
     };
   }
 
@@ -98,7 +234,7 @@ export async function processFollowUpReminderDigests(
     const claimed = await tryCreateStaffReminderLog({
       staffUserId: expert.id,
       date: reminderDate,
-      type: REMINDER_TYPE,
+      type: EXPERT_REMINDER_TYPE,
     });
     if (!claimed) {
       skippedAlreadySent += 1;
@@ -126,10 +262,12 @@ export async function processFollowUpReminderDigests(
       await deleteStaffReminderLog({
         staffUserId: expert.id,
         date: reminderDate,
-        type: REMINDER_TYPE,
+        type: EXPERT_REMINDER_TYPE,
       });
     }
   }
+
+  const admin = await processAdminOverdueFollowUpDigests(now);
 
   return {
     sent,
@@ -137,5 +275,6 @@ export async function processFollowUpReminderDigests(
     skippedAlreadySent,
     skippedNoDue,
     failed,
+    admin,
   };
 }

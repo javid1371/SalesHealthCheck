@@ -41,6 +41,7 @@ describe("lead-backfill per-user reconcile", () => {
       assessmentIncompleteAfterHours: 24,
       autoAssignEnabled: true,
       autoAssignExcludeStaffIds: [],
+      pauseSystemLeadCreation: false,
     });
     dbMock.assessmentSession.findMany.mockResolvedValue([]);
     repoMock.findConsultationRequestsByUserId.mockResolvedValue([]);

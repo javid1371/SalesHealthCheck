@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const findMany = vi.fn();
 const groupBy = vi.fn();
+const callGroupBy = vi.fn();
 const update = vi.fn();
 const transaction = vi.fn();
 
@@ -14,11 +15,13 @@ vi.mock("@/lib/db", () => ({
 describe("pickNextSalesExpert", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    callGroupBy.mockResolvedValue([]);
     transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           staffUser: { findMany, update },
           consultationRequest: { groupBy },
+          leadCallLog: { groupBy: callGroupBy },
         }),
     );
     update.mockImplementation(async ({ where }: { where: { id: string } }) => ({
@@ -28,8 +31,8 @@ describe("pickNextSalesExpert", () => {
 
   it("picks round-robin expert when under capacity", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-a", lastAssignedAt: null },
-      { id: "expert-b", lastAssignedAt: new Date("2026-01-01") },
+      { id: "expert-a", lastAssignedAt: null, maxDailyCalls: null },
+      { id: "expert-b", lastAssignedAt: new Date("2026-01-01"), maxDailyCalls: null },
     ]);
     groupBy.mockResolvedValue([
       { assignedToId: "expert-a", _count: { id: 2 } },
@@ -54,6 +57,13 @@ describe("pickNextSalesExpert", () => {
     expect(CAPACITY_COUNTED_LEAD_STATUSES).not.toContain(
       "assessment_in_progress",
     );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          assignmentPausedAt: null,
+        }),
+      }),
+    );
     expect(update).toHaveBeenCalledWith({
       where: { id: "expert-a" },
       data: { lastAssignedAt: expect.any(Date) },
@@ -62,8 +72,12 @@ describe("pickNextSalesExpert", () => {
 
   it("skips experts at or over maxOpenLeadsPerExpert", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-full", lastAssignedAt: null },
-      { id: "expert-free", lastAssignedAt: new Date("2026-01-01") },
+      { id: "expert-full", lastAssignedAt: null, maxDailyCalls: null },
+      {
+        id: "expert-free",
+        lastAssignedAt: new Date("2026-01-01"),
+        maxDailyCalls: null,
+      },
     ]);
     groupBy.mockResolvedValue([
       { assignedToId: "expert-full", _count: { id: 2 } },
@@ -81,8 +95,8 @@ describe("pickNextSalesExpert", () => {
 
   it("returns null when every eligible expert is at capacity", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-a", lastAssignedAt: null },
-      { id: "expert-b", lastAssignedAt: null },
+      { id: "expert-a", lastAssignedAt: null, maxDailyCalls: null },
+      { id: "expert-b", lastAssignedAt: null, maxDailyCalls: null },
     ]);
     groupBy.mockResolvedValue([
       { assignedToId: "expert-a", _count: { id: 5 } },
@@ -101,8 +115,12 @@ describe("pickNextSalesExpert", () => {
 
   it("prefers hot assignee when eligible and under capacity", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-rr", lastAssignedAt: null },
-      { id: "expert-hot", lastAssignedAt: new Date("2026-01-01") },
+      { id: "expert-rr", lastAssignedAt: null, maxDailyCalls: null },
+      {
+        id: "expert-hot",
+        lastAssignedAt: new Date("2026-01-01"),
+        maxDailyCalls: null,
+      },
     ]);
     groupBy.mockResolvedValue([
       { assignedToId: "expert-rr", _count: { id: 0 } },
@@ -123,8 +141,12 @@ describe("pickNextSalesExpert", () => {
 
   it("falls back to round-robin when preferred expert is over capacity", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-rr", lastAssignedAt: null },
-      { id: "expert-hot", lastAssignedAt: new Date("2026-01-01") },
+      { id: "expert-rr", lastAssignedAt: null, maxDailyCalls: null },
+      {
+        id: "expert-hot",
+        lastAssignedAt: new Date("2026-01-01"),
+        maxDailyCalls: null,
+      },
     ]);
     groupBy.mockResolvedValue([
       { assignedToId: "expert-rr", _count: { id: 0 } },
@@ -144,7 +166,9 @@ describe("pickNextSalesExpert", () => {
   });
 
   it("falls back to round-robin when preferred expert is excluded", async () => {
-    findMany.mockResolvedValue([{ id: "expert-rr", lastAssignedAt: null }]);
+    findMany.mockResolvedValue([
+      { id: "expert-rr", lastAssignedAt: null, maxDailyCalls: null },
+    ]);
     groupBy.mockResolvedValue([]);
 
     const { pickNextSalesExpert } = await import(
@@ -167,10 +191,39 @@ describe("pickNextSalesExpert", () => {
     expect(expert?.id).toBe("expert-rr");
   });
 
+  it("skips experts who reached maxDailyCalls", async () => {
+    findMany.mockResolvedValue([
+      { id: "expert-full", lastAssignedAt: null, maxDailyCalls: 2 },
+      {
+        id: "expert-free",
+        lastAssignedAt: new Date("2026-01-01"),
+        maxDailyCalls: 5,
+      },
+    ]);
+    groupBy.mockResolvedValue([]);
+    callGroupBy.mockResolvedValue([
+      { staffUserId: "expert-full", _count: { id: 2 } },
+      { staffUserId: "expert-free", _count: { id: 1 } },
+    ]);
+
+    const { pickNextSalesExpert } = await import(
+      "@/modules/staff/staff.repository"
+    );
+
+    const expert = await pickNextSalesExpert({ maxOpenLeadsPerExpert: 30 });
+
+    expect(expert?.id).toBe("expert-free");
+    expect(callGroupBy).toHaveBeenCalled();
+  });
+
   it("does not apply capacity filter when maxOpen is omitted", async () => {
     findMany.mockResolvedValue([
-      { id: "expert-a", lastAssignedAt: null },
-      { id: "expert-b", lastAssignedAt: new Date("2026-01-01") },
+      { id: "expert-a", lastAssignedAt: null, maxDailyCalls: null },
+      {
+        id: "expert-b",
+        lastAssignedAt: new Date("2026-01-01"),
+        maxDailyCalls: null,
+      },
     ]);
 
     const { pickNextSalesExpert } = await import(

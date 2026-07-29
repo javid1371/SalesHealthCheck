@@ -241,6 +241,25 @@ export async function notifyLeadTransferToExpert(input: {
   }
 }
 
+function resolvePreferStaffIdForLead(input: {
+  purchaseProbabilityBand: string | null | undefined;
+  source: "direct" | "system" | "messenger";
+  hotLeadDirectAssigneeId: string | null;
+  preferAssigneeBySource: Partial<
+    Record<"messenger" | "direct" | "system", string>
+  >;
+}): string | null {
+  // Hot-lead assignee wins over source prefer when set.
+  if (
+    input.purchaseProbabilityBand === "high" &&
+    input.hotLeadDirectAssigneeId
+  ) {
+    return input.hotLeadDirectAssigneeId;
+  }
+
+  return input.preferAssigneeBySource[input.source] ?? null;
+}
+
 export async function autoAssignAndNotifyLead(
   leadId: string,
   options?: AssignLeadOptions,
@@ -259,13 +278,21 @@ export async function autoAssignAndNotifyLead(
     return;
   }
 
+  if (
+    settings.routingRules.excludeSourcesFromAutoAssign.includes(lead.source)
+  ) {
+    return;
+  }
+
   const expert = await pickNextSalesExpert({
     excludeIds: settings.autoAssignExcludeStaffIds,
     maxOpenLeadsPerExpert: settings.maxOpenLeadsPerExpert,
-    preferStaffId:
-      lead.purchaseProbabilityBand === "high"
-        ? settings.hotLeadDirectAssigneeId
-        : null,
+    preferStaffId: resolvePreferStaffIdForLead({
+      purchaseProbabilityBand: lead.purchaseProbabilityBand,
+      source: lead.source,
+      hotLeadDirectAssigneeId: settings.hotLeadDirectAssigneeId,
+      preferAssigneeBySource: settings.routingRules.preferAssigneeBySource,
+    }),
   });
   if (!expert) {
     console.warn("[lead-assignment] no active sales expert with phone found");
@@ -441,6 +468,11 @@ export async function createLeadOnAssessmentStart(input: {
   phone?: string | null;
   email?: string | null;
 }): Promise<void> {
+  const settings = await getLeadSettings();
+  if (!settings.createLeadOnAssessmentStart) {
+    return;
+  }
+
   const existing = await findLeadForAssessmentUser(input.assessmentSessionId);
   const name = input.name.trim() || "کاربر";
 
@@ -475,6 +507,10 @@ export async function createLeadOnAssessmentStart(input: {
         notifyExpert: false,
       });
     }
+    return;
+  }
+
+  if (settings.pauseSystemLeadCreation) {
     return;
   }
 
@@ -527,6 +563,11 @@ export async function transitionLeadOnAssessmentComplete(input: {
   const existing = await findLeadForAssessmentUser(input.assessmentSessionId);
 
   if (!existing) {
+    const settings = await getLeadSettings();
+    if (settings.pauseSystemLeadCreation) {
+      return;
+    }
+
     const assessment = await findAssessmentById(input.assessmentSessionId);
     if (!assessment) {
       return;

@@ -1,4 +1,4 @@
-import type { AssessmentStatus } from "@prisma/client";
+import type { AssessmentStatus, LeadStatus } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { verifyConfiguredPassword } from "@/lib/password-auth";
@@ -23,11 +23,21 @@ import {
   countOverdueFollowUps,
   countStaleNewLeads,
   countHighProbabilityUnassigned,
+  countUnassignedOpenLeads,
   countLeadsCreatedInRange,
+  countStalePendingSmsMessages,
   groupLeadsBySource,
   groupLeadsBySourceAndStatus,
   findLeadsWithFirstContact,
   findLeadsWithClose,
+  findPendingAssignmentLeads,
+  findUnassignedOpenLeads,
+  findOverdueFollowUpLeads,
+  findStaleNewLeadsForOps,
+  findHighProbabilityUnassignedLeads,
+  findFirstContactSlaBreachedLeads,
+  countFirstContactSlaBreachedLeads,
+  countCallsByStaffSince,
   countOverdueFollowUpsByAssignee,
   countNewLeadsThisWeekByAssignee,
   groupCallLogsByStaffAndOutcomeSince,
@@ -43,6 +53,12 @@ import {
   LOST_REASON_LABELS,
   LOST_REASONS,
 } from "@/modules/consultation/lead-activity";
+import {
+  computeLeadSlaFlags,
+  resolveFirstContactSlaMinutes,
+  slaReasonLabel,
+} from "@/modules/consultation/lead-sla";
+import { startOfTehranDay } from "@/modules/staff/staff.repository";
 import type {
   AdminAssessmentDetail,
   AdminAssessmentFilter,
@@ -55,12 +71,32 @@ import type {
   AdminLeadSourceConversionRow,
   AdminLostReasonBreakdownRow,
   AdminSalesMetrics,
+  OpsCommandCenterData,
+  OpsExpertCapacityRow,
+  OpsQueueLeadRow,
+  OpsQueueSection,
 } from "./admin.types";
+import { listAutomationHeartbeats } from "./automation-heartbeat.service";
 import {
   getSmsFunnelAdminMetrics,
   getFullConversionFunnelMetrics,
 } from "@/modules/sms-funnel/funnel.repository";
+import { getFunnelSettings } from "@/modules/sms-funnel/funnel-config.service";
 import { validateAdminLoginRequest } from "./admin.validators";
+
+const STALE_PENDING_SMS_MINUTES = 15;
+
+const OPS_LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  assessment_in_progress: "در حال انجام تست",
+  assessment_incomplete: "پیگیری تکمیل تست",
+  assessment_completed: "تست تکمیل‌شده",
+  new: "آماده تماس",
+  contacted: "تماس گرفته‌شده",
+  meeting_scheduled: "جلسه تنظیم‌شده",
+  closed_won: "بسته — موفق",
+  closed_lost: "بسته — ناموفق",
+  unreachable: "در دسترس نیست",
+};
 
 const STATUS_LABELS: Record<AssessmentStatus, string> = {
   started: "شروع شده",
@@ -613,5 +649,238 @@ export async function getAdminDashboard(): Promise<AdminDashboardData> {
     expertPerformance,
     lostReasonBreakdownLast30Days,
     smsFunnel,
+  };
+}
+
+function toOpsQueueLead(
+  row: Awaited<ReturnType<typeof findPendingAssignmentLeads>>[number],
+  options: {
+    staleNewLeadHours: number;
+    firstContactSlaMinutesByBand: {
+      high: number;
+      mid: number;
+      low: number;
+    };
+  },
+): OpsQueueLeadRow {
+  const sla = computeLeadSlaFlags(
+    {
+      status: row.status,
+      createdAt: row.createdAt,
+      nextFollowUpAt: row.nextFollowUpAt,
+      assignedToId: row.assignedToId,
+      purchaseProbabilityBand: row.purchaseProbabilityBand,
+      firstContactedAt: row.firstContactedAt,
+    },
+    {
+      staleNewLeadHours: options.staleNewLeadHours,
+      firstContactSlaMinutesByBand: options.firstContactSlaMinutesByBand,
+    },
+  );
+
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    status: row.status,
+    statusLabel: OPS_LEAD_STATUS_LABELS[row.status],
+    source: row.source,
+    purchaseProbabilityBand: row.purchaseProbabilityBand,
+    nextFollowUpAt: row.nextFollowUpAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    assignScheduledFor: row.assignScheduledFor?.toISOString() ?? null,
+    assignedToId: row.assignedToId,
+    assignedToName: row.assignedTo?.name ?? null,
+    detailUrl: `/expert/consultations/${row.id}`,
+    firstContactSlaBreached: sla.firstContactSlaBreached,
+    firstContactSlaMinutes: resolveFirstContactSlaMinutes(
+      row.purchaseProbabilityBand,
+      options.firstContactSlaMinutesByBand,
+    ),
+    slaReason: slaReasonLabel(sla),
+  };
+}
+
+export async function getOpsCommandCenter(): Promise<OpsCommandCenterData> {
+  const leadSettings = await getLeadSettings();
+  const staleNewLeadHours =
+    Number.isFinite(leadSettings.staleNewLeadHours) &&
+    leadSettings.staleNewLeadHours > 0
+      ? leadSettings.staleNewLeadHours
+      : STALE_NEW_LEAD_HOURS;
+  const maxOpenLeadsPerExpert = leadSettings.maxOpenLeadsPerExpert;
+  const firstContactSlaMinutesByBand =
+    leadSettings.routingRules.firstContactSlaMinutesByBand;
+  const slaMapping = { staleNewLeadHours, firstContactSlaMinutesByBand };
+  const dayStart = startOfTehranDay();
+
+  const [
+    pendingAssignmentCount,
+    unassignedOpenCount,
+    overdueFollowUpsCount,
+    staleNewCount,
+    hotUnassignedCount,
+    firstContactSlaCount,
+    pendingAssignmentLeads,
+    unassignedOpenLeads,
+    overdueFollowUpLeads,
+    staleNewLeads,
+    hotUnassignedLeads,
+    firstContactSlaLeads,
+    leadGroups,
+    salesExperts,
+    callsTodayByStaff,
+    heartbeats,
+    stalePendingSmsCount,
+    funnelSettings,
+  ] = await Promise.all([
+    countPendingAssignmentLeads(),
+    countUnassignedOpenLeads(),
+    countOverdueFollowUps(),
+    countStaleNewLeads(staleNewLeadHours),
+    countHighProbabilityUnassigned(),
+    countFirstContactSlaBreachedLeads(firstContactSlaMinutesByBand),
+    findPendingAssignmentLeads(),
+    findUnassignedOpenLeads(),
+    findOverdueFollowUpLeads(),
+    findStaleNewLeadsForOps(staleNewLeadHours),
+    findHighProbabilityUnassignedLeads(),
+    findFirstContactSlaBreachedLeads(firstContactSlaMinutesByBand),
+    groupLeadsByAssignee(),
+    findActiveSalesExperts(),
+    countCallsByStaffSince(dayStart),
+    listAutomationHeartbeats(),
+    countStalePendingSmsMessages(STALE_PENDING_SMS_MINUTES),
+    getFunnelSettings(),
+  ]);
+
+  const openByAssignee = new Map<string, number>();
+  for (const row of leadGroups) {
+    if (!row.assignedToId) {
+      continue;
+    }
+    if (
+      row.status === "closed_won" ||
+      row.status === "closed_lost"
+    ) {
+      continue;
+    }
+    openByAssignee.set(
+      row.assignedToId,
+      (openByAssignee.get(row.assignedToId) ?? 0) + row._count.id,
+    );
+  }
+
+  const callsTodayByExpertId = new Map(
+    callsTodayByStaff.map((row) => [row.staffUserId, row._count.id]),
+  );
+
+  const expertCapacity: OpsExpertCapacityRow[] = salesExperts.map((expert) => {
+    const openLeads = openByAssignee.get(expert.id) ?? 0;
+    const utilizationPercent =
+      maxOpenLeadsPerExpert > 0
+        ? Math.round((openLeads / maxOpenLeadsPerExpert) * 100)
+        : 0;
+    const callsToday = callsTodayByExpertId.get(expert.id) ?? 0;
+    const maxDailyCalls = expert.maxDailyCalls;
+    const dailyCapReached =
+      maxDailyCalls != null &&
+      Number.isInteger(maxDailyCalls) &&
+      maxDailyCalls > 0 &&
+      callsToday >= maxDailyCalls;
+
+    return {
+      staffUserId: expert.id,
+      name: expert.name,
+      openLeads,
+      maxOpenLeads: maxOpenLeadsPerExpert,
+      utilizationPercent,
+      nearCapacity: openLeads >= maxOpenLeadsPerExpert * 0.8,
+      assignmentPaused: expert.assignmentPausedAt != null,
+      assignmentPausedReason: expert.assignmentPausedReason,
+      callsToday,
+      maxDailyCalls,
+      dailyCapReached,
+      queueHref: `/expert/consultations?assignedToId=${encodeURIComponent(expert.id)}`,
+    };
+  });
+
+  expertCapacity.sort((a, b) => b.openLeads - a.openLeads);
+
+  const mapLead = (
+    row: Awaited<ReturnType<typeof findPendingAssignmentLeads>>[number],
+  ) => toOpsQueueLead(row, slaMapping);
+
+  const queues: OpsQueueSection[] = [
+    {
+      key: "pendingAssignment",
+      title: "در انتظار تخصیص سیستمی",
+      description: "لیدهای system با زمان‌بندی تخصیص که هنوز مسئول ندارند.",
+      count: pendingAssignmentCount,
+      listHref: "/expert/consultations?onlyPendingAssignment=true",
+      leads: pendingAssignmentLeads.map(mapLead),
+    },
+    {
+      key: "unassignedOpen",
+      title: "باز بدون مسئول",
+      description: "لیدهای باز که به هیچ کارشناسی تخصیص نشده‌اند.",
+      count: unassignedOpenCount,
+      listHref: "/expert/consultations?onlyUnassigned=true",
+      leads: unassignedOpenLeads.map(mapLead),
+    },
+    {
+      key: "overdueFollowUps",
+      title: "پیگیری عقب‌افتاده",
+      description: "لیدهای باز با موعد پیگیری گذشته.",
+      count: overdueFollowUpsCount,
+      listHref: "/expert/consultations?onlyOverdueFollowUp=true",
+      leads: overdueFollowUpLeads.map(mapLead),
+    },
+    {
+      key: "staleNew",
+      title: "آماده تماس کهنه",
+      description: `لیدهای «آماده تماس» قدیمی‌تر از ${staleNewLeadHours.toLocaleString("fa-IR")} ساعت.`,
+      count: staleNewCount,
+      listHref: "/expert/consultations?status=new&onlyStaleNew=true",
+      leads: staleNewLeads.map(mapLead),
+    },
+    {
+      key: "hotUnassigned",
+      title: "داغ بدون تخصیص",
+      description: "احتمال خرید بالا و بدون مسئول.",
+      count: hotUnassignedCount,
+      listHref: "/expert/consultations?onlyHot=true&onlyUnassigned=true",
+      leads: hotUnassignedLeads.map(mapLead),
+    },
+    {
+      key: "firstContactSla",
+      title: "گذشته از SLA تماس اول",
+      description: `آستانه بر اساس باند احتمال (بالا ${firstContactSlaMinutesByBand.high} / متوسط ${firstContactSlaMinutesByBand.mid} / پایین ${firstContactSlaMinutesByBand.low} دقیقه).`,
+      count: firstContactSlaCount,
+      listHref: "/expert/consultations?onlyOpen=true",
+      leads: firstContactSlaLeads.map(mapLead),
+    },
+  ];
+
+  return {
+    queues,
+    expertCapacity,
+    assignees: salesExperts.map((expert) => ({
+      id: expert.id,
+      name: expert.name,
+    })),
+    automation: {
+      heartbeats,
+      stalePendingSmsCount,
+      stalePendingSmsMinutes: STALE_PENDING_SMS_MINUTES,
+    },
+    smsFunnel: {
+      funnelEnabled: funnelSettings.funnelEnabled,
+    },
+    settings: {
+      maxOpenLeadsPerExpert,
+      staleNewLeadHours,
+      firstContactSlaMinutesByBand,
+    },
   };
 }

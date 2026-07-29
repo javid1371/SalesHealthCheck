@@ -1,9 +1,9 @@
-import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import type { HealthLevel } from "@/types/assessment";
 import type { BottleneckResult } from "@/types/diagnosis";
 import type { StructuredReport } from "@/types/report";
-import type { ReportSpec } from "@/types/report-spec";
+import type { CapacityMode, ReportSpec } from "@/types/report-spec";
+import { getCapacityMode } from "@/modules/report/report-config.service";
 import type {
   DomainLevel,
   StructuredDiagnosis,
@@ -182,6 +182,7 @@ function resolveLegacyTone(status: SurvivalStatus): ReportSpec["survivalBanner"]
 function buildLegacyRadarReportSpec(
   assessment: NonNullable<Awaited<ReturnType<typeof findAssessmentForResult>>>,
   structuredReport: StructuredReport | null,
+  capacityMode: CapacityMode,
 ): ReportSpec {
   const healthDisplay = Math.round(assessment.overallScore?.percentage ?? 0);
   const survivalStatus = resolveLegacySurvivalStatus(structuredReport);
@@ -265,7 +266,7 @@ function buildLegacyRadarReportSpec(
         personalization: { structuralRoots: [] },
       },
     ],
-    capacityMode: env.capacityMode,
+    capacityMode,
     confidenceNote: {
       level: "medium",
       instrumentFirst: false,
@@ -287,10 +288,11 @@ export async function recomposeReportSpec(
   const assessment = await findAssessmentForResult(assessmentId);
   if (!assessment) return null;
 
-  const [domains, layers, answers] = await Promise.all([
+  const [domains, layers, answers, capacityMode] = await Promise.all([
     loadDomainsWithQuestions(modelVersionId),
     loadLayers(modelVersionId),
     getAnswersWithDetails(assessmentId),
+    getCapacityMode(),
   ]);
 
   const domainNames = new Map(domains.map((domain) => [domain.slug, domain.name]));
@@ -310,7 +312,7 @@ export async function recomposeReportSpec(
     structuredDiagnosis,
     answers: toComposerAnswers(answers),
     valueAtStake,
-    capacityMode: env.capacityMode,
+    capacityMode,
   });
 }
 
@@ -354,7 +356,12 @@ export async function ensureReportSpec(reportId: string): Promise<ReportSpec> {
     );
   } else if (assessment.domainScores.length > 0) {
     const structuredReport = report.structuredReport as unknown as StructuredReport;
-    reportSpec = buildLegacyRadarReportSpec(assessment, structuredReport);
+    const capacityMode = await getCapacityMode();
+    reportSpec = buildLegacyRadarReportSpec(
+      assessment,
+      structuredReport,
+      capacityMode,
+    );
   }
 
   if (!reportSpec || !hasRadarChart(reportSpec)) {
