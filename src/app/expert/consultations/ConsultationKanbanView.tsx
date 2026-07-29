@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { ApiClientError } from "@/lib/api-client";
 import {
@@ -28,6 +28,39 @@ const QUICK_ACTION_HIDDEN_STATUSES = new Set<LeadStatus>([
   "closed_won",
   "closed_lost",
 ]);
+
+/** ~one column (17rem) + gap (1rem). */
+const KANBAN_SCROLL_STEP_PX = 288;
+
+function measureKanbanScrollEdges(scroller: HTMLElement): {
+  canScrollLeft: boolean;
+  canScrollRight: boolean;
+} {
+  if (scroller.scrollWidth <= scroller.clientWidth + 1) {
+    return { canScrollLeft: false, canScrollRight: false };
+  }
+
+  const scrollerRect = scroller.getBoundingClientRect();
+  let contentLeft = Infinity;
+  let contentRight = -Infinity;
+  for (const child of scroller.children) {
+    const rect = child.getBoundingClientRect();
+    contentLeft = Math.min(contentLeft, rect.left);
+    contentRight = Math.max(contentRight, rect.right);
+  }
+
+  return {
+    canScrollLeft: contentLeft < scrollerRect.left - 1,
+    canScrollRight: contentRight > scrollerRect.right + 1,
+  };
+}
+
+function stopKanbanScrollButtonPointer(
+  event: React.PointerEvent | React.MouseEvent,
+) {
+  event.preventDefault();
+  event.stopPropagation();
+}
 
 function canShowQuickActions(status: LeadStatus): boolean {
   return !QUICK_ACTION_HIDDEN_STATUSES.has(status);
@@ -127,6 +160,9 @@ export function ConsultationKanbanView({
   callOutcomeMatrix,
 }: ConsultationKanbanViewProps) {
   const router = useRouter();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [requests, setRequests] = useState(initialRequests);
   useEffect(() => {
     setRequests(initialRequests);
@@ -474,6 +510,35 @@ export function ConsultationKanbanView({
     void moveLead(leadId, status);
   }
 
+  const updateScrollButtons = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+    const edges = measureKanbanScrollEdges(scroller);
+    setCanScrollLeft(edges.canScrollLeft);
+    setCanScrollRight(edges.canScrollRight);
+  }, []);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) {
+      return;
+    }
+
+    updateScrollButtons();
+    scroller.addEventListener("scroll", updateScrollButtons, { passive: true });
+    const resizeObserver = new ResizeObserver(() => {
+      updateScrollButtons();
+    });
+    resizeObserver.observe(scroller);
+
+    return () => {
+      scroller.removeEventListener("scroll", updateScrollButtons);
+      resizeObserver.disconnect();
+    };
+  }, [updateScrollButtons, columns]);
+
   return (
     <div>
       {error ? <ErrorMessage message={error} /> : null}
@@ -537,7 +602,73 @@ export function ConsultationKanbanView({
         </div>
       ) : null}
 
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <div className="relative">
+        {canScrollLeft ? (
+          <button
+            type="button"
+            draggable={false}
+            aria-label="اسکرول به چپ"
+            onPointerDown={stopKanbanScrollButtonPointer}
+            onMouseDown={stopKanbanScrollButtonPointer}
+            onClick={() => {
+              scrollerRef.current?.scrollBy({
+                left: -KANBAN_SCROLL_STEP_PX,
+                behavior: "smooth",
+              });
+            }}
+            className="absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 shadow-md hover:bg-zinc-50"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-5 w-5"
+            >
+              <path
+                d="M12.5 4.5 7 10l5.5 5.5"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+        {canScrollRight ? (
+          <button
+            type="button"
+            draggable={false}
+            aria-label="اسکرول به راست"
+            onPointerDown={stopKanbanScrollButtonPointer}
+            onMouseDown={stopKanbanScrollButtonPointer}
+            onClick={() => {
+              scrollerRef.current?.scrollBy({
+                left: KANBAN_SCROLL_STEP_PX,
+                behavior: "smooth",
+              });
+            }}
+            className="absolute right-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 shadow-md hover:bg-zinc-50"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-5 w-5"
+            >
+              <path
+                d="M7.5 4.5 13 10l-5.5 5.5"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+        <div
+          ref={scrollerRef}
+          className="flex gap-4 overflow-x-auto pb-2"
+        >
         {columns.map((column) => (
           <section
             key={column.status}
@@ -771,6 +902,7 @@ export function ConsultationKanbanView({
             </div>
           </section>
         ))}
+        </div>
       </div>
     </div>
   );

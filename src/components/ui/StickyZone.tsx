@@ -23,7 +23,7 @@ const maxWidthClass: Record<MaxWidth, string> = {
   lg: "max-w-2xl",
   xl: "max-w-4xl",
   "2xl": "max-w-5xl",
-  "5xl": "max-w-6xl",
+  "5xl": "max-w-[min(100%,120rem)]",
 };
 
 function getStickyPositionClass(
