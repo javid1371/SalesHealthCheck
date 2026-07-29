@@ -19,7 +19,7 @@ export default async function AdminReportSettingsPage() {
       subtitle="کنترل حالت CTA گزارش (CAPACITY_MODE) بدون نیاز به تغییر env و ریستارت."
       showBack
       backHref="/admin/dashboard"
-      maxWidth="3xl"
+      maxWidth="2xl"
       footer="minimal"
     >
       <AdminNav />
