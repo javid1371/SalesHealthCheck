@@ -67,9 +67,9 @@ function hashOtpCode(phone: string, code: string): string {
 const PHONE = "09123456789";
 
 describe("sendOtp", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    resetRateLimitStore();
+    await resetRateLimitStore();
   });
 
   it("creates an OTP record and returns a generic success message", async () => {

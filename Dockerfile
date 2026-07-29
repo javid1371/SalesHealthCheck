@@ -22,6 +22,13 @@ RUN echo "Build cache bust: ${CACHEBUST:-none}" && npx prisma generate && npm ru
       --format=cjs \
       --outfile=scripts/sms-funnel-worker.bundle.cjs \
       --alias:@=./src \
+      --packages=external && \
+    npx esbuild scripts/finish-worker.ts \
+      --bundle \
+      --platform=node \
+      --format=cjs \
+      --outfile=scripts/finish-worker.bundle.cjs \
+      --alias:@=./src \
       --packages=external
 
 FROM node:20-bookworm-slim AS runner
@@ -49,6 +56,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src/config ./src/config
 COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/sms-funnel-worker.bundle.cjs ./scripts/sms-funnel-worker.bundle.cjs
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/finish-worker.bundle.cjs ./scripts/finish-worker.bundle.cjs
 
 # Next.js 16 Turbopack may emit hashed externals that point at nested deps
 # npm already hoisted away (e.g. bullmq/node_modules/ioredis). Repair those.

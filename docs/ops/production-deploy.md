@@ -72,11 +72,14 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 This starts:
 
-- **postgres** — database with healthcheck
-- **app** — Next.js (internal port 3000, runs migrations + seed on start)
+- **postgres** — database with healthcheck (internal only)
+- **pgbouncer** — transaction pooling on `:6432` (`max_client_conn` 100)
+- **redis** — AOF persistence for cache / rate-limit / BullMQ
+- **app** — Next.js (internal port 3000; runtime DB via PgBouncer)
+- **sms-funnel-worker** / **finish-worker** — same image, different CMD
 - **caddy** — reverse proxy with automatic HTTPS → `app:3000`
 
-The entrypoint runs `prisma migrate deploy` and seeds only if no active model exists.
+The entrypoint runs `prisma migrate deploy` (and seed if needed) against **`DIRECT_URL`** (Postgres directly). App/worker runtime queries use **`DATABASE_URL`** through PgBouncer (`connection_limit=10&pgbouncer=true`).
 
 ## 5. Verify
 
@@ -110,11 +113,15 @@ For the **nginx + GHCR** path (recommended on multi-project VPS), see [Deploy wi
 Internet :443/:80
     → caddy (TLS, Let's Encrypt)
     → app:3000 (Next.js)
-    → postgres:5432 (internal only)
+         ↘ pgbouncer:6432 → postgres:5432
+    → finish-worker / sms-funnel-worker
+         ↘ pgbouncer:6432 → postgres:5432
+         ↘ redis:6379
 ```
 
-- **Health:** `GET /api/health` — returns `200` with `{ "status": "ok" }` when the app and database are reachable; `503` if the database is down.
+- **Health:** `GET /api/health` — `200` with `{ status, db, redis?, finishQueueDepth? }` when the app and database are reachable (`redis` / `finishQueueDepth` when Redis + async finish are configured); `503` if the database is down. See [scaling.md](./scaling.md#health).
 - **Optional direct app access:** bind `127.0.0.1:3000` on the host for local debugging by setting `APP_PORT=3000` in `.env` (see `docker-compose.prod.yml`).
+- **Scale flags:** `ASYNC_FINISH_ENABLED`, `FINISH_WORKER_CONCURRENCY` — see [scaling.md](./scaling.md) and [ADR 0017](../adr/0017-scale-readiness-async-finish.md).
 
 ## Troubleshooting
 
@@ -122,7 +129,8 @@ Internet :443/:80
 |-------|--------|
 | Caddy won't get certificate | DNS A record, ports 80/443 open, correct `APP_DOMAIN` |
 | App unhealthy | `docker compose -f docker-compose.prod.yml logs app` |
-| Database connection | Postgres container healthy; `DATABASE_URL` built from `.env` |
+| Database connection | Postgres + PgBouncer healthy; app uses `DATABASE_URL` via `:6432`; migrate uses `DIRECT_URL` |
+| PgBouncer auth failures | `AUTH_TYPE=scram-sha-256` matches Postgres 16; password in compose matches `POSTGRES_PASSWORD` |
 | 401 on expert view | Set `EXPERT_VIEW_TOKEN` in `.env` and restart app |
 
 ## 7. Database backup
@@ -147,10 +155,10 @@ Use this when the VPS already runs **nginx** on ports 80/443 for other projects 
 
 ### Stack
 
-- **postgres** + **app** only — see [`docker-compose.nginx.yml`](../../docker-compose.nginx.yml)
-- App image built in **GitHub Actions** and stored on **GHCR** (`ghcr.io/javid1371/sales-health-check`)
-- App bound to `127.0.0.1:${APP_PORT:-3105}` on the host
-- Host nginx reverse-proxies the public domain → localhost port
+- **postgres**, **pgbouncer**, **redis**, **app**, **sms-funnel-worker**, **finish-worker** — see [`docker-compose.nginx.yml`](../../docker-compose.nginx.yml)
+- App image built in **GitHub Actions** and stored on **GHCR** (`ghcr.io/javid1371/sales-health-check`); workers use the same image with a different CMD (no Playwright needed for finish-worker)
+- App bound to `127.0.0.1:${APP_PORT:-3105}` on the host (`mem_limit` 1g on app / finish-worker)
+- Host nginx reverse-proxies the public domain → localhost port (`proxy_read_timeout` / `proxy_send_timeout` **120s**)
 - SSL via **certbot** (same pattern as other subdomains on the server)
 
 ### CI/CD flow
@@ -176,7 +184,7 @@ On every push to `main`, GitHub Actions runs tests, builds the Docker image, and
 | `VPS_SSH_HOST` | `root@193.163.201.132` | SSH target (optional — skip auto-deploy if unset) |
 | `VPS_SSH_KEY` | private key contents | Deploy job authentication |
 
-Optional repository variable: `PDF_GENERATION_ENABLED=true` — bakes Playwright into the CI-built image.
+Optional repository variable: `PDF_GENERATION_ENABLED=true` — bakes Playwright into the CI-built image. **Campaign default is off** (runtime flag unset/false). After load test, enable with `docker-compose.pdf.yml` — see [pdf-export.md](./pdf-export.md) and [scaling.md](./scaling.md).
 
 ### First-time bootstrap (server)
 
@@ -222,11 +230,32 @@ certbot --nginx -d health.javidmgdm.com
 
 ```
 Internet :443/:80
-    → nginx (host, TLS via certbot)
-    → 127.0.0.1:3105 (Docker app from GHCR)
-    → postgres:5432 (internal only)
+    → nginx (host, TLS via certbot; proxy timeouts 120s)
+    → upstream sales_health_check
+         → 127.0.0.1:3105 (app)
+         → 127.0.0.1:3106 (optional app-b via docker-compose.scale.yml)
+         ↘ pgbouncer:6432 → postgres:5432 (internal only)
+    → finish-worker / sms-funnel-worker → pgbouncer + redis
 ```
 
+After deploying compose/nginx changes, reload nginx so timeouts apply:
+
+```bash
+sudo cp /opt/sales-health-check/deploy/nginx/health.javidmgdm.com.conf /etc/nginx/sites-available/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### PgBouncer + workers
+
+| Service | Role |
+|---------|------|
+| `pgbouncer` | `pool_mode=transaction`, listen `:6432`, `MAX_CLIENT_CONN=100` |
+| `app` | `DATABASE_URL` → PgBouncer (`connection_limit=10&pgbouncer=true`); `DIRECT_URL` → Postgres (entrypoint migrate/seed) |
+| `app-b` | Optional second HTTP instance on `:3106` ([`docker-compose.scale.yml`](../../docker-compose.scale.yml)); same `connection_limit=10` |
+| `finish-worker` | `node scripts/finish-worker.bundle.cjs`; env `ASYNC_FINISH_ENABLED`, `FINISH_WORKER_CONCURRENCY`, `REDIS_URL` |
+| `sms-funnel-worker` | Existing SMS BullMQ consumer (same pattern) |
+
+Compose sets `DATABASE_URL` / `DIRECT_URL` from `POSTGRES_*` — you normally do not put them in `.env`. Campaign defaults: `ASYNC_FINISH_ENABLED=true`, PDF off. Two-instance enablement and sticky-session notes: [scaling.md](./scaling.md#multi-instance).
 ### Update (nginx variant)
 
 ```bash
@@ -248,7 +277,7 @@ System leads with `source=system` are assigned after a delay (`LEAD_SYSTEM_ASSIG
 | `SMS_FUNNEL_CRON_SECRET` | Bearer token for `/api/cron/*` routes (shared with SMS funnel reconciliation) |
 | `APP_BASE_URL` | Public URL used by cron scripts (e.g. `https://health.javidmgdm.com`) |
 
-Migrations run automatically on app container start (`prisma migrate deploy` in the entrypoint).
+Migrations run automatically on app container start (`prisma migrate deploy` via `DIRECT_URL` in the entrypoint).
 
 ### Install cron (one time on VPS)
 

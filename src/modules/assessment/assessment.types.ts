@@ -69,6 +69,24 @@ export interface FinishAssessmentInput {
   generateAiExplanation?: boolean;
 }
 
+export interface EnqueueFinishQueuedResponse {
+  jobId: string;
+  status: "queued";
+}
+
+export type EnqueueFinishAssessmentResult =
+  | FinishAssessmentResponse
+  | EnqueueFinishQueuedResponse;
+
+export type FinishJobPollStatus = "queued" | "active" | "completed" | "failed";
+
+export interface FinishJobStatusResponse {
+  status: FinishJobPollStatus;
+  reportId?: string;
+  resultUrl?: string;
+  error?: string;
+}
+
 export interface AssessmentProgressResponse {
   answeredQuestions: number;
   totalQuestions: number;

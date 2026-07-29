@@ -12,6 +12,7 @@ import { apiGet } from "@/lib/api-client";
 import {
   getAnswers,
   getQuestions,
+  getResultToken,
   mergeAnswersFromServer,
   saveQuestions,
   type AnswerMap,
@@ -50,10 +51,12 @@ export default function ReviewPage() {
 
     async function fetchData() {
       try {
+        const token = getResultToken(assessmentId);
         let questions = getQuestions(assessmentId);
         if (!questions) {
           questions = await apiGet<QuestionsForAssessmentDto>(
             `/api/assessments/${assessmentId}/questions`,
+            { token },
           );
           if (cancelled) return;
           saveQuestions(assessmentId, questions);
@@ -61,6 +64,7 @@ export default function ReviewPage() {
 
         const assessmentStatus = await apiGet<AssessmentStatusResponse>(
           `/api/assessments/${assessmentId}`,
+          { token },
         );
         if (cancelled) return;
 
@@ -68,6 +72,7 @@ export default function ReviewPage() {
         try {
           const savedAnswers = await apiGet<AssessmentAnswersResponse>(
             `/api/assessments/${assessmentId}/answers`,
+            { token },
           );
           if (cancelled) return;
           mergedAnswers = mergeAnswersFromServer(

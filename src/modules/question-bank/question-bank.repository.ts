@@ -1,6 +1,11 @@
 import { db } from "@/lib/db";
 import type { ScoringDomainInput, ScoringLayerInput } from "@/modules/scoring/scoring.types";
 import type { DiagnosisDomainInput, DiagnosisLayerInput } from "@/modules/diagnosis/diagnosis.types";
+import {
+  domainsCacheKey,
+  getOrSetCached,
+  layersCacheKey,
+} from "./question-bank.cache";
 
 export async function findActiveModelVersion() {
   return db.modelVersion.findFirst({
@@ -16,32 +21,36 @@ export async function findModelVersionById(modelVersionId: string) {
 }
 
 export async function loadDomainsWithQuestions(modelVersionId: string) {
-  return db.domain.findMany({
-    where: {
-      modelVersionId,
-      isActive: true,
-    },
-    include: {
-      layer: true,
-      questions: {
-        where: { isActive: true },
-        orderBy: { displayOrder: "asc" },
-        include: {
-          options: {
-            orderBy: { displayOrder: "asc" },
+  return getOrSetCached(domainsCacheKey(modelVersionId), () =>
+    db.domain.findMany({
+      where: {
+        modelVersionId,
+        isActive: true,
+      },
+      include: {
+        layer: true,
+        questions: {
+          where: { isActive: true },
+          orderBy: { displayOrder: "asc" },
+          include: {
+            options: {
+              orderBy: { displayOrder: "asc" },
+            },
           },
         },
       },
-    },
-    orderBy: { displayOrder: "asc" },
-  });
+      orderBy: { displayOrder: "asc" },
+    }),
+  );
 }
 
 export async function loadLayers(modelVersionId: string) {
-  return db.layer.findMany({
-    where: { modelVersionId },
-    orderBy: { displayOrder: "asc" },
-  });
+  return getOrSetCached(layersCacheKey(modelVersionId), () =>
+    db.layer.findMany({
+      where: { modelVersionId },
+      orderBy: { displayOrder: "asc" },
+    }),
+  );
 }
 
 export async function findQuestionById(questionId: string) {
@@ -54,9 +63,34 @@ export async function findQuestionById(questionId: string) {
   });
 }
 
+export async function findQuestionsByIds(questionIds: string[]) {
+  if (questionIds.length === 0) {
+    return [];
+  }
+
+  return db.question.findMany({
+    where: { id: { in: questionIds } },
+    include: {
+      domain: true,
+      options: true,
+    },
+  });
+}
+
 export async function findOptionById(optionId: string) {
   return db.questionOption.findUnique({
     where: { id: optionId },
+    include: { question: true },
+  });
+}
+
+export async function findOptionsByIds(optionIds: string[]) {
+  if (optionIds.length === 0) {
+    return [];
+  }
+
+  return db.questionOption.findMany({
+    where: { id: { in: optionIds } },
     include: { question: true },
   });
 }

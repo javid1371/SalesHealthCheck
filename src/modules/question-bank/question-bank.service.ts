@@ -3,10 +3,18 @@ import {
   findActiveModelVersion,
   findModelVersionById,
   findOptionById,
+  findOptionsByIds,
   findQuestionById,
+  findQuestionsByIds,
   loadDomainsWithQuestions,
 } from "./question-bank.repository";
 import type { QuestionsForAssessmentDto } from "./question-bank.types";
+
+export type ValidatedAnswer = {
+  questionId: string;
+  selectedOptionId: string;
+  score: number;
+};
 
 export async function loadActiveModelVersion() {
   const modelVersion = await findActiveModelVersion();
@@ -130,4 +138,77 @@ export async function validateOptionBelongsToQuestion(
   }
 
   return option;
+}
+
+export async function validateAnswersBatch(
+  answers: Array<{ questionId: string; selectedOptionId: string }>,
+  modelVersionId: string,
+): Promise<ValidatedAnswer[]> {
+  const questionIds = [...new Set(answers.map((answer) => answer.questionId))];
+  const optionIds = [
+    ...new Set(answers.map((answer) => answer.selectedOptionId)),
+  ];
+
+  const [questions, options] = await Promise.all([
+    findQuestionsByIds(questionIds),
+    findOptionsByIds(optionIds),
+  ]);
+
+  const questionById = new Map(questions.map((question) => [question.id, question]));
+  const optionById = new Map(options.map((option) => [option.id, option]));
+
+  const validated: ValidatedAnswer[] = [];
+
+  for (const answer of answers) {
+    const question = questionById.get(answer.questionId);
+
+    if (!question) {
+      throw new AppError(
+        "question_not_found",
+        "Question not found",
+        404,
+        { questionId: answer.questionId },
+      );
+    }
+
+    if (question.modelVersionId !== modelVersionId) {
+      throw new AppError(
+        "question_does_not_belong_to_model_version",
+        "Question does not belong to this assessment model version",
+        409,
+        { questionId: answer.questionId },
+      );
+    }
+
+    const option = optionById.get(answer.selectedOptionId);
+
+    if (!option) {
+      throw new AppError(
+        "option_not_found",
+        "Option not found",
+        404,
+        { optionId: answer.selectedOptionId },
+      );
+    }
+
+    if (option.questionId !== answer.questionId) {
+      throw new AppError(
+        "option_does_not_belong_to_question",
+        "Option does not belong to the specified question",
+        409,
+        {
+          optionId: answer.selectedOptionId,
+          questionId: answer.questionId,
+        },
+      );
+    }
+
+    validated.push({
+      questionId: answer.questionId,
+      selectedOptionId: answer.selectedOptionId,
+      score: option.score,
+    });
+  }
+
+  return validated;
 }

@@ -110,6 +110,17 @@ export const env = {
   get redisUrl(): string | undefined {
     return process.env.REDIS_URL;
   },
+  /**
+   * Async assessment finish via BullMQ (ADR 0017).
+   * Prod campaign: true. Unset/false keeps synchronous finish (dev/test).
+   */
+  get asyncFinishEnabled(): boolean {
+    return process.env.ASYNC_FINISH_ENABLED === "true";
+  },
+  /** Finish-worker BullMQ concurrency; default 3. */
+  get finishWorkerConcurrency(): number {
+    return parsePositiveInt(process.env.FINISH_WORKER_CONCURRENCY, 3);
+  },
   /** Enable SMS sales funnel automation. */
   get smsFunnelEnabled(): boolean {
     return process.env.SMS_FUNNEL_ENABLED === "true";

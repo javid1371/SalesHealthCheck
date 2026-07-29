@@ -59,7 +59,9 @@ function validateBody(body: unknown): TrackBody {
 }
 
 export async function POST(request: NextRequest) {
-  const { allowed, retryAfterSec } = funnelTrackLimiter(getClientIp(request));
+  const { allowed, retryAfterSec } = await funnelTrackLimiter(
+    getClientIp(request),
+  );
 
   if (!allowed) {
     return rateLimitResponse(retryAfterSec);

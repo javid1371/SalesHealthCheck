@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { errorResponse, isAppError, AppError } from "@/lib/errors";
+import { getClientIp } from "@/lib/request-ip";
+import { pdfDownloadLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { readSessionsFromRequest } from "@/lib/session";
 import { generateReportPdf } from "@/modules/report/report-pdf.service";
 
@@ -8,6 +10,13 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ reportId: string }> },
 ) {
+  const { allowed, retryAfterSec } = await pdfDownloadLimiter(
+    getClientIp(request),
+  );
+  if (!allowed) {
+    return rateLimitResponse(retryAfterSec);
+  }
+
   try {
     const { reportId } = await params;
     const token = request.nextUrl.searchParams.get("token");

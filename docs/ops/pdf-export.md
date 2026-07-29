@@ -9,7 +9,11 @@ Sales Health Check generates PDF reports by rendering the print page (`/report/[
 | `PDF_GENERATION_ENABLED` | unset (disabled) | Set to `true` to enable `GET /api/reports/[id]/pdf?token=` |
 | `APP_BASE_URL` | `http://localhost:3000` | Must be the **public URL** Playwright can reach (same origin as the running app) |
 
+**Campaign / scale default:** leave unset or `false`. PDF is CPU-heavy; do not enable during paid-acquisition peak. See [scaling.md](./scaling.md).
+
 When disabled, the download button still appears on result/report pages but the API returns `503` with code `pdf_generation_disabled`.
+
+**HTTP rate limit:** `GET /api/reports/[id]/pdf` allows **3 downloads per hour per client IP** (Redis-backed when `REDIS_URL` is set; in-memory otherwise). Over limit → `429` with `Retry-After`.
 
 ## Local development
 
@@ -37,30 +41,31 @@ When disabled, the download button still appears on result/report pages but the 
 
 ## Docker production
 
-The production `Dockerfile` runner stage uses `node:20-bookworm-slim` (not Alpine) so Chromium system libraries install cleanly.
+The production `Dockerfile` runner stage uses `node:20-bookworm-slim` (not Alpine) so Chromium system libraries install cleanly. Playwright is **opt-in at image build** (`INSTALL_PLAYWRIGHT=true` / CI var `PDF_GENERATION_ENABLED=true`).
 
-During image build:
+### Campaign launch (PDF off)
 
-```dockerfile
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install-deps chromium && npx playwright install chromium
-```
+Leave `PDF_GENERATION_ENABLED` unset in `.env`. Do not use the PDF compose override. App `mem_limit` stays at 1g.
 
-In `.env` on the server:
+### Enable after load test
 
-```bash
-PDF_GENERATION_ENABLED=true
-APP_BASE_URL=https://your-domain.com
-```
+1. Rebuild/push an image with Playwright (`vars.PDF_GENERATION_ENABLED=true` in CI).
+2. On the VPS, start with the optional override (raises app memory to 2g and sets the flag):
 
-`APP_BASE_URL` must match the URL Caddy serves — Playwright navigates to `{APP_BASE_URL}/report/.../print` from **inside** the app container. With Docker Compose, that is typically the public HTTPS URL (Caddy proxies to the app on port 3000).
+   ```bash
+   docker compose -f docker-compose.nginx.yml -f docker-compose.pdf.yml up -d
+   ```
+
+3. Ensure `APP_BASE_URL` is the public HTTPS URL Playwright can reach from inside the app container.
+
+`APP_BASE_URL` must match the URL nginx/Caddy serves — Playwright navigates to `{APP_BASE_URL}/report/.../print` from **inside** the app container.
 
 ### Memory and timeouts
 
 - Each PDF opens a new browser tab; the browser process is reused across requests.
 - Request timeout: **30 seconds** (client and server).
-- Recommended VPS RAM: **≥ 2 GB** if PDF export is enabled alongside Postgres and Caddy.
-- Under load, consider a queue or rate limit — PDF generation is CPU-heavy.
+- Recommended VPS RAM: **≥ 2 GB** if PDF export is enabled alongside Postgres and nginx.
+- Route rate limit: 3/hour/IP (see above).
 
 ### Troubleshooting
 
@@ -80,6 +85,7 @@ GET /api/reports/{reportId}/pdf?token={resultToken}
 - **200** — `application/pdf`, `Content-Disposition: attachment`
 - **403** — invalid token
 - **404** — report or reportSpec not found
+- **429** — rate limited (3/hour/IP)
 - **503** — `PDF_GENERATION_ENABLED` not set to `true`
 
 Same `token` as the JSON report API — no separate auth.

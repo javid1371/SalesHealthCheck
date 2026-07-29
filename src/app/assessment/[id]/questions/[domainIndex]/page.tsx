@@ -15,6 +15,7 @@ import { apiGet, apiPost } from "@/lib/api-client";
 import {
   getAnswers,
   getQuestions,
+  getResultToken,
   mergeAnswersFromServer,
   saveAnswers,
   saveQuestions,
@@ -67,6 +68,7 @@ export default function DomainQuestionsPage() {
       try {
         const data = await apiGet<AssessmentAnswersResponse>(
           `/api/assessments/${assessmentId}/answers`,
+          { token: getResultToken(assessmentId) },
         );
         if (cancelled) return;
         const merged = mergeAnswersFromServer(assessmentId, data.answers);
@@ -91,6 +93,7 @@ export default function DomainQuestionsPage() {
       try {
         const data = await apiGet<QuestionsForAssessmentDto>(
           `/api/assessments/${assessmentId}/questions`,
+          { token: getResultToken(assessmentId) },
         );
         if (cancelled) return;
         saveQuestions(assessmentId, data);
@@ -158,6 +161,7 @@ export default function DomainQuestionsPage() {
       await apiPost<SaveAnswersResponse>(
         `/api/assessments/${assessmentId}/answers`,
         { answers: domainAnswers },
+        { token: getResultToken(assessmentId) },
       );
       saveAnswers(assessmentId, answers);
       setSaveStatus("saved");
@@ -219,6 +223,7 @@ export default function DomainQuestionsPage() {
       const data = await apiPost<DevAutofillResponse>(
         `/api/dev/assessments/${assessmentId}/autofill`,
         { strategy: "random" },
+        { token: getResultToken(assessmentId) },
       );
       setSaveStatus("saved");
       router.push(data.resultUrl);

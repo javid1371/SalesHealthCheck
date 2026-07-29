@@ -7,7 +7,7 @@ import { parseUserSessionCookie, USER_SESSION_COOKIE } from "@/lib/session";
 import { startAssessment } from "@/modules/assessment/assessment.service";
 
 export async function POST(request: NextRequest) {
-  const { allowed, retryAfterSec } = startAssessmentLimiter(
+  const { allowed, retryAfterSec } = await startAssessmentLimiter(
     getClientIp(request),
   );
 

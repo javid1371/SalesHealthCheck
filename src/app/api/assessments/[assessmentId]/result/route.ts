@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { handleApiRequest } from "@/lib/api-handler";
-import { readSessionsFromRequest } from "@/lib/session";
+import { readAssessmentAccess } from "@/modules/assessment/assessment-access";
 import { getAssessmentResult } from "@/modules/assessment/assessment.service";
 
 export async function GET(
@@ -8,16 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ assessmentId: string }> },
 ) {
   const { assessmentId } = await params;
-  const token = request.nextUrl.searchParams.get("token");
-  const { userSession, adminSession, salesExpertSession } =
-    readSessionsFromRequest(request);
+  const access = readAssessmentAccess(request);
 
-  return handleApiRequest(() =>
-    getAssessmentResult(assessmentId, {
-      token,
-      userSession,
-      adminSession,
-      salesExpertSession,
-    }),
-  );
+  return handleApiRequest(() => getAssessmentResult(assessmentId, access));
 }

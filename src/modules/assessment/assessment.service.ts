@@ -7,8 +7,7 @@ import { resolveDiagnosisEngineVersion } from "@/modules/diagnosis/diagnosis.hel
 import {
   loadActiveModelVersion,
   loadQuestionsForAssessment,
-  validateOptionBelongsToQuestion,
-  validateQuestionBelongsToModelVersion,
+  validateAnswersBatch,
 } from "@/modules/question-bank/question-bank.service";
 import {
   countActiveQuestions,
@@ -62,17 +61,20 @@ import {
   updateAssessmentStatus,
   updateOrganization,
   updateReportSpec,
-  upsertAnswer,
+  upsertAnswersBatch,
 } from "./assessment.repository";
+import { enqueueFinishJob, getFinishJobState } from "./finish-queue.service";
 import type {
   AssessmentAnswersResponse,
   AssessmentProgressResponse,
   AssessmentResultResponse,
   AssessmentStatusResponse,
+  EnqueueFinishAssessmentResult,
   ExpertViewAccessInput,
   ExpertViewResponse,
   FinishAssessmentInput,
   FinishAssessmentResponse,
+  FinishJobStatusResponse,
   ReportResponse,
   ResultAccessInput,
   SaveAnswersInput,
@@ -159,6 +161,15 @@ export function assertResultAccess(params: {
     "Invalid or missing access token",
     403,
   );
+}
+
+/** When `access` is passed (HTTP), enforce token/session; omit for trusted in-process callers. */
+function assertAccessIfProvided(
+  assessment: { userId: string; resultToken: string },
+  access?: ResultAccessInput,
+): void {
+  if (access === undefined) return;
+  assertResultAccess({ assessment, ...access });
 }
 
 async function buildProgress(
@@ -275,8 +286,10 @@ export async function startAssessment(
 
 export async function getAssessmentStatus(
   assessmentId: string,
+  access?: ResultAccessInput,
 ): Promise<AssessmentStatusResponse> {
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   const progress = await buildProgress(assessmentId, assessment.modelVersionId);
 
   return {
@@ -296,8 +309,12 @@ export async function getAssessmentStatus(
   };
 }
 
-export async function getAssessmentQuestions(assessmentId: string) {
+export async function getAssessmentQuestions(
+  assessmentId: string,
+  access?: ResultAccessInput,
+) {
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   assertAssessmentNotCompleted(assessment.status);
 
   return loadQuestionsForAssessment(assessmentId, assessment.modelVersionId);
@@ -305,8 +322,10 @@ export async function getAssessmentQuestions(assessmentId: string) {
 
 export async function getAssessmentAnswers(
   assessmentId: string,
+  access?: ResultAccessInput,
 ): Promise<AssessmentAnswersResponse> {
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   assertAssessmentNotCompleted(assessment.status);
 
   const answers = await getAnswersWithDetails(assessmentId);
@@ -323,29 +342,26 @@ export async function getAssessmentAnswers(
 export async function saveAnswers(
   assessmentId: string,
   input: SaveAnswersInput,
+  access?: ResultAccessInput,
 ) {
-  const validated = validateSaveAnswersRequest(input);
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   assertAssessmentNotCompleted(assessment.status);
+  const validated = validateSaveAnswersRequest(input);
 
-  for (const answer of validated.answers) {
-    await validateQuestionBelongsToModelVersion(
-      answer.questionId,
-      assessment.modelVersionId,
-    );
+  const validatedAnswers = await validateAnswersBatch(
+    validated.answers,
+    assessment.modelVersionId,
+  );
 
-    const option = await validateOptionBelongsToQuestion(
-      answer.selectedOptionId,
-      answer.questionId,
-    );
-
-    await upsertAnswer({
+  await upsertAnswersBatch(
+    validatedAnswers.map((answer) => ({
       assessmentSessionId: assessmentId,
       questionId: answer.questionId,
       selectedOptionId: answer.selectedOptionId,
-      scoreSnapshot: option.score,
-    });
-  }
+      scoreSnapshot: answer.score,
+    })),
+  );
 
   if (assessment.status === "started") {
     await updateAssessmentStatus(assessmentId, "in_progress");
@@ -367,10 +383,12 @@ export async function saveAnswers(
 export async function updateBusinessInfo(
   assessmentId: string,
   input: UpdateBusinessInfoInput,
+  access?: ResultAccessInput,
 ) {
-  const validated = validateBusinessInfoRequest(input);
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   assertAssessmentNotCompleted(assessment.status);
+  const validated = validateBusinessInfoRequest(input);
 
   const organization = await updateOrganization(assessment.organizationId, {
     businessName: validated.businessName,
@@ -464,12 +482,13 @@ async function tryReturnCompletedAssessment(
   return null;
 }
 
-export async function finishAssessment(
+/**
+ * Core finish pipeline (scoring → diagnosis → persist). Used by sync finish
+ * and the BullMQ worker. Does not check access — callers must authorize first.
+ */
+export async function runFinishAssessmentCore(
   assessmentId: string,
-  input: FinishAssessmentInput = {},
 ): Promise<FinishAssessmentResponse> {
-  validateFinishRequest(input);
-
   const assessment = await getAssessmentOrThrow(assessmentId);
 
   if (assessment.report) {
@@ -620,13 +639,112 @@ export async function finishAssessment(
   }
 }
 
+export async function finishAssessment(
+  assessmentId: string,
+  input: FinishAssessmentInput = {},
+  access?: ResultAccessInput,
+): Promise<FinishAssessmentResponse> {
+  validateFinishRequest(input);
+
+  if (access !== undefined) {
+    const assessment = await getAssessmentOrThrow(assessmentId);
+    assertResultAccess({
+      assessment: {
+        userId: assessment.userId,
+        resultToken: assessment.resultToken,
+      },
+      ...access,
+    });
+  }
+
+  return runFinishAssessmentCore(assessmentId);
+}
+
+export async function enqueueFinishAssessment(
+  assessmentId: string,
+  access: ResultAccessInput,
+  input: FinishAssessmentInput = {},
+): Promise<EnqueueFinishAssessmentResult> {
+  validateFinishRequest(input);
+
+  const assessment = await getAssessmentOrThrow(assessmentId);
+  assertResultAccess({
+    assessment: {
+      userId: assessment.userId,
+      resultToken: assessment.resultToken,
+    },
+    ...access,
+  });
+
+  if (assessment.report) {
+    return buildFinishResponse(
+      assessmentId,
+      assessment.resultToken,
+      assessment.report.id,
+    );
+  }
+
+  assertAssessmentNotCompleted(assessment.status);
+  await validateAllQuestionsAnswered(assessmentId, assessment.modelVersionId);
+
+  const jobId = await enqueueFinishJob({ assessmentId });
+  return { jobId, status: "queued" };
+}
+
+export async function getFinishJobStatus(
+  assessmentId: string,
+  access: ResultAccessInput,
+): Promise<FinishJobStatusResponse> {
+  const assessment = await getAssessmentOrThrow(assessmentId);
+  assertResultAccess({
+    assessment: {
+      userId: assessment.userId,
+      resultToken: assessment.resultToken,
+    },
+    ...access,
+  });
+
+  if (assessment.report) {
+    return {
+      status: "completed",
+      reportId: assessment.report.id,
+      resultUrl: buildResultUrl(assessmentId, assessment.resultToken),
+    };
+  }
+
+  const jobState = await getFinishJobState(assessmentId);
+  if (!jobState) {
+    return { status: "queued" };
+  }
+
+  if (jobState.status === "completed") {
+    const completed = await tryReturnCompletedAssessment(assessmentId);
+    if (completed) {
+      return {
+        status: "completed",
+        reportId: completed.reportId,
+        resultUrl: completed.resultUrl,
+      };
+    }
+    return { status: "active" };
+  }
+
+  if (jobState.status === "failed") {
+    return { status: "failed", error: jobState.error };
+  }
+
+  return { status: jobState.status };
+}
+
 export async function updateBusinessMetrics(
   assessmentId: string,
   input: UpdateBusinessMetricsInput,
+  access?: ResultAccessInput,
 ): Promise<UpdateBusinessMetricsResponse> {
-  const validated = validateBusinessMetricsRequest(input);
   const assessment = await getAssessmentOrThrow(assessmentId);
+  assertAccessIfProvided(assessment, access);
   assertAssessmentCompleted(assessment.status);
+  const validated = validateBusinessMetricsRequest(input);
 
   if (!assessment.report) {
     throw new AppError(

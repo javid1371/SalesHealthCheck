@@ -14,6 +14,32 @@ services:
       timeout: 5s
       retries: 10
 
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      LISTEN_PORT: 6432
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      MIN_POOL_SIZE: 5
+      RESERVE_POOL_SIZE: 5
+      ADMIN_USERS: ${POSTGRES_USER:-postgres}
+    expose:
+      - "6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -34,12 +60,14 @@ services:
         SENTRY_DSN: ${SENTRY_DSN:-}
         NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-${SENTRY_DSN:-}}
     restart: unless-stopped
+    mem_limit: 1g
     expose:
       - "3000"
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@pgbouncer:6432/${POSTGRES_DB:-sales_health_check}?connection_limit=10&pgbouncer=true
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
       NODE_ENV: production
       PORT: 3000
       EXPERT_VIEW_TOKEN: ${EXPERT_VIEW_TOKEN:-}
@@ -49,6 +77,8 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-${SENTRY_DSN:-}}
+      # Campaign default: leave unset/false. Opt-in via docker-compose.pdf.yml after load test.
+      PDF_GENERATION_ENABLED: ${PDF_GENERATION_ENABLED:-}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?Set AUTH_SESSION_SECRET in .env}
       KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
       KAVENEGAR_OTP_TEMPLATE: ${KAVENEGAR_OTP_TEMPLATE:-}
@@ -66,8 +96,12 @@ services:
       SMS_FUNNEL_CRON_SECRET: ${SMS_FUNNEL_CRON_SECRET:-}
       LEAD_AUTO_ASSIGN_ENABLED: ${LEAD_AUTO_ASSIGN_ENABLED:-false}
       LEAD_SYSTEM_ASSIGN_DELAY_HOURS: ${LEAD_SYSTEM_ASSIGN_DELAY_HOURS:-24}
+      ASYNC_FINISH_ENABLED: ${ASYNC_FINISH_ENABLED:-true}
+      FINISH_WORKER_CONCURRENCY: ${FINISH_WORKER_CONCURRENCY:-3}
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -87,10 +121,12 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    mem_limit: 512m
     command: ["node", "scripts/sms-funnel-worker.bundle.cjs"]
     environment:
       HOME: /app
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@pgbouncer:6432/${POSTGRES_DB:-sales_health_check}?connection_limit=10&pgbouncer=true
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       SMS_FUNNEL_ENABLED: ${SMS_FUNNEL_ENABLED:-false}
@@ -104,6 +140,32 @@ services:
       SMS_FUNNEL_WORKER_CONCURRENCY: ${SMS_FUNNEL_WORKER_CONCURRENCY:-5}
     depends_on:
       postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  finish-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: 1g
+    command: ["node", "scripts/finish-worker.bundle.cjs"]
+    environment:
+      HOME: /app
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@pgbouncer:6432/${POSTGRES_DB:-sales_health_check}?connection_limit=10&pgbouncer=true
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      ASYNC_FINISH_ENABLED: ${ASYNC_FINISH_ENABLED:-true}
+      FINISH_WORKER_CONCURRENCY: ${FINISH_WORKER_CONCURRENCY:-3}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy

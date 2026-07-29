@@ -5,7 +5,9 @@ import { rateLimitResponse, recoverAccessLimiter } from "@/lib/rate-limit";
 import { recoverAccess } from "@/modules/access-recovery/access-recovery.service";
 
 export async function POST(request: NextRequest) {
-  const { allowed, retryAfterSec } = recoverAccessLimiter(getClientIp(request));
+  const { allowed, retryAfterSec } = await recoverAccessLimiter(
+    getClientIp(request),
+  );
 
   if (!allowed) {
     return rateLimitResponse(retryAfterSec);

@@ -19,6 +19,7 @@ echo "==> Syncing deploy files to ${SSH_HOST}:${REMOTE_DIR}"
 ssh "${SSH_HOST}" "mkdir -p ${REMOTE_DIR}/deploy/nginx ${REMOTE_DIR}/scripts/lib"
 rsync -avz \
   "${PROJECT_ROOT}/docker-compose.nginx.yml" \
+  "${PROJECT_ROOT}/docker-compose.scale.yml" \
   "${PROJECT_ROOT}/.env.production.example" \
   "${SSH_HOST}:${REMOTE_DIR}/"
 rsync -avz \

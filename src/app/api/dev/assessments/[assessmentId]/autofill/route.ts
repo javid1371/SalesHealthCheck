@@ -1,6 +1,8 @@
+import type { NextRequest } from "next/server";
 import { handleApiRequest } from "@/lib/api-handler";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
+import { readAssessmentAccess } from "@/modules/assessment/assessment-access";
 import {
   finishAssessment,
   getAssessmentQuestions,
@@ -67,10 +69,11 @@ function pickOption(question: QuestionDto, strategy: AutofillStrategy) {
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ assessmentId: string }> },
 ) {
   const { assessmentId } = await params;
+  const access = readAssessmentAccess(request);
 
   let body: unknown = {};
   try {
@@ -83,7 +86,7 @@ export async function POST(
     assertDevOnly();
 
     const strategy = parseStrategy(body);
-    const questionsData = await getAssessmentQuestions(assessmentId);
+    const questionsData = await getAssessmentQuestions(assessmentId, access);
     const answers: SaveAnswerInput[] = questionsData.domains.flatMap((domain) =>
       domain.questions.map((question) => ({
         questionId: question.id,
@@ -91,10 +94,12 @@ export async function POST(
       })),
     );
 
-    const saved = await saveAnswers(assessmentId, { answers });
-    const finished = await finishAssessment(assessmentId, {
-      generateAiExplanation: false,
-    });
+    const saved = await saveAnswers(assessmentId, { answers }, access);
+    const finished = await finishAssessment(
+      assessmentId,
+      { generateAiExplanation: false },
+      access,
+    );
 
     return {
       assessmentId,

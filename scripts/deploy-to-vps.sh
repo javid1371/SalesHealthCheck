@@ -35,6 +35,7 @@ echo "==> Syncing deploy files..."
 "${SSH_BASE[@]}" "${SSH_HOST}" "mkdir -p ${REMOTE_DIR}/deploy/nginx ${REMOTE_DIR}/scripts/lib"
 rsync -avz -e "${SSH_BASE[*]}" \
   "${PROJECT_ROOT}/docker-compose.nginx.yml" \
+  "${PROJECT_ROOT}/docker-compose.scale.yml" \
   "${SSH_HOST}:${REMOTE_DIR}/"
 rsync -avz -e "${SSH_BASE[*]}" \
   "${PROJECT_ROOT}/scripts/vps-update.sh" \

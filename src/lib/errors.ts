@@ -18,6 +18,7 @@ export type AppErrorCode =
   | "assessment_not_completed"
   | "assessment_already_completed"
   | "assessment_access_denied"
+  | "finish_queue_unavailable"
   | "questions_not_found"
   | "question_not_found"
   | "option_not_found"

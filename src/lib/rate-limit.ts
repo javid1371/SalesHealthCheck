@@ -1,4 +1,9 @@
-interface RateLimitResult {
+import {
+  getRateLimitStore,
+  type RateLimitStore,
+} from "@/lib/rate-limit-store";
+
+export interface RateLimitResult {
   allowed: boolean;
   retryAfterSec?: number;
 }
@@ -7,45 +12,18 @@ interface RateLimiterOptions {
   limit: number;
   windowMs: number;
   namespace?: string;
+  /** Inject for tests; defaults to Redis/memory singleton. */
+  store?: RateLimitStore;
 }
 
-type RateLimitStore = Map<string, number[]>;
+export type RateLimitChecker = (key: string) => Promise<RateLimitResult>;
 
-const stores = new Map<string, RateLimitStore>();
-
-function getStore(namespace: string): RateLimitStore {
-  let store = stores.get(namespace);
-  if (!store) {
-    store = new Map();
-    stores.set(namespace, store);
-  }
-  return store;
-}
-
-export function createRateLimiter(options: RateLimiterOptions) {
+export function createRateLimiter(options: RateLimiterOptions): RateLimitChecker {
   const namespace = options.namespace ?? "default";
 
-  return function checkRateLimit(key: string): RateLimitResult {
-    const now = Date.now();
-    const windowStart = now - options.windowMs;
-    const store = getStore(namespace);
-
-    const timestamps = (store.get(key) ?? []).filter((t) => t > windowStart);
-
-    if (timestamps.length >= options.limit) {
-      const oldest = timestamps[0]!;
-      return {
-        allowed: false,
-        retryAfterSec: Math.max(
-          1,
-          Math.ceil((oldest + options.windowMs - now) / 1000),
-        ),
-      };
-    }
-
-    timestamps.push(now);
-    store.set(key, timestamps);
-    return { allowed: true };
+  return async function checkRateLimit(key: string): Promise<RateLimitResult> {
+    const store = options.store ?? getRateLimitStore();
+    return store.hit(namespace, key, options.limit, options.windowMs);
   };
 }
 
@@ -63,11 +41,25 @@ export const consultationRequestLimiter = createRateLimiter({
   namespace: "consultation-request",
 });
 
-/** 10 requests per hour per IP — start assessment. */
+/** 5 requests per 10 minutes per IP — start assessment (campaign). */
 export const startAssessmentLimiter = createRateLimiter({
-  limit: 10,
-  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  windowMs: 10 * 60 * 1000,
   namespace: "assessment-start",
+});
+
+/** 3 finish enqueues per 10 minutes per assessmentId. */
+export const finishEnqueueLimiter = createRateLimiter({
+  limit: 3,
+  windowMs: 10 * 60 * 1000,
+  namespace: "assessment-finish-enqueue",
+});
+
+/** 3 PDF downloads per hour per IP. */
+export const pdfDownloadLimiter = createRateLimiter({
+  limit: 3,
+  windowMs: 60 * 60 * 1000,
+  namespace: "report-pdf",
 });
 
 /** 120 requests per hour per IP — anonymous funnel track events. */
@@ -93,11 +85,11 @@ export const otpSendLimiterByIp = createRateLimiter({
 
 export interface OtpSendRateLimitResult extends RateLimitResult {}
 
-export function checkOtpSendRateLimit(
+export async function checkOtpSendRateLimit(
   phone: string,
   ip?: string,
-): OtpSendRateLimitResult {
-  const phoneResult = otpSendLimiterByPhone(phone);
+): Promise<OtpSendRateLimitResult> {
+  const phoneResult = await otpSendLimiterByPhone(phone);
   if (!phoneResult.allowed) {
     return phoneResult;
   }
@@ -128,11 +120,7 @@ export function rateLimitResponse(retryAfterSec?: number): Response {
   );
 }
 
-/** Reset in-memory store (tests only). */
-export function resetRateLimitStore(namespace?: string): void {
-  if (namespace) {
-    stores.delete(namespace);
-    return;
-  }
-  stores.clear();
+/** Reset rate-limit store (tests only). */
+export async function resetRateLimitStore(namespace?: string): Promise<void> {
+  await getRateLimitStore().reset(namespace);
 }

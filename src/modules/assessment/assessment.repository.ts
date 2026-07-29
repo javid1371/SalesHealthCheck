@@ -163,6 +163,45 @@ export async function upsertAnswer(data: {
   });
 }
 
+export async function upsertAnswersBatch(
+  answers: Array<{
+    assessmentSessionId: string;
+    questionId: string;
+    selectedOptionId: string;
+    scoreSnapshot: number;
+  }>,
+) {
+  if (answers.length === 0) {
+    return [];
+  }
+
+  return db.$transaction((tx) =>
+    Promise.all(
+      answers.map((data) =>
+        tx.answer.upsert({
+          where: {
+            assessmentSessionId_questionId: {
+              assessmentSessionId: data.assessmentSessionId,
+              questionId: data.questionId,
+            },
+          },
+          create: {
+            assessmentSessionId: data.assessmentSessionId,
+            questionId: data.questionId,
+            selectedOptionId: data.selectedOptionId,
+            scoreSnapshot: data.scoreSnapshot,
+          },
+          update: {
+            selectedOptionId: data.selectedOptionId,
+            scoreSnapshot: data.scoreSnapshot,
+            answeredAt: new Date(),
+          },
+        }),
+      ),
+    ),
+  );
+}
+
 export async function updateAssessmentStatus(
   assessmentId: string,
   status: "started" | "in_progress" | "completed",

@@ -9,11 +9,15 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
-import { apiPost } from "@/lib/api-client";
+import { ApiClientError, apiGet, apiPost } from "@/lib/api-client";
 import { getResultToken } from "@/lib/assessment-storage";
 import { trackFunnelEvent } from "@/lib/funnel-track";
 import { PAGE_MESSAGES, resolveApiError } from "@/lib/page-messages";
-import type { FinishAssessmentResponse } from "@/modules/assessment/assessment.types";
+import type {
+  EnqueueFinishAssessmentResult,
+  FinishAssessmentResponse,
+  FinishJobStatusResponse,
+} from "@/modules/assessment/assessment.types";
 
 const PROCESSING_MESSAGES = [
   "در حال محاسبه امتیاز دامنه‌ها...",
@@ -21,16 +25,80 @@ const PROCESSING_MESSAGES = [
   "در حال آماده‌سازی گزارش شما...",
 ];
 
+const POLL_INTERVAL_MS = 2_000;
+const POLL_TIMEOUT_MS = 90_000;
+
+function isCompletedFinish(
+  result: EnqueueFinishAssessmentResult,
+): result is FinishAssessmentResponse {
+  return "reportId" in result && result.status === "completed";
+}
+
 function navigateToResult(
   router: ReturnType<typeof useRouter>,
   assessmentId: string,
-  result: FinishAssessmentResponse,
+  resultUrl?: string,
 ) {
   const token = getResultToken(assessmentId);
   const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
-  router.replace(
-    result.resultUrl || `/assessment/${assessmentId}/result${tokenParam}`,
+  router.replace(resultUrl || `/assessment/${assessmentId}/result${tokenParam}`);
+}
+
+async function pollFinishStatus(
+  assessmentId: string,
+  token: string | null,
+): Promise<FinishJobStatusResponse> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const status = await apiGet<FinishJobStatusResponse>(
+      `/api/assessments/${assessmentId}/finish`,
+      { token },
+    );
+
+    if (status.status === "completed" || status.status === "failed") {
+      return status;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  return {
+    status: "failed",
+    error: "آماده‌سازی گزارش بیش از حد طول کشید. لطفاً دوباره تلاش کنید.",
+  };
+}
+
+function finishFlowErrorMessage(err: unknown): string {
+  if (err instanceof ApiClientError) {
+    return resolveApiError(err, PAGE_MESSAGES.finishFailed);
+  }
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  return PAGE_MESSAGES.finishFailed;
+}
+
+async function runFinishFlow(
+  assessmentId: string,
+  token: string | null,
+): Promise<{ resultUrl?: string }> {
+  const result = await apiPost<EnqueueFinishAssessmentResult>(
+    `/api/assessments/${assessmentId}/finish`,
+    {},
+    { token },
   );
+
+  if (isCompletedFinish(result)) {
+    return { resultUrl: result.resultUrl };
+  }
+
+  const status = await pollFinishStatus(assessmentId, token);
+  if (status.status === "completed") {
+    return { resultUrl: status.resultUrl };
+  }
+
+  throw new Error(status.error || PAGE_MESSAGES.finishFailed);
 }
 
 export default function ProcessingPage() {
@@ -56,19 +124,17 @@ export default function ProcessingPage() {
 
     async function finish() {
       setError(null);
+      const token = getResultToken(assessmentId);
       try {
-        const result = await apiPost<FinishAssessmentResponse>(
-          `/api/assessments/${assessmentId}/finish`,
-          {},
-        );
+        const { resultUrl } = await runFinishFlow(assessmentId, token);
         void trackFunnelEvent({
           type: "assessment_completed",
           assessmentSessionId: assessmentId,
         });
-        navigateToResult(router, assessmentId, result);
+        navigateToResult(router, assessmentId, resultUrl);
       } catch (err) {
         finishStarted.current = false;
-        setError(resolveApiError(err, PAGE_MESSAGES.finishFailed));
+        setError(finishFlowErrorMessage(err));
       }
     }
 
@@ -78,18 +144,16 @@ export default function ProcessingPage() {
   async function handleRetry() {
     setRetrying(true);
     setError(null);
+    const token = getResultToken(assessmentId);
     try {
-      const result = await apiPost<FinishAssessmentResponse>(
-        `/api/assessments/${assessmentId}/finish`,
-        {},
-      );
+      const { resultUrl } = await runFinishFlow(assessmentId, token);
       void trackFunnelEvent({
         type: "assessment_completed",
         assessmentSessionId: assessmentId,
       });
-      navigateToResult(router, assessmentId, result);
+      navigateToResult(router, assessmentId, resultUrl);
     } catch (err) {
-      setError(resolveApiError(err, PAGE_MESSAGES.finishFailed));
+      setError(finishFlowErrorMessage(err));
     } finally {
       setRetrying(false);
     }

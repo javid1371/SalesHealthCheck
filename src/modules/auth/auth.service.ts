@@ -76,7 +76,7 @@ export async function sendOtp(
 ): Promise<SendOtpResponse> {
   const input = validateSendOtpRequest(body);
 
-  const rateLimit = checkOtpSendRateLimit(input.phone, options?.ip);
+  const rateLimit = await checkOtpSendRateLimit(input.phone, options?.ip);
   if (!rateLimit.allowed) {
     throw new AppError(
       "VALIDATION_ERROR",

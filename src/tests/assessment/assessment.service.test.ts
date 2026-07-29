@@ -12,6 +12,7 @@ vi.mock("@/modules/assessment/assessment.repository", () => ({
   findAssessmentForResult: vi.fn(),
   countAnswersForAssessment: vi.fn(),
   upsertAnswer: vi.fn(),
+  upsertAnswersBatch: vi.fn(),
   updateAssessmentStatus: vi.fn(),
   updateOrganization: vi.fn(),
   updateAssessmentBusinessMetrics: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@/modules/question-bank/question-bank.service", () => ({
   loadQuestionsForAssessment: vi.fn(),
   validateQuestionBelongsToModelVersion: vi.fn(),
   validateOptionBelongsToQuestion: vi.fn(),
+  validateAnswersBatch: vi.fn(),
 }));
 
 vi.mock("@/modules/report/report-config.service", () => ({
@@ -55,7 +57,7 @@ import {
   updateAssessmentBusinessMetrics,
   updateReportSpec,
   updateUserProfile,
-  upsertAnswer,
+  upsertAnswersBatch,
 } from "@/modules/assessment/assessment.repository";
 import {
   countActiveQuestions,
@@ -68,8 +70,7 @@ import {
 } from "@/modules/question-bank/question-bank.repository";
 import {
   loadActiveModelVersion,
-  validateOptionBelongsToQuestion,
-  validateQuestionBelongsToModelVersion,
+  validateAnswersBatch,
 } from "@/modules/question-bank/question-bank.service";
 import {
   finishAssessment,
@@ -217,13 +218,26 @@ describe("getAssessmentAnswers", () => {
 });
 
 describe("saveAnswers", () => {
+  it("rejects when access is provided without a valid token", async () => {
+    vi.mocked(findAssessmentById).mockResolvedValue(mockAssessment as never);
+
+    await expect(
+      saveAnswers(
+        "assessment-1",
+        { answers: [{ questionId: "q1", selectedOptionId: "o1" }] },
+        {},
+      ),
+    ).rejects.toMatchObject({
+      code: "assessment_access_denied",
+      status: 403,
+    });
+
+    expect(upsertAnswersBatch).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid option with 409", async () => {
     vi.mocked(findAssessmentById).mockResolvedValue(mockAssessment as never);
-    vi.mocked(validateQuestionBelongsToModelVersion).mockResolvedValue({
-      id: "q1",
-      modelVersionId: "model-1",
-    } as never);
-    vi.mocked(validateOptionBelongsToQuestion).mockRejectedValue(
+    vi.mocked(validateAnswersBatch).mockRejectedValue(
       new AppError(
         "option_does_not_belong_to_question",
         "Option does not belong to the specified question",
@@ -240,7 +254,53 @@ describe("saveAnswers", () => {
       status: 409,
     });
 
-    expect(upsertAnswer).not.toHaveBeenCalled();
+    expect(upsertAnswersBatch).not.toHaveBeenCalled();
+  });
+
+  it("validates and upserts answers in a single batch", async () => {
+    vi.mocked(findAssessmentById).mockResolvedValue(mockAssessment as never);
+    vi.mocked(validateAnswersBatch).mockResolvedValue([
+      { questionId: "q1", selectedOptionId: "o1", score: 3 },
+      { questionId: "q2", selectedOptionId: "o2", score: 2 },
+    ]);
+    vi.mocked(upsertAnswersBatch).mockResolvedValue([] as never);
+    vi.mocked(countAnswersForAssessment).mockResolvedValue(2);
+    vi.mocked(countActiveQuestions).mockResolvedValue(2);
+
+    const result = await saveAnswers("assessment-1", {
+      answers: [
+        { questionId: "q1", selectedOptionId: "o1" },
+        { questionId: "q2", selectedOptionId: "o2" },
+      ],
+    });
+
+    expect(validateAnswersBatch).toHaveBeenCalledOnce();
+    expect(validateAnswersBatch).toHaveBeenCalledWith(
+      [
+        { questionId: "q1", selectedOptionId: "o1" },
+        { questionId: "q2", selectedOptionId: "o2" },
+      ],
+      "model-1",
+    );
+    expect(upsertAnswersBatch).toHaveBeenCalledOnce();
+    expect(upsertAnswersBatch).toHaveBeenCalledWith([
+      {
+        assessmentSessionId: "assessment-1",
+        questionId: "q1",
+        selectedOptionId: "o1",
+        scoreSnapshot: 3,
+      },
+      {
+        assessmentSessionId: "assessment-1",
+        questionId: "q2",
+        selectedOptionId: "o2",
+        scoreSnapshot: 2,
+      },
+    ]);
+    expect(result).toMatchObject({
+      assessmentId: "assessment-1",
+      savedAnswers: 2,
+    });
   });
 });
 

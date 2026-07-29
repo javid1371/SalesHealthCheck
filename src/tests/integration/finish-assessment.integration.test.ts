@@ -128,4 +128,32 @@ describe("finishAssessment (integration)", () => {
       status: 400,
     });
   });
+
+  it("rejects HTTP-style access when token is missing or invalid", async () => {
+    const start = await startAssessmentForUser({
+      email: `finish-token-${RUN_ID}@example.com`,
+      phone: `0919${String(RUN_ID).slice(-7)}`,
+    });
+
+    await expect(
+      saveAnswers(start.assessmentId, { answers: [] }, {}),
+    ).rejects.toMatchObject({
+      code: "assessment_access_denied",
+      status: 403,
+    });
+
+    await expect(
+      finishAssessment(start.assessmentId, {}, { token: "wrong-token" }),
+    ).rejects.toMatchObject({
+      code: "assessment_access_denied",
+      status: 403,
+    });
+
+    await expect(
+      finishAssessment(start.assessmentId, {}, { token: start.resultToken }),
+    ).rejects.toMatchObject({
+      code: "assessment_not_complete",
+      status: 400,
+    });
+  });
 });

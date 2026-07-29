@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { apiPatch, ApiClientError } from "@/lib/api-client";
+import { getResultToken } from "@/lib/assessment-storage";
 import type { UpdateBusinessMetricsResponse } from "@/modules/assessment/assessment.types";
 import type { ReportSpec } from "@/types/report-spec";
 
@@ -38,6 +39,7 @@ export function BusinessMetricsGate({
             ? { repeatPurchaseRate: Number(repeatPurchaseRate) }
             : {}),
         },
+        { token: getResultToken(assessmentId) },
       );
 
       if (result.report.reportSpec) {

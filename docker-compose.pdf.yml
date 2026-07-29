@@ -1,0 +1,16 @@
+# Optional PDF override — enable only after load test passes and the image
+# was built with INSTALL_PLAYWRIGHT=true (CI var PDF_GENERATION_ENABLED=true).
+#
+# Campaign / launch default: do NOT use this file; leave PDF off.
+#
+# Usage (nginx stack):
+#   docker compose -f docker-compose.nginx.yml -f docker-compose.pdf.yml up -d
+#
+# Usage (local prod compose):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.pdf.yml up -d
+
+services:
+  app:
+    mem_limit: 2g
+    environment:
+      PDF_GENERATION_ENABLED: "true"

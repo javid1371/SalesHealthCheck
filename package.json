@@ -22,6 +22,7 @@
     "bot:labels:generate": "tsx scripts/generate-messenger-labels-csv.ts",
     "bot:labels:backfill": "tsx scripts/backfill-messenger-labels.ts",
     "worker:sms-funnel": "tsx scripts/sms-funnel-worker.ts",
+    "worker:finish": "tsx scripts/finish-worker.ts",
     "db:seed-sms-funnel-config": "tsx scripts/seed-sms-funnel-config.ts",
     "sms-funnel:backfill": "tsx scripts/backfill-sms-funnel.ts",
     "sms-funnel:cleanup-duplicates": "tsx scripts/cleanup-duplicate-sms-pending.ts",

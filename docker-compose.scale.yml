@@ -1,0 +1,79 @@
+# Optional second app instance for nginx round-robin (Phase 8).
+# Default campaign stack stays single-instance — enable only when needed.
+#
+# Usage (nginx stack):
+#   docker compose -f docker-compose.nginx.yml -f docker-compose.scale.yml up -d
+# Or on VPS (vps-update.sh):
+#   COMPOSE_FILES="docker-compose.nginx.yml docker-compose.scale.yml" \
+#   APP_PORT_B=3106 bash scripts/vps-update.sh
+#
+# Then uncomment 127.0.0.1:3106 in deploy/nginx/health.javidmgdm.com.conf and reload nginx.
+#
+# Per-process Prisma pool: connection_limit=10 → ~20 client connections from two apps
+# (plus workers) through PgBouncer. Sticky sessions not required.
+
+services:
+  app-b:
+    image: ${APP_IMAGE:-ghcr.io/javid1371/sales-health-check:latest}
+    pull_policy: always
+    restart: unless-stopped
+    mem_limit: 1g
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:${APP_PORT_B:-3106}:3000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@pgbouncer:6432/${POSTGRES_DB:-sales_health_check}?connection_limit=10&pgbouncer=true
+      DIRECT_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sales_health_check}
+      NODE_ENV: production
+      PORT: 3000
+      EXPERT_VIEW_TOKEN: ${EXPERT_VIEW_TOKEN:-}
+      CAPACITY_MODE: ${CAPACITY_MODE:-free}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-${SENTRY_DSN:-}}
+      PDF_GENERATION_ENABLED: ${PDF_GENERATION_ENABLED:-}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?Set AUTH_SESSION_SECRET in .env}
+      KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
+      KAVENEGAR_OTP_TEMPLATE: ${KAVENEGAR_OTP_TEMPLATE:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      SALES_EXPERT_PASSWORD: ${SALES_EXPERT_PASSWORD:-}
+      SALES_EXPERT_PASSWORD_HASH: ${SALES_EXPERT_PASSWORD_HASH:-}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-3}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      BALE_BOT_TOKEN: ${BALE_BOT_TOKEN:-}
+      BALE_WEBHOOK_SECRET: ${BALE_WEBHOOK_SECRET:-}
+      REDIS_URL: redis://redis:6379
+      SMS_FUNNEL_ENABLED: ${SMS_FUNNEL_ENABLED:-false}
+      SALES_FUNNEL_ENABLED: ${SALES_FUNNEL_ENABLED:-false}
+      KAVENEGAR_SENDER_LINE: ${KAVENEGAR_SENDER_LINE:-}
+      SMS_QUIET_HOURS_START: ${SMS_QUIET_HOURS_START:-9}
+      SMS_QUIET_HOURS_END: ${SMS_QUIET_HOURS_END:-21}
+      SMS_FUNNEL_MAX_UNANSWERED: ${SMS_FUNNEL_MAX_UNANSWERED:-4}
+      SMS_FUNNEL_CRON_SECRET: ${SMS_FUNNEL_CRON_SECRET:-}
+      LEAD_AUTO_ASSIGN_ENABLED: ${LEAD_AUTO_ASSIGN_ENABLED:-false}
+      LEAD_SYSTEM_ASSIGN_DELAY_HOURS: ${LEAD_SYSTEM_ASSIGN_DELAY_HOURS:-24}
+      ASYNC_FINISH_ENABLED: ${ASYNC_FINISH_ENABLED:-true}
+      FINISH_WORKER_CONCURRENCY: ${FINISH_WORKER_CONCURRENCY:-3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s

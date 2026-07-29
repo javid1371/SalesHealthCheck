@@ -9,7 +9,7 @@ import { readSessionsFromRequest } from "@/lib/session";
 import { submitConsultationRequest } from "@/modules/consultation/consultation.service";
 
 export async function POST(request: NextRequest) {
-  const { allowed, retryAfterSec } = consultationRequestLimiter(
+  const { allowed, retryAfterSec } = await consultationRequestLimiter(
     getClientIp(request),
   );
 
