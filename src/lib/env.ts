@@ -133,6 +133,13 @@ export const env = {
   get kavenegarSenderLine(): string | undefined {
     return process.env.KAVENEGAR_SENDER_LINE;
   },
+  /**
+   * Optional query secret for `/api/webhooks/kavenegar/inbound?secret=`.
+   * Unset: skipped in dev; production refuses to process (route still 200).
+   */
+  get kavenegarInboundWebhookSecret(): string | undefined {
+    return process.env.KAVENEGAR_INBOUND_WEBHOOK_SECRET;
+  },
   /** Quiet hours start (0-23, Asia/Tehran); default 9. */
   get smsQuietHoursStart(): number {
     return parsePositiveInt(process.env.SMS_QUIET_HOURS_START, 9);
