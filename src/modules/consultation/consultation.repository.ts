@@ -107,6 +107,19 @@ export async function findOpenConsultationRequestByPhone(phone: string) {
   });
 }
 
+/** Most recent assignee for this exact phone, including closed leads. */
+export async function findLatestAssignedStaffIdByPhone(phone: string) {
+  const row = await db.consultationRequest.findFirst({
+    where: {
+      phone,
+      assignedToId: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { assignedToId: true },
+  });
+  return row?.assignedToId ?? null;
+}
+
 export async function updateConsultationRequestMessage(
   id: string,
   message: string,

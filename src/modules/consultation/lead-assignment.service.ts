@@ -17,6 +17,8 @@ import {
   findConsultationRequestByAssessmentSessionId,
   findConsultationRequestById,
   findConsultationRequestByUserId,
+  findLatestAssignedStaffIdByPhone,
+  findOpenConsultationRequestByPhone,
   findDueSystemLeadsForAssignment,
   findUnassignedOpenLeadsForAssignment,
   transitionLeadToAssessmentCompleted,
@@ -143,6 +145,8 @@ async function recordSystemStatusChange(
 
 export type AssignLeadOptions = {
   notifyExpert?: boolean;
+  /** When set, pickNextSalesExpert prefers this expert if still eligible. */
+  preferStaffId?: string | null;
 };
 
 function toExpertNewLeadSmsLead(lead: {
@@ -287,12 +291,14 @@ export async function autoAssignAndNotifyLead(
   const expert = await pickNextSalesExpert({
     excludeIds: settings.autoAssignExcludeStaffIds,
     maxOpenLeadsPerExpert: settings.maxOpenLeadsPerExpert,
-    preferStaffId: resolvePreferStaffIdForLead({
-      purchaseProbabilityBand: lead.purchaseProbabilityBand,
-      source: lead.source,
-      hotLeadDirectAssigneeId: settings.hotLeadDirectAssigneeId,
-      preferAssigneeBySource: settings.routingRules.preferAssigneeBySource,
-    }),
+    preferStaffId:
+      options?.preferStaffId ??
+      resolvePreferStaffIdForLead({
+        purchaseProbabilityBand: lead.purchaseProbabilityBand,
+        source: lead.source,
+        hotLeadDirectAssigneeId: settings.hotLeadDirectAssigneeId,
+        preferAssigneeBySource: settings.routingRules.preferAssigneeBySource,
+      }),
   });
   if (!expert) {
     console.warn("[lead-assignment] no active sales expert with phone found");
@@ -327,6 +333,7 @@ export type FinalizeNewLeadOptions = {
   assessmentSessionId?: string | null;
   mode?: FinalizeNewLeadMode;
   notifyExpert?: boolean;
+  preferStaffId?: string | null;
 };
 
 export async function finalizeNewLead(
@@ -344,6 +351,7 @@ export async function finalizeNewLead(
     if (mode === "immediate" && settings.autoAssignEnabled) {
       await autoAssignAndNotifyLead(leadId, {
         notifyExpert: options?.notifyExpert,
+        preferStaffId: options?.preferStaffId,
       });
     }
   } catch (error) {
@@ -441,7 +449,38 @@ export async function upgradeExistingLeadToMessenger(
   return { id: updated.id, createdAt: updated.createdAt };
 }
 
-async function findLeadForAssessmentUser(assessmentSessionId: string) {
+function uniquePhones(
+  ...candidates: Array<string | null | undefined>
+): string[] {
+  const seen = new Set<string>();
+  const phones: string[] = [];
+  for (const raw of candidates) {
+    const phone = raw?.trim();
+    if (!phone || seen.has(phone)) {
+      continue;
+    }
+    seen.add(phone);
+    phones.push(phone);
+  }
+  return phones;
+}
+
+async function resolvePreferStaffIdByPhone(
+  ...candidates: Array<string | null | undefined>
+): Promise<string | null> {
+  for (const phone of uniquePhones(...candidates)) {
+    const staffId = await findLatestAssignedStaffIdByPhone(phone);
+    if (staffId) {
+      return staffId;
+    }
+  }
+  return null;
+}
+
+async function findLeadForAssessmentUser(
+  assessmentSessionId: string,
+  extraPhone?: string | null,
+) {
   const bySession =
     await findConsultationRequestByAssessmentSessionId(assessmentSessionId);
   if (bySession) {
@@ -453,14 +492,26 @@ async function findLeadForAssessmentUser(assessmentSessionId: string) {
     return null;
   }
 
-  return findConsultationRequestByUserId(assessment.userId);
+  const byUser = await findConsultationRequestByUserId(assessment.userId);
+  if (byUser) {
+    return byUser;
+  }
+
+  for (const phone of uniquePhones(extraPhone, assessment.user.phone)) {
+    const byPhone = await findOpenConsultationRequestByPhone(phone);
+    if (byPhone) {
+      return byPhone;
+    }
+  }
+
+  return null;
 }
 
 /**
  * Soft-assign a system lead when an assessment starts.
- * One lead per person: reuses the user's existing lead when present.
- * Creates/updates status=assessment_in_progress and assigns round-robin without
- * expert SMS (experts must not call while the user is mid-test).
+ * One lead per person: reuses the session, user, or open phone lead when present.
+ * Does not overwrite assignedToId. A new lead (only when none is open) prefers
+ * the previous expert for that phone. No expert SMS while the user is mid-test.
  */
 export async function createLeadOnAssessmentStart(input: {
   assessmentSessionId: string;
@@ -473,7 +524,10 @@ export async function createLeadOnAssessmentStart(input: {
     return;
   }
 
-  const existing = await findLeadForAssessmentUser(input.assessmentSessionId);
+  const existing = await findLeadForAssessmentUser(
+    input.assessmentSessionId,
+    input.phone,
+  );
   const name = input.name.trim() || "کاربر";
 
   if (existing) {
@@ -514,6 +568,12 @@ export async function createLeadOnAssessmentStart(input: {
     return;
   }
 
+  const assessment = await findAssessmentById(input.assessmentSessionId);
+  const preferStaffId = await resolvePreferStaffIdByPhone(
+    input.phone,
+    assessment?.user.phone,
+  );
+
   const lead = await createConsultationRequest({
     name,
     phone: input.phone ?? undefined,
@@ -534,6 +594,7 @@ export async function createLeadOnAssessmentStart(input: {
     assessmentSessionId: input.assessmentSessionId,
     mode: "immediate",
     notifyExpert: false,
+    preferStaffId,
   });
 }
 
@@ -573,6 +634,10 @@ export async function transitionLeadOnAssessmentComplete(input: {
       return;
     }
 
+    const preferStaffId = await resolvePreferStaffIdByPhone(
+      assessment.user.phone,
+    );
+
     const lead = await createConsultationRequest({
       name:
         assessment.user.name?.trim() || assessment.organization.businessName,
@@ -588,6 +653,7 @@ export async function transitionLeadOnAssessmentComplete(input: {
       assessmentSessionId: input.assessmentSessionId,
       mode: "immediate",
       notifyExpert: false,
+      preferStaffId,
     });
     return;
   }

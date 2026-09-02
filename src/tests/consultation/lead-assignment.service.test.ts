@@ -15,6 +15,8 @@ const repoMock = vi.hoisted(() => ({
   findConsultationRequestByAssessmentSessionId: vi.fn(),
   findConsultationRequestById: vi.fn(),
   findConsultationRequestByUserId: vi.fn(),
+  findLatestAssignedStaffIdByPhone: vi.fn(),
+  findOpenConsultationRequestByPhone: vi.fn(),
   findDueSystemLeadsForAssignment: vi.fn(),
   findUnassignedOpenLeadsForAssignment: vi.fn(),
   transitionLeadToAssessmentCompleted: vi.fn(),
@@ -107,6 +109,8 @@ describe("lead-assignment.service", () => {
     });
     repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
     repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue(null);
+    repoMock.findLatestAssignedStaffIdByPhone.mockResolvedValue(null);
     repoMock.updateLeadAssessmentBinding.mockResolvedValue({});
     assessmentMock.findAssessmentById.mockResolvedValue({
       userId: "user-1",
@@ -733,6 +737,110 @@ describe("lead-assignment.service", () => {
     expect(repoMock.updateLeadAssessmentBinding).not.toHaveBeenCalled();
   });
 
+  it("createLeadOnAssessmentStart reuses an open SMS lead by phone and keeps assignedToId", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue({
+      id: "sms-lead",
+      status: "new",
+      assignedToId: "expert-A",
+      phone: "09121111111",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-first",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.findOpenConsultationRequestByPhone).toHaveBeenCalledWith(
+      "09121111111",
+    );
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "sms-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-first",
+        phone: "09121111111",
+      }),
+    );
+    expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(
+      "assignedToId",
+    );
+    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart retest binds the same open lead without reassigning", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue({
+      id: "sms-lead",
+      status: "new",
+      assignedToId: "expert-A",
+      phone: "09121111111",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-retest",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "sms-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-retest",
+      }),
+    );
+    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(repoMock.assignLeadToExpertIfUnassigned).not.toHaveBeenCalled();
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart prefers the previous assignee when only a closed lead exists", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue(null);
+    repoMock.findLatestAssignedStaffIdByPhone.mockResolvedValue("expert-A");
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-new",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assessmentSessionId: "assessment-new",
+        phone: "09121111111",
+        source: "system",
+      }),
+    );
+    expect(repoMock.findLatestAssignedStaffIdByPhone).toHaveBeenCalledWith(
+      "09121111111",
+    );
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 30,
+      preferStaffId: "expert-A",
+    });
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("createLeadOnAssessmentStart skips new system lead when pauseSystemLeadCreation is true", async () => {
     const baseSettings = await leadConfigMock.getLeadSettings();
     leadConfigMock.getLeadSettings.mockResolvedValue({
@@ -864,6 +972,59 @@ describe("lead-assignment.service", () => {
     expect(repoMock.createLeadActivity).not.toHaveBeenCalled();
   });
 
+  it("autoAssignAndNotifyLead uses caller preferStaffId ahead of routing settings", async () => {
+    leadConfigMock.getLeadSettings.mockResolvedValue({
+      autoAssignEnabled: true,
+      systemAssignDelayHours: 24,
+      expertNewLeadSms: "لید جدید داری\nچک کن",
+      maxOpenLeadsPerExpert: 20,
+      hotLeadDirectAssigneeId: "hot-expert",
+      assessmentIncompleteAfterHours: 24,
+      autoAssignExcludeStaffIds: [],
+      staleNewLeadHours: 24,
+      routingRules: {
+        firstContactSlaMinutesByBand: { high: 30, mid: 120, low: 240 },
+        preferAssigneeBySource: { system: "source-expert" },
+        excludeSourcesFromAutoAssign: [],
+      },
+      callOutcomeMatrix: {
+        no_answer: { nextFollowUpDays: 1 },
+        busy: { nextFollowUpDays: 1 },
+        callback_requested: { status: "contacted", nextFollowUpDays: 1 },
+        connected_interested: { status: "contacted", nextFollowUpDays: null },
+        connected_not_interested: { status: "closed_lost" },
+        wrong_number: { status: "closed_lost", lostReason: "low_quality" },
+      },
+      requireCallOutcomeBeforeClose: false,
+      createLeadOnAssessmentStart: true,
+      pauseSystemLeadCreation: false,
+    });
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      id: "lead-1",
+      name: "Lead User",
+      phone: "09120000000",
+      assignedToId: null,
+      assessmentSessionId: null,
+      status: "new",
+      source: "system",
+      purchaseProbabilityPercent: 90,
+      purchaseProbabilityBand: "high",
+      adminProbabilityOverridePercent: null,
+    });
+
+    const { autoAssignAndNotifyLead } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await autoAssignAndNotifyLead("lead-1", { preferStaffId: "expert-A" });
+
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 20,
+      preferStaffId: "expert-A",
+    });
+  });
+
   it("transitionLeadOnAssessmentComplete creates completed lead when start lead is missing", async () => {
     const { transitionLeadOnAssessmentComplete } = await import(
       "@/modules/consultation/lead-assignment.service"
@@ -883,6 +1044,30 @@ describe("lead-assignment.service", () => {
         status: "assessment_completed",
       }),
     );
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("transitionLeadOnAssessmentComplete prefers the previous assignee when creating a missing lead", async () => {
+    repoMock.findLatestAssignedStaffIdByPhone.mockResolvedValue("expert-A");
+
+    const { transitionLeadOnAssessmentComplete } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await transitionLeadOnAssessmentComplete({
+      assessmentSessionId: "assessment-1",
+      reportId: "report-1",
+      leadScore: "cold",
+    });
+
+    expect(repoMock.findLatestAssignedStaffIdByPhone).toHaveBeenCalledWith(
+      "09121111111",
+    );
+    expect(staffMock.pickNextSalesExpert).toHaveBeenCalledWith({
+      excludeIds: [],
+      maxOpenLeadsPerExpert: 30,
+      preferStaffId: "expert-A",
+    });
     expect(smsMock.sendMessage).not.toHaveBeenCalled();
   });
 

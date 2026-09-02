@@ -5,6 +5,7 @@ import { normalizePhone } from "@/modules/auth/auth.validators";
 import { findUserByEmailOrPhone } from "@/modules/assessment/assessment.repository";
 import {
   createConsultationRequest,
+  findLatestAssignedStaffIdByPhone,
   findOpenConsultationRequestByPhone,
   updateConsultationRequestMessage,
 } from "@/modules/consultation/consultation.repository";
@@ -138,13 +139,14 @@ async function handleInterest(
     return existing.id;
   }
 
+  const preferStaffId = await findLatestAssignedStaffIdByPhone(phone);
   const lead = await createConsultationRequest({
     name: await resolveLeadName(phone),
     phone,
     message,
     source: "direct",
   });
-  await finalizeNewLead(lead.id, { mode: "immediate" });
+  await finalizeNewLead(lead.id, { mode: "immediate", preferStaffId });
   return lead.id;
 }
 
