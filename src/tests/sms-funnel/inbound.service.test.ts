@@ -22,10 +22,20 @@ const finalizeMock = vi.hoisted(() => ({
   finalizeNewLead: vi.fn(),
 }));
 
+const getFunnelSettingsMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 vi.mock("@/modules/assessment/assessment.repository", () => assessmentMock);
 vi.mock("@/modules/sms-funnel/funnel.repository", () => funnelRepoMock);
 vi.mock("@/modules/consultation/lead-assignment.service", () => finalizeMock);
+vi.mock("@/modules/sms-funnel/funnel-config.service", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/modules/sms-funnel/funnel-config.service")>();
+  return {
+    ...actual,
+    getFunnelSettings: getFunnelSettingsMock,
+  };
+});
 
 import {
   classifyInboundSmsBody,
@@ -63,6 +73,33 @@ describe("classifyInboundSmsBody", () => {
     ["", "ignored"],
   ] as const)("classifies %j as %s", (body, handledAs) => {
     expect(classifyInboundSmsBody(body)).toBe(handledAs);
+  });
+
+  it("uses configured keyword lists instead of the defaults", () => {
+    expect(
+      classifyInboundSmsBody("2", {
+        interestKeywords: ["2", "آره"],
+        optOutKeywords: ["لغو", "unsubscribe"],
+      }),
+    ).toBe("interest");
+    expect(
+      classifyInboundSmsBody("آره", {
+        interestKeywords: ["2", "آره"],
+        optOutKeywords: ["لغو", "unsubscribe"],
+      }),
+    ).toBe("interest");
+    expect(
+      classifyInboundSmsBody("1", {
+        interestKeywords: ["2", "آره"],
+        optOutKeywords: ["لغو", "unsubscribe"],
+      }),
+    ).toBe("ignored");
+    expect(
+      classifyInboundSmsBody("unsubscribe", {
+        interestKeywords: ["2", "آره"],
+        optOutKeywords: ["لغو", "unsubscribe"],
+      }),
+    ).toBe("opt_out");
   });
 });
 
@@ -112,6 +149,10 @@ describe("handleInboundSms", () => {
     repoMock.updateConsultationRequestMessage.mockResolvedValue({});
     assessmentMock.findUserByEmailOrPhone.mockResolvedValue(null);
     finalizeMock.finalizeNewLead.mockResolvedValue(undefined);
+    getFunnelSettingsMock.mockResolvedValue({
+      inboundInterestKeywords: ["1", "بله"],
+      inboundOptOutKeywords: ["لغو", "stop"],
+    });
   });
 
   it.each(["1", "۱", "بله"])(
@@ -374,6 +415,38 @@ describe("handleInboundSms", () => {
         handledAs: "ignored",
       }),
     );
+  });
+
+  it("creates a lead for a custom interest keyword from settings", async () => {
+    getFunnelSettingsMock.mockResolvedValue({
+      inboundInterestKeywords: ["2", "آره"],
+      inboundOptOutKeywords: ["لغو", "stop"],
+    });
+
+    const result = await handleInboundSms({
+      providerMessageId: MESSAGE_ID,
+      from: PHONE_LOCAL,
+      body: "2",
+    });
+
+    expect(result.handledAs).toBe("interest");
+    expect(repoMock.createConsultationRequest).toHaveBeenCalled();
+  });
+
+  it("ignores the default 1 when settings replace interest keywords", async () => {
+    getFunnelSettingsMock.mockResolvedValue({
+      inboundInterestKeywords: ["2", "آره"],
+      inboundOptOutKeywords: ["لغو", "stop"],
+    });
+
+    const result = await handleInboundSms({
+      providerMessageId: MESSAGE_ID,
+      from: PHONE_LOCAL,
+      body: "1",
+    });
+
+    expect(result.handledAs).toBe("ignored");
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
   });
 
   it("prefers the previous assignee when no open lead exists", async () => {

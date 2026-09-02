@@ -17,7 +17,16 @@ export const FUNNEL_SETTING_KEYS = {
   funnelEnabled: "funnel_enabled",
   kavenegarSenderLine: "kavenegar_sender_line",
   kavenegarOtpTemplate: "kavenegar_otp_template",
+  inboundInterestKeywords: "inbound_interest_keywords",
+  inboundOptOutKeywords: "inbound_opt_out_keywords",
 } as const;
+
+export const DEFAULT_INBOUND_INTEREST_KEYWORDS = ["1", "بله"];
+export const DEFAULT_INBOUND_OPT_OUT_KEYWORDS = ["لغو", "stop"];
+
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const MAX_INBOUND_KEYWORD_LENGTH = 40;
+const MAX_INBOUND_KEYWORD_COUNT = 40;
 
 export type FunnelSettingKey =
   (typeof FUNNEL_SETTING_KEYS)[keyof typeof FUNNEL_SETTING_KEYS];
@@ -36,6 +45,8 @@ export interface FunnelSettings {
   kavenegarSenderLine: string | undefined;
   kavenegarOtpTemplate: string | undefined;
   apiKeyConfigured: boolean;
+  inboundInterestKeywords: string[];
+  inboundOptOutKeywords: string[];
 }
 
 export interface ResolvedStepForAdmin extends SequenceStepDefinition {
@@ -70,6 +81,8 @@ export interface UpdateFunnelSettingsInput {
   maxUnanswered?: number;
   kavenegarSenderLine?: string | null;
   kavenegarOtpTemplate?: string | null;
+  inboundInterestKeywords?: string[];
+  inboundOptOutKeywords?: string[];
 }
 
 export const SEQUENCE_LABELS: Record<SequenceKey, string> = {
@@ -135,6 +148,84 @@ function assertValidKavenegarOtpTemplate(value: string): void {
       400,
     );
   }
+}
+
+export function normalizeInboundKeyword(raw: string): string {
+  return raw
+    .replace(/[۰-۹]/g, (char) => String(PERSIAN_DIGITS.indexOf(char)))
+    .trim()
+    .toLowerCase();
+}
+
+function parseKeywordTokens(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return [];
+  }
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      // treat as plain text
+    }
+  }
+  return trimmed.split(/[\n,]+/);
+}
+
+export function parseInboundKeywordList(
+  raw: string | undefined,
+  fallback: readonly string[],
+): string[] {
+  if (raw === undefined) {
+    return [...fallback];
+  }
+  const unique = [
+    ...new Set(parseKeywordTokens(raw).map(normalizeInboundKeyword).filter(Boolean)),
+  ];
+  return unique.length > 0 ? unique : [...fallback];
+}
+
+function serializeInboundKeywordList(keywords: string[]): string {
+  return JSON.stringify(keywords);
+}
+
+function assertValidInboundKeywordList(
+  keywords: string[],
+  field: string,
+): string[] {
+  if (!Array.isArray(keywords)) {
+    throw new AppError("VALIDATION_ERROR", `${field} must be a list`, 400);
+  }
+  const normalized = [
+    ...new Set(keywords.map(normalizeInboundKeyword).filter(Boolean)),
+  ];
+  if (normalized.length === 0) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `${field} must include at least one keyword`,
+      400,
+    );
+  }
+  if (normalized.length > MAX_INBOUND_KEYWORD_COUNT) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `${field} cannot have more than ${MAX_INBOUND_KEYWORD_COUNT} keywords`,
+      400,
+    );
+  }
+  for (const keyword of normalized) {
+    if (keyword.length > MAX_INBOUND_KEYWORD_LENGTH) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        `${field} keywords must be at most ${MAX_INBOUND_KEYWORD_LENGTH} characters`,
+        400,
+      );
+    }
+  }
+  return normalized;
 }
 
 function resolveKavenegarFromMap(
@@ -235,6 +326,14 @@ export async function getFunnelSettings(): Promise<FunnelSettings> {
     kavenegarSenderLine: kavenegar.senderLine,
     kavenegarOtpTemplate: kavenegar.otpTemplate,
     apiKeyConfigured: kavenegar.apiKeyConfigured,
+    inboundInterestKeywords: parseInboundKeywordList(
+      map.get(FUNNEL_SETTING_KEYS.inboundInterestKeywords),
+      DEFAULT_INBOUND_INTEREST_KEYWORDS,
+    ),
+    inboundOptOutKeywords: parseInboundKeywordList(
+      map.get(FUNNEL_SETTING_KEYS.inboundOptOutKeywords),
+      DEFAULT_INBOUND_OPT_OUT_KEYWORDS,
+    ),
   };
 }
 
@@ -442,6 +541,48 @@ export async function updateFunnelSettings(
       await upsertSetting(
         FUNNEL_SETTING_KEYS.kavenegarOtpTemplate,
         input.kavenegarOtpTemplate.trim(),
+      );
+    }
+  }
+  if (
+    input.inboundInterestKeywords !== undefined ||
+    input.inboundOptOutKeywords !== undefined
+  ) {
+    const current = await getFunnelSettings();
+    const interestKeywords =
+      input.inboundInterestKeywords !== undefined
+        ? assertValidInboundKeywordList(
+            input.inboundInterestKeywords,
+            "inboundInterestKeywords",
+          )
+        : current.inboundInterestKeywords;
+    const optOutKeywords =
+      input.inboundOptOutKeywords !== undefined
+        ? assertValidInboundKeywordList(
+            input.inboundOptOutKeywords,
+            "inboundOptOutKeywords",
+          )
+        : current.inboundOptOutKeywords;
+    const overlap = interestKeywords.filter((keyword) =>
+      optOutKeywords.includes(keyword),
+    );
+    if (overlap.length > 0) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "inbound interest and opt-out keywords cannot overlap",
+        400,
+      );
+    }
+    if (input.inboundInterestKeywords !== undefined) {
+      await upsertSetting(
+        FUNNEL_SETTING_KEYS.inboundInterestKeywords,
+        serializeInboundKeywordList(interestKeywords),
+      );
+    }
+    if (input.inboundOptOutKeywords !== undefined) {
+      await upsertSetting(
+        FUNNEL_SETTING_KEYS.inboundOptOutKeywords,
+        serializeInboundKeywordList(optOutKeywords),
       );
     }
   }

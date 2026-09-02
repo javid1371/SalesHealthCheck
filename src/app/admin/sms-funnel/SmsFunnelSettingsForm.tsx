@@ -30,6 +30,12 @@ export function SmsFunnelSettingsForm({ settings }: SmsFunnelSettingsFormProps) 
   const [kavenegarOtpTemplate, setKavenegarOtpTemplate] = useState(
     settings.kavenegarOtpTemplate ?? "",
   );
+  const [inboundInterestKeywords, setInboundInterestKeywords] = useState(
+    settings.inboundInterestKeywords.join("\n"),
+  );
+  const [inboundOptOutKeywords, setInboundOptOutKeywords] = useState(
+    settings.inboundOptOutKeywords.join("\n"),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -48,6 +54,14 @@ export function SmsFunnelSettingsForm({ settings }: SmsFunnelSettingsFormProps) 
         maxUnanswered: Number.parseInt(maxUnanswered, 10),
         kavenegarSenderLine: kavenegarSenderLine.trim() || null,
         kavenegarOtpTemplate: kavenegarOtpTemplate.trim() || null,
+        inboundInterestKeywords: inboundInterestKeywords
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+        inboundOptOutKeywords: inboundOptOutKeywords
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
       });
       setSuccess("تنظیمات ذخیره شد.");
       router.refresh();
@@ -166,6 +180,50 @@ export function SmsFunnelSettingsForm({ settings }: SmsFunnelSettingsFormProps) 
             کلید API فقط از متغیر محیطی سرور خوانده می‌شود. خط ارسال و قالب OTP
             پس از ذخیره بلافاصله اعمال می‌شوند.
           </p>
+        </div>
+
+        <div className="border-t border-zinc-200 pt-6">
+          <h3 className="mb-2 text-base font-semibold text-zinc-900">
+            پاسخ‌های ورودی پیامک بازاریابی
+          </h3>
+          <p className="mb-4 text-xs text-zinc-500">
+            هر خط یک حالت است. تطبیق بعد از trim است؛ رقم فارسی مثل «۱» همان «1»
+            حساب می‌شود. متن‌های دیگر فقط ثبت می‌شوند و لید نمی‌سازند.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                کلیدواژه‌های علاقه‌مندی
+              </label>
+              <textarea
+                value={inboundInterestKeywords}
+                onChange={(e) => setInboundInterestKeywords(e.target.value)}
+                rows={5}
+                placeholder={"1\nبله"}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                اگر مخاطب دقیقاً یکی از این متن‌ها را بفرستد، لید ساخته یا باز
+                می‌شود و به کارشناس می‌رسد.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                کلیدواژه‌های انصراف
+              </label>
+              <textarea
+                value={inboundOptOutKeywords}
+                onChange={(e) => setInboundOptOutKeywords(e.target.value)}
+                rows={5}
+                placeholder={"لغو\nstop"}
+                className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-zinc-500">
+                فقط opt-out می‌شود؛ لید ساخته نمی‌شود و وضعیت لیدهای قبلی عوض
+                نمی‌شود.
+              </p>
+            </div>
+          </div>
         </div>
 
         {error ? (

@@ -56,6 +56,8 @@ describe("funnel-config.service", () => {
       kavenegarSenderLine: "10004346",
       kavenegarOtpTemplate: "verify",
       apiKeyConfigured: true,
+      inboundInterestKeywords: ["1", "بله"],
+      inboundOptOutKeywords: ["لغو", "stop"],
     });
   });
 
@@ -133,6 +135,8 @@ describe("funnel-config.service", () => {
       kavenegarSenderLine: "10004346",
       kavenegarOtpTemplate: "verify",
       apiKeyConfigured: true,
+      inboundInterestKeywords: ["1", "بله"],
+      inboundOptOutKeywords: ["لغو", "stop"],
     });
   });
 
@@ -198,6 +202,78 @@ describe("funnel-config.service", () => {
     );
     await expect(
       updateFunnelSettings({ kavenegarSenderLine: "bad line!" }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("reads inbound keyword lists from DB and normalizes Persian digits", async () => {
+    mockSettingFindMany.mockResolvedValue([
+      { key: "inbound_interest_keywords", value: '["۱","آره","2"]' },
+      { key: "inbound_opt_out_keywords", value: "لغو\nSTOP" },
+    ]);
+
+    const { getFunnelSettings } = await import(
+      "@/modules/sms-funnel/funnel-config.service"
+    );
+    const settings = await getFunnelSettings();
+    expect(settings.inboundInterestKeywords).toEqual(["1", "آره", "2"]);
+    expect(settings.inboundOptOutKeywords).toEqual(["لغو", "stop"]);
+  });
+
+  it("persists inbound keyword lists via updateFunnelSettings", async () => {
+    mockSettingUpsert.mockResolvedValue({});
+    mockSettingFindMany.mockResolvedValue([
+      { key: "inbound_interest_keywords", value: '["2","بله"]' },
+      { key: "inbound_opt_out_keywords", value: '["لغو","stop"]' },
+    ]);
+
+    const { updateFunnelSettings } = await import(
+      "@/modules/sms-funnel/funnel-config.service"
+    );
+    const settings = await updateFunnelSettings({
+      inboundInterestKeywords: ["2", "بله", " ۲ "],
+      inboundOptOutKeywords: ["لغو", "STOP"],
+    });
+
+    expect(mockSettingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "inbound_interest_keywords" },
+        create: {
+          key: "inbound_interest_keywords",
+          value: '["2","بله"]',
+        },
+      }),
+    );
+    expect(mockSettingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "inbound_opt_out_keywords" },
+        create: {
+          key: "inbound_opt_out_keywords",
+          value: '["لغو","stop"]',
+        },
+      }),
+    );
+    expect(settings.inboundInterestKeywords).toEqual(["2", "بله"]);
+    expect(settings.inboundOptOutKeywords).toEqual(["لغو", "stop"]);
+  });
+
+  it("rejects overlapping inbound interest and opt-out keywords", async () => {
+    const { updateFunnelSettings } = await import(
+      "@/modules/sms-funnel/funnel-config.service"
+    );
+    await expect(
+      updateFunnelSettings({
+        inboundInterestKeywords: ["1", "لغو"],
+        inboundOptOutKeywords: ["لغو", "stop"],
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("rejects an empty inbound keyword list", async () => {
+    const { updateFunnelSettings } = await import(
+      "@/modules/sms-funnel/funnel-config.service"
+    );
+    await expect(
+      updateFunnelSettings({ inboundInterestKeywords: ["  "] }),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 });

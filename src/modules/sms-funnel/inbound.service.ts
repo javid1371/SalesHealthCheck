@@ -15,12 +15,14 @@ import {
   createSmsInbound,
   findSmsInboundByProviderMessageId,
 } from "./funnel.repository";
+import {
+  DEFAULT_INBOUND_INTEREST_KEYWORDS,
+  DEFAULT_INBOUND_OPT_OUT_KEYWORDS,
+  getFunnelSettings,
+  normalizeInboundKeyword,
+} from "./funnel-config.service";
 
 export const SMS_INBOUND_LEAD_NAME = "مخاطب پیامک";
-
-const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-const INTEREST_KEYWORDS = new Set(["1", "بله"]);
-const OPT_OUT_KEYWORDS = new Set(["لغو", "stop"]);
 
 export type InboundSmsInput = {
   providerMessageId?: string | null;
@@ -35,21 +37,30 @@ export type HandleInboundSmsResult = {
   duplicate: boolean;
 };
 
-function normalizeInboundText(raw: string): string {
-  return raw
-    .replace(/[۰-۹]/g, (char) => String(PERSIAN_DIGITS.indexOf(char)))
-    .trim();
-}
+export function classifyInboundSmsBody(
+  body: string,
+  options?: {
+    interestKeywords?: readonly string[];
+    optOutKeywords?: readonly string[];
+  },
+): SmsInboundHandledAs {
+  const normalized = normalizeInboundKeyword(body);
+  const interestKeywords = new Set(
+    (options?.interestKeywords ?? DEFAULT_INBOUND_INTEREST_KEYWORDS).map(
+      normalizeInboundKeyword,
+    ),
+  );
+  const optOutKeywords = new Set(
+    (options?.optOutKeywords ?? DEFAULT_INBOUND_OPT_OUT_KEYWORDS).map(
+      normalizeInboundKeyword,
+    ),
+  );
 
-export function classifyInboundSmsBody(body: string): SmsInboundHandledAs {
-  const normalized = normalizeInboundText(body);
-  const lowered = normalized.toLowerCase();
-
-  if (INTEREST_KEYWORDS.has(normalized) || INTEREST_KEYWORDS.has(lowered)) {
+  if (interestKeywords.has(normalized)) {
     return "interest";
   }
 
-  if (OPT_OUT_KEYWORDS.has(normalized) || OPT_OUT_KEYWORDS.has(lowered)) {
+  if (optOutKeywords.has(normalized)) {
     return "opt_out";
   }
 
@@ -168,7 +179,11 @@ export async function handleInboundSms(
   const phone = normalizePhone(rawFrom);
   const fromPhone = phone ?? rawFrom;
   const toLine = input.to?.trim() ?? "";
-  const keyword = classifyInboundSmsBody(body);
+  const settings = await getFunnelSettings();
+  const keyword = classifyInboundSmsBody(body, {
+    interestKeywords: settings.inboundInterestKeywords,
+    optOutKeywords: settings.inboundOptOutKeywords,
+  });
 
   let handledAs: SmsInboundHandledAs = keyword;
   let consultationRequestId: string | null = null;

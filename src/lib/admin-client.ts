@@ -66,6 +66,8 @@ export async function updateSmsFunnelSettingsRequest(input: {
   maxUnanswered?: number;
   kavenegarSenderLine?: string | null;
   kavenegarOtpTemplate?: string | null;
+  inboundInterestKeywords?: string[];
+  inboundOptOutKeywords?: string[];
 }) {
   return apiPatch<{ settings: import("@/modules/sms-funnel/funnel-config.service").FunnelSettings }>(
     "/api/admin/sms-funnel/settings",
