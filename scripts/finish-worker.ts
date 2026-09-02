@@ -2,7 +2,6 @@
  * Assessment finish BullMQ worker entrypoint (ADR 0017).
  * Mirrors sms-funnel-worker: same image, different CMD.
  */
-import * as Sentry from "@sentry/nextjs";
 import { Worker } from "bullmq";
 import { getBullMqConnection } from "@/lib/redis";
 import { env } from "@/lib/env";
@@ -11,6 +10,23 @@ import {
   FINISH_QUEUE_NAME,
   type FinishJobPayload,
 } from "@/modules/assessment/finish-queue.types";
+
+/** Sentry is optional: the standalone worker image may not include @sentry/nextjs. */
+function captureFinishException(
+  error: unknown,
+  extra: { jobId?: string; assessmentId?: string },
+) {
+  void import("@sentry/nextjs")
+    .then((Sentry) => {
+      Sentry.captureException(error, {
+        tags: { queue: FINISH_QUEUE_NAME },
+        extra,
+      });
+    })
+    .catch(() => {
+      // Keep processing jobs even when Sentry is not installed in this image.
+    });
+}
 
 async function main() {
   if (!env.asyncFinishEnabled) {
@@ -38,9 +54,9 @@ async function main() {
 
   worker.on("failed", (job, error) => {
     console.error(`[finish] job ${job?.id} failed:`, error);
-    Sentry.captureException(error, {
-      tags: { queue: FINISH_QUEUE_NAME },
-      extra: { jobId: job?.id, assessmentId: job?.data?.assessmentId },
+    captureFinishException(error, {
+      jobId: job?.id,
+      assessmentId: job?.data?.assessmentId,
     });
   });
 
