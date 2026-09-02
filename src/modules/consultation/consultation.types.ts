@@ -1,5 +1,6 @@
 import type { AdminSession, SalesExpertSession } from "@/lib/session";
 import type {
+  AssessmentStatus,
   CallOutcome,
   LeadActivityType,
   LeadSource,
@@ -155,6 +156,15 @@ export interface ExpertDashboardData {
   newLeadRows: ExpertDashboardFollowUpRow[];
 }
 
+export interface PersonAssessmentItem {
+  assessmentId: string;
+  startedAt: string;
+  status: AssessmentStatus;
+  statusLabel: string;
+  overallScorePercentage: number | null;
+  expertViewUrl: string;
+}
+
 export interface ConsultationLeadDetail {
   id: string;
   name: string;
@@ -189,6 +199,7 @@ export interface ConsultationLeadDetail {
   reportUrl: string | null;
   expertViewUrl: string | null;
   adminAssessmentUrl: string | null;
+  personAssessments: PersonAssessmentItem[];
   bottlenecks: Array<{ title: string; severity: string }>;
   diagnoses: Array<{ title: string; severity: string }>;
   notes: ConsultationNoteItem[];

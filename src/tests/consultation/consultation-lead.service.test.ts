@@ -49,6 +49,11 @@ const funnelRepoMock = vi.hoisted(() => ({
   listLeadSmsHistory: vi.fn(),
 }));
 
+const accountRepoMock = vi.hoisted(() => ({
+  findAssessmentsByUserId: vi.fn(),
+  findUserIdsByPhones: vi.fn(),
+}));
+
 vi.mock("@/modules/consultation/consultation.repository", () => repoMock);
 
 vi.mock("@/modules/sms-funnel/enrollment.service", () => ({
@@ -57,6 +62,8 @@ vi.mock("@/modules/sms-funnel/enrollment.service", () => ({
 }));
 
 vi.mock("@/modules/sms-funnel/funnel.repository", () => funnelRepoMock);
+
+vi.mock("@/modules/account/account.repository", () => accountRepoMock);
 
 vi.mock("@/modules/staff/staff.repository", () => staffRepoMock);
 
@@ -229,6 +236,24 @@ describe("listConsultationRequests access scoping", () => {
   });
 });
 
+function mockAssessmentRow(overrides: {
+  id: string;
+  status: "started" | "in_progress" | "completed" | "abandoned";
+  startedAt: Date;
+  percentage?: number;
+}) {
+  return {
+    id: overrides.id,
+    status: overrides.status,
+    startedAt: overrides.startedAt,
+    overallScore:
+      overrides.percentage == null
+        ? null
+        : { percentage: overrides.percentage },
+    organization: { businessName: "Acme" },
+  };
+}
+
 describe("getConsultationLeadDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -236,6 +261,8 @@ describe("getConsultationLeadDetail", () => {
       messages: [],
       activeEnrollments: [],
     });
+    accountRepoMock.findAssessmentsByUserId.mockResolvedValue([]);
+    accountRepoMock.findUserIdsByPhones.mockResolvedValue([]);
   });
 
   it("allows admin to view any lead", async () => {
@@ -438,6 +465,99 @@ describe("getConsultationLeadDetail", () => {
       id: "act-created",
       detail: "شروع تست / ایجاد لید سیستمی",
     });
+  });
+
+  it("lists assessments for the bound session user and users with the same phone", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      assessmentSessionId: "assessment-bound",
+      assessmentSession: {
+        userId: "user-bound",
+        user: { id: "user-bound", phone: "09120000001" },
+        organization: { businessName: "Acme" },
+        overallScore: null,
+        bottlenecks: [],
+        diagnoses: [],
+      },
+    });
+    accountRepoMock.findUserIdsByPhones.mockResolvedValue([
+      "user-bound",
+      "user-phone",
+    ]);
+    accountRepoMock.findAssessmentsByUserId.mockImplementation(
+      async (userId: string) => {
+        if (userId === "user-bound") {
+          return [
+            mockAssessmentRow({
+              id: "assessment-bound",
+              status: "completed",
+              startedAt: new Date("2026-06-02T10:00:00Z"),
+              percentage: 72.4,
+            }),
+            mockAssessmentRow({
+              id: "assessment-older",
+              status: "in_progress",
+              startedAt: new Date("2026-05-01T10:00:00Z"),
+            }),
+          ];
+        }
+        return [
+          mockAssessmentRow({
+            id: "assessment-phone",
+            status: "completed",
+            startedAt: new Date("2026-06-03T10:00:00Z"),
+            percentage: 81,
+          }),
+          mockAssessmentRow({
+            id: "assessment-bound",
+            status: "completed",
+            startedAt: new Date("2026-06-02T10:00:00Z"),
+            percentage: 72.4,
+          }),
+        ];
+      },
+    );
+
+    const lead = await getConsultationLeadDetail("lead-1", adminAccess);
+
+    expect(accountRepoMock.findUserIdsByPhones).toHaveBeenCalledWith([
+      "09120000001",
+    ]);
+    expect(lead.personAssessments).toHaveLength(3);
+    expect(lead.personAssessments.map((item) => item.assessmentId)).toEqual([
+      "assessment-phone",
+      "assessment-bound",
+      "assessment-older",
+    ]);
+    expect(lead.personAssessments[0]).toMatchObject({
+      assessmentId: "assessment-phone",
+      status: "completed",
+      statusLabel: "تکمیل شده",
+      overallScorePercentage: 81,
+      expertViewUrl: "/expert/assessment-phone",
+    });
+    expect(lead.personAssessments[2]).toMatchObject({
+      assessmentId: "assessment-older",
+      status: "in_progress",
+      statusLabel: "در حال انجام",
+      overallScorePercentage: null,
+      expertViewUrl: "/expert/assessment-older",
+    });
+    expect(lead.expertViewUrl).toBe("/expert/assessment-bound");
+    expect(lead.reportUrl).toBeNull();
+  });
+
+  it("returns an empty personAssessments list when the lead has no users", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      phone: null,
+    });
+
+    const lead = await getConsultationLeadDetail("lead-1", adminAccess);
+
+    expect(accountRepoMock.findUserIdsByPhones).toHaveBeenCalledWith([]);
+    expect(accountRepoMock.findAssessmentsByUserId).not.toHaveBeenCalled();
+    expect(lead.personAssessments).toEqual([]);
   });
 });
 

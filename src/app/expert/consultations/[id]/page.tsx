@@ -23,6 +23,7 @@ import { getLeadSettings } from "@/modules/consultation/lead-config.service";
 import { ExpertNav } from "../../ExpertNav";
 import { resolveLeadActionHint } from "@/modules/consultation/lead-sla";
 import { LeadDetailClient } from "./LeadDetailClient";
+import { LeadPersonAssessments } from "./LeadPersonAssessments";
 import { LeadPhoneField } from "./LeadPhoneField";
 import { LeadSmsHistoryPanel } from "./LeadSmsHistoryPanel";
 
@@ -319,6 +320,8 @@ export default async function LeadDetailPage({
           </LinkButton>
         ) : null}
       </div>
+
+      <LeadPersonAssessments assessments={lead.personAssessments} />
     </section>
   );
 

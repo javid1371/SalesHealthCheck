@@ -1,9 +1,18 @@
-import type { CallOutcome, LeadStatus, LostReason } from "@prisma/client";
+import type {
+  AssessmentStatus,
+  CallOutcome,
+  LeadStatus,
+  LostReason,
+} from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { env } from "@/lib/env";
 import { healthLevelLabelFa } from "@/lib/health-level";
 import { verifyConfiguredPassword } from "@/lib/password-auth";
 import type { AdminSession, SalesExpertSession } from "@/lib/session";
+import {
+  findAssessmentsByUserId,
+  findUserIdsByPhones,
+} from "@/modules/account/account.repository";
 import { findAssessmentById, findReportById } from "@/modules/assessment/assessment.repository";
 import type {
   CreateConsultationRequestInput,
@@ -52,6 +61,7 @@ import type {
   ExpertDashboardData,
   ExpertDashboardFollowUpRow,
   LeadTimelineEntry,
+  PersonAssessmentItem,
 } from "./consultation.types";
 import { validateConsultationRequest } from "./consultation.validators";
 import { validateSalesExpertLoginRequest } from "./consultation-list.validators";
@@ -119,6 +129,13 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   closed_won: "بسته — موفق",
   closed_lost: "بسته — ناموفق",
   unreachable: "در دسترس نیست",
+};
+
+const ASSESSMENT_STATUS_LABELS: Record<AssessmentStatus, string> = {
+  started: "شروع شده",
+  in_progress: "در حال انجام",
+  completed: "تکمیل شده",
+  abandoned: "رها شده",
 };
 
 const SMS_STATUS_LABELS: Record<string, string> = {
@@ -887,10 +904,67 @@ async function syncCallScheduledSmsForFollowUp(params: {
   }
 }
 
+function toPersonAssessmentItem(
+  assessment: Awaited<ReturnType<typeof findAssessmentsByUserId>>[number],
+): PersonAssessmentItem {
+  return {
+    assessmentId: assessment.id,
+    startedAt: formatConsultationDate(assessment.startedAt),
+    status: assessment.status,
+    statusLabel: ASSESSMENT_STATUS_LABELS[assessment.status],
+    overallScorePercentage:
+      assessment.status === "completed" && assessment.overallScore
+        ? Math.round(assessment.overallScore.percentage)
+        : null,
+    expertViewUrl: `/expert/${assessment.id}`,
+  };
+}
+
+async function listPersonAssessments(input: {
+  userId?: string | null;
+  phones: string[];
+}): Promise<PersonAssessmentItem[]> {
+  const phones = [...new Set(input.phones.filter((phone) => phone.length > 0))];
+  const phoneUserIds = await findUserIdsByPhones(phones);
+  const userIds = [
+    ...new Set([
+      ...(input.userId ? [input.userId] : []),
+      ...phoneUserIds,
+    ]),
+  ];
+
+  if (userIds.length === 0) {
+    return [];
+  }
+
+  const lists = await Promise.all(
+    userIds.map((userId) => findAssessmentsByUserId(userId)),
+  );
+  const seen = new Set<string>();
+  const assessments: Awaited<ReturnType<typeof findAssessmentsByUserId>> = [];
+
+  for (const list of lists) {
+    for (const assessment of list) {
+      if (seen.has(assessment.id)) {
+        continue;
+      }
+      seen.add(assessment.id);
+      assessments.push(assessment);
+    }
+  }
+
+  assessments.sort(
+    (left, right) => right.startedAt.getTime() - left.startedAt.getTime(),
+  );
+
+  return assessments.map(toPersonAssessmentItem);
+}
+
 function toConsultationLeadDetail(
   row: ConsultationDetailRow,
   options: number | LeadListMappingOptions = STALE_NEW_LEAD_HOURS,
   smsMessages: TimelineSmsMessage[] = [],
+  personAssessments: PersonAssessmentItem[] = [],
 ): ConsultationLeadDetail {
   const assessmentId = row.assessmentSessionId;
   const reportId = row.reportId;
@@ -934,6 +1008,7 @@ function toConsultationLeadDetail(
     adminAssessmentUrl: assessmentId
       ? `/admin/assessments/${assessmentId}`
       : null,
+    personAssessments,
     bottlenecks: (row.assessmentSession?.bottlenecks ?? []).map((item) => ({
       title: item.domain.name,
       severity: String(item.rank),
@@ -1135,11 +1210,15 @@ export async function getConsultationLeadDetail(
     row.assessmentSession?.user.phone ?? null,
   ].filter((phone): phone is string => Boolean(phone));
 
-  const [settings, smsHistory] = await Promise.all([
+  const [settings, smsHistory, personAssessments] = await Promise.all([
     getLeadSettings(),
     listLeadSmsHistory({
       phones,
       assessmentSessionId: row.assessmentSessionId,
+    }),
+    listPersonAssessments({
+      userId: row.assessmentSession?.userId ?? null,
+      phones,
     }),
   ]);
 
@@ -1147,6 +1226,7 @@ export async function getConsultationLeadDetail(
     row,
     mappingOptionsFromLeadSettings(settings),
     smsHistory.messages,
+    personAssessments,
   );
 }
 
