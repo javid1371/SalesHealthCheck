@@ -156,6 +156,7 @@ async function handleInterest(
     phone,
     message,
     source: "direct",
+    status: "sms_reply",
   });
   await finalizeNewLead(lead.id, { mode: "immediate", preferStaffId });
   return lead.id;

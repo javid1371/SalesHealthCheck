@@ -156,7 +156,7 @@ describe("handleInboundSms", () => {
   });
 
   it.each(["1", "۱", "بله"])(
-    "creates a direct lead and finalizes for interest keyword %j",
+    "creates a direct sms_reply lead and finalizes for interest keyword %j",
     async (body) => {
       const result = await handleInboundSms({
         providerMessageId: `${MESSAGE_ID}-${body}`,
@@ -175,6 +175,7 @@ describe("handleInboundSms", () => {
         phone: PHONE_LOCAL,
         message: body,
         source: "direct",
+        status: "sms_reply",
       });
       expect(finalizeMock.finalizeNewLead).toHaveBeenCalledWith("lead-1", {
         mode: "immediate",
@@ -286,6 +287,30 @@ describe("handleInboundSms", () => {
     );
     expect(finalizeMock.finalizeNewLead).not.toHaveBeenCalled();
     expect(repoMock.findLatestAssignedStaffIdByPhone).not.toHaveBeenCalled();
+  });
+
+  it("reuses an open contacted lead without changing CRM status to sms_reply", async () => {
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue({
+      id: "open-lead",
+      assignedToId: "expert-A",
+      status: "contacted",
+      phone: PHONE_LOCAL,
+    });
+
+    const result = await handleInboundSms({
+      providerMessageId: MESSAGE_ID,
+      from: PHONE_LOCAL,
+      body: "1",
+    });
+
+    expect(result.consultationRequestId).toBe("open-lead");
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateConsultationRequestMessage).toHaveBeenCalledWith(
+      "open-lead",
+      "1",
+    );
+    expect(repoMock.updateConsultationRequestMessage).toHaveBeenCalledTimes(1);
+    expect(finalizeMock.finalizeNewLead).not.toHaveBeenCalled();
   });
 
   it("does not create a second lead when the same messageid is replayed", async () => {
