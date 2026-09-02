@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
  * `assessment_in_progress` is excluded so mid-test soft-assign never blocks.
  */
 export const CAPACITY_COUNTED_LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_incomplete",
   "assessment_completed",
   "new",

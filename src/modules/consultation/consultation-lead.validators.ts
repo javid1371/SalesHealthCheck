@@ -20,6 +20,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^[\d+\-\s()]{8,20}$/;
 
 const LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_in_progress",
   "assessment_incomplete",
   "assessment_completed",

@@ -39,6 +39,7 @@ export const LEAD_SETTING_KEYS = {
 } as const;
 
 const LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_in_progress",
   "assessment_incomplete",
   "assessment_completed",

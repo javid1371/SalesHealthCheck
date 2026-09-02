@@ -171,6 +171,7 @@ export const LOST_REASON_LABELS: Record<LostReason, string> = {
 };
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
+  sms_reply: "پاسخ پیامک",
   assessment_in_progress: "در حال انجام تست",
   assessment_incomplete: "پیگیری تکمیل تست",
   assessment_completed: "تست تکمیل‌شده",

@@ -19,6 +19,7 @@ export type ClaimLeadAtomicResult =
   | "not_claimable";
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_in_progress",
   "assessment_incomplete",
   "assessment_completed",
@@ -27,6 +28,9 @@ const OPEN_LEAD_STATUSES: LeadStatus[] = [
   "meeting_scheduled",
   "unreachable",
 ];
+
+/** Pre-assessment statuses that may enter the test pipeline on assessment start. */
+export const PRE_ASSESSMENT_STATUSES: LeadStatus[] = ["sms_reply"];
 
 /** Lead statuses that still belong to the assessment pipeline (pre-CRM). */
 export const ASSESSMENT_PIPELINE_STATUSES: LeadStatus[] = [

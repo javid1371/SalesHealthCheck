@@ -9,6 +9,7 @@ const USER_CONSULTATION_SOURCES: LeadSource[] = ["direct", "messenger"];
 export { STALE_NEW_LEAD_HOURS };
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_in_progress",
   "assessment_incomplete",
   "assessment_completed",

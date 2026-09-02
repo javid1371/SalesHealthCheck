@@ -81,6 +81,7 @@ describe("ops queue counters", () => {
         assignedToId: null,
         status: {
           in: [
+            "sms_reply",
             "assessment_in_progress",
             "assessment_incomplete",
             "assessment_completed",

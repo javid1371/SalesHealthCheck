@@ -6,6 +6,7 @@ import { DEFAULT_ROUTING_RULES } from "./lead-config.service";
 export const STALE_NEW_LEAD_HOURS = 24;
 
 const OPEN_LEAD_STATUSES: LeadStatus[] = [
+  "sms_reply",
   "assessment_in_progress",
   "assessment_incomplete",
   "assessment_completed",

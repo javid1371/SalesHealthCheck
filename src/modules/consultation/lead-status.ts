@@ -5,6 +5,7 @@ import type { LeadStatus } from "@prisma/client";
  * `assessment_in_progress` stays visible on the board but last in the call queue.
  */
 export const LEAD_CALL_QUEUE_PRIORITY: Record<LeadStatus, number> = {
+  sms_reply: 0,
   new: 0,
   assessment_completed: 1,
   assessment_incomplete: 2,

@@ -54,6 +54,7 @@ enum StaffRole {
 }
 
 enum LeadStatus {
+  sms_reply
   assessment_in_progress
   assessment_incomplete
   assessment_completed

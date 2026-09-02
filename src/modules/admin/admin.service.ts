@@ -87,6 +87,7 @@ import { validateAdminLoginRequest } from "./admin.validators";
 const STALE_PENDING_SMS_MINUTES = 15;
 
 const OPS_LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  sms_reply: "پاسخ پیامک",
   assessment_in_progress: "در حال انجام تست",
   assessment_incomplete: "پیگیری تکمیل تست",
   assessment_completed: "تست تکمیل‌شده",
