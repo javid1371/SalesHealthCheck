@@ -259,6 +259,9 @@ describe("handleInboundSms", () => {
       mode: "immediate",
     });
     expect(finalizeMock.finalizeNewLead).toHaveBeenCalledTimes(1);
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "sms_reply" }),
+    );
   });
 
   it("reuses an already-assigned open lead without re-finalizing", async () => {

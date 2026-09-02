@@ -378,6 +378,33 @@ describe("lead-config.service", () => {
     expect(settings.pauseSystemLeadCreation).toBe(true);
   });
 
+  it("accepts sms_reply in callOutcomeMatrix status", async () => {
+    mockUpsert.mockResolvedValue({});
+    const matrix = {
+      no_answer: { status: "sms_reply" as const, nextFollowUpDays: 1 },
+      busy: {},
+      callback_requested: {},
+      connected_interested: {},
+      connected_not_interested: {},
+      wrong_number: {},
+    };
+    mockFindMany.mockResolvedValue([
+      { key: "call_outcome_matrix_json", value: JSON.stringify(matrix) },
+    ]);
+
+    const { updateLeadSettings } = await import(
+      "@/modules/consultation/lead-config.service"
+    );
+    const settings = await updateLeadSettings({
+      callOutcomeMatrix: matrix,
+    });
+
+    expect(settings.callOutcomeMatrix.no_answer).toEqual({
+      status: "sms_reply",
+      nextFollowUpDays: 1,
+    });
+  });
+
   it("rejects invalid callOutcomeMatrix status", async () => {
     const { updateLeadSettings } = await import(
       "@/modules/consultation/lead-config.service"

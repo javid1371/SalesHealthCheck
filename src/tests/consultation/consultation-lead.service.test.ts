@@ -604,6 +604,50 @@ describe("updateConsultationLeadStatus", () => {
     expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
   });
 
+  it("rejects manual move from sms_reply into assessment_in_progress", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      status: "sms_reply",
+    });
+
+    await expect(
+      updateConsultationLeadStatus(
+        "lead-1",
+        { status: "assessment_in_progress" },
+        expertAccess,
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(repoMock.updateConsultationLead).not.toHaveBeenCalled();
+  });
+
+  it("allows dragging sms_reply to آماده تماس", async () => {
+    repoMock.findConsultationRequestById.mockResolvedValue({
+      ...baseRow,
+      status: "sms_reply",
+    });
+    repoMock.updateConsultationLead.mockResolvedValue({
+      ...baseRow,
+      status: "new",
+    });
+
+    const result = await updateConsultationLeadStatus(
+      "lead-1",
+      { status: "new" },
+      expertAccess,
+    );
+
+    expect(result.status).toBe("new");
+    expect(repoMock.updateConsultationLead).toHaveBeenCalledWith("lead-1", {
+      status: "new",
+    });
+    expect(repoMock.createLeadActivity).toHaveBeenCalledWith({
+      consultationRequestId: "lead-1",
+      staffUserId: "expert-1",
+      type: "status_change",
+      detail: "sms_reply→new",
+    });
+  });
+
   it("expert cannot change assignment", async () => {
     await expect(
       updateConsultationLeadStatus(

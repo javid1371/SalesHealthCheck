@@ -62,6 +62,12 @@ describe("status_change journey labels", () => {
     );
   });
 
+  it("labels sms_reply as پاسخ پیامک", () => {
+    expect(formatStatusChangeDetail("sms_reply", "new")).toBe(
+      "پاسخ پیامک → آماده تماس",
+    );
+  });
+
   it("maps known assessment journey transitions", () => {
     expect(
       formatStatusChangeJourneyLabel(

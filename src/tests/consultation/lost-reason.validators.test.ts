@@ -57,6 +57,26 @@ describe("validateUpdateConsultationLeadRequest lost reason", () => {
   });
 });
 
+describe("sms_reply lead status", () => {
+  it("accepts sms_reply on a single-lead update", () => {
+    expect(
+      validateUpdateConsultationLeadRequest({ status: "sms_reply" }),
+    ).toEqual({ status: "sms_reply" });
+  });
+
+  it("accepts sms_reply on a bulk update", () => {
+    expect(
+      validateBulkUpdateLeadsRequest({
+        ids: ["lead-1"],
+        status: "sms_reply",
+      }),
+    ).toEqual({
+      ids: ["lead-1"],
+      status: "sms_reply",
+    });
+  });
+});
+
 describe("validateBulkUpdateLeadsRequest lost reason", () => {
   it("requires lostReason for bulk closed_lost", () => {
     expect(() =>

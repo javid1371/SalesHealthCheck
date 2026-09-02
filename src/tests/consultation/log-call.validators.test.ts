@@ -53,6 +53,18 @@ describe("validateLogCallRequest", () => {
     });
   });
 
+  it("accepts sms_reply as an optional after-call status", () => {
+    expect(
+      validateLogCallRequest({
+        outcome: "callback_requested",
+        status: "sms_reply",
+      }),
+    ).toEqual({
+      outcome: "callback_requested",
+      status: "sms_reply",
+    });
+  });
+
   it("requires lostReason when status is closed_lost", () => {
     expect(() =>
       validateLogCallRequest({

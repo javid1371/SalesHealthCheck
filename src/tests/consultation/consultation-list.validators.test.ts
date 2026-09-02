@@ -85,6 +85,14 @@ describe("validateConsultationListFilter", () => {
     expect(filter.onlyPendingAssignment).toBe(true);
   });
 
+  it("accepts sms_reply as a status filter", () => {
+    const filter = validateConsultationListFilter(
+      new URLSearchParams({ status: "sms_reply" }),
+    );
+
+    expect(filter.status).toBe("sms_reply");
+  });
+
   it("rejects invalid status", () => {
     expect(() =>
       validateConsultationListFilter(

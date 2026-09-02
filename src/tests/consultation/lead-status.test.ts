@@ -20,6 +20,14 @@ describe("LEAD_CALL_QUEUE_PRIORITY", () => {
       LEAD_CALL_QUEUE_PRIORITY.closed_lost,
     );
   });
+
+  it("keeps sms_reply in the call queue at the same priority as new", () => {
+    expect(LEAD_CALL_QUEUE_PRIORITY.sms_reply).toBe(0);
+    expect(LEAD_CALL_QUEUE_PRIORITY.sms_reply).toBe(LEAD_CALL_QUEUE_PRIORITY.new);
+    expect(LEAD_CALL_QUEUE_PRIORITY.sms_reply).toBeLessThan(
+      LEAD_CALL_QUEUE_PRIORITY.assessment_in_progress,
+    );
+  });
 });
 
 describe("compareLeadsByCallQueuePriority", () => {
@@ -58,12 +66,42 @@ describe("compareLeadsByCallQueuePriority", () => {
     expect(sorted[0]?.createdAt.toISOString()).toBe("2026-07-01T11:00:00.000Z");
     expect(sorted[1]?.createdAt.toISOString()).toBe("2026-07-01T08:00:00.000Z");
   });
+
+  it("sorts sms_reply with new and ahead of later CRM stages", () => {
+    const rows = [
+      {
+        status: "contacted" as const,
+        createdAt: new Date("2026-07-01T12:00:00Z"),
+      },
+      {
+        status: "sms_reply" as const,
+        createdAt: new Date("2026-07-01T09:00:00Z"),
+      },
+      {
+        status: "new" as const,
+        createdAt: new Date("2026-07-01T10:00:00Z"),
+      },
+    ];
+
+    const sorted = [...rows].sort(compareLeadsByCallQueuePriority);
+    expect(sorted.map((row) => row.status)).toEqual([
+      "new",
+      "sms_reply",
+      "contacted",
+    ]);
+  });
 });
 
 describe("isManualStatusTransitionAllowed", () => {
   it("blocks entering assessment_in_progress manually", () => {
     expect(
       isManualStatusTransitionAllowed("new", "assessment_in_progress"),
+    ).toBe(false);
+    expect(
+      isManualStatusTransitionAllowed(
+        "sms_reply",
+        "assessment_in_progress",
+      ),
     ).toBe(false);
     expect(
       isManualStatusTransitionAllowed(
@@ -81,6 +119,10 @@ describe("isManualStatusTransitionAllowed", () => {
       isManualStatusTransitionAllowed("assessment_in_progress", "new"),
     ).toBe(true);
     expect(isManualStatusTransitionAllowed("new", "contacted")).toBe(true);
+    expect(isManualStatusTransitionAllowed("sms_reply", "new")).toBe(true);
+    expect(isManualStatusTransitionAllowed("sms_reply", "contacted")).toBe(
+      true,
+    );
     expect(
       isManualStatusTransitionAllowed(
         "assessment_in_progress",
