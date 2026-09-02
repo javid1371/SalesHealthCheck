@@ -100,6 +100,11 @@ const KANBAN_COLUMNS: Array<{
   color: string;
 }> = [
   {
+    status: "sms_reply",
+    label: "پاسخ پیامک",
+    color: "border-cyan-200 bg-cyan-50/60",
+  },
+  {
     status: "assessment_in_progress",
     label: "در حال انجام تست",
     color: "border-rose-200 bg-rose-50/60",

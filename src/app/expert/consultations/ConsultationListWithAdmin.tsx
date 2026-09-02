@@ -23,6 +23,7 @@ import {
 import type { LeadStatus, LostReason } from "@prisma/client";
 
 const STATUS_OPTIONS: Array<{ value: LeadStatus; label: string }> = [
+  { value: "sms_reply", label: "پاسخ پیامک" },
   { value: "assessment_in_progress", label: "در حال انجام تست" },
   { value: "assessment_incomplete", label: "پیگیری تکمیل تست" },
   { value: "assessment_completed", label: "تست تکمیل‌شده" },

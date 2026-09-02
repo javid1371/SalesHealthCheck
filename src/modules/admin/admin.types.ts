@@ -150,6 +150,7 @@ export interface AdminLeadKpis {
 }
 
 export interface AdminLeadStatusFunnel {
+  smsReply: number;
   assessmentInProgress: number;
   assessmentIncomplete: number;
   assessmentCompleted: number;

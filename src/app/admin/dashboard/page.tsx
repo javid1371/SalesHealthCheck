@@ -99,6 +99,12 @@ function KpiCard({
 function LeadStatusFunnelBar({ funnel }: { funnel: AdminLeadStatusFunnel }) {
   const stages = [
     {
+      key: "smsReply",
+      label: "پاسخ پیامک",
+      count: funnel.smsReply,
+      color: "bg-cyan-500",
+    },
+    {
       key: "assessmentInProgress",
       label: "در حال تست",
       count: funnel.assessmentInProgress,

@@ -261,6 +261,7 @@ function buildLeadStatusFunnel(
   const counts = new Map(rows.map((row) => [row.status, row._count.id]));
 
   return {
+    smsReply: counts.get("sms_reply") ?? 0,
     assessmentInProgress: counts.get("assessment_in_progress") ?? 0,
     assessmentIncomplete: counts.get("assessment_incomplete") ?? 0,
     assessmentCompleted: counts.get("assessment_completed") ?? 0,
