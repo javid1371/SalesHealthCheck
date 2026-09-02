@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const repoMock = vi.hoisted(() => ({
+  PRE_ASSESSMENT_STATUSES: ["sms_reply"],
   ASSESSMENT_PIPELINE_STATUSES: [
     "assessment_in_progress",
     "assessment_incomplete",
@@ -710,6 +711,71 @@ describe("lead-assignment.service", () => {
       "crm-lead",
       expect.objectContaining({
         assessmentSessionId: "assessment-2",
+      }),
+    );
+    expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(
+      "status",
+    );
+  });
+
+  it("createLeadOnAssessmentStart moves sms_reply to assessment_in_progress without overwriting assignedToId", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue(null);
+    repoMock.findConsultationRequestByUserId.mockResolvedValue(null);
+    repoMock.findOpenConsultationRequestByPhone.mockResolvedValue({
+      id: "sms-reply-lead",
+      status: "sms_reply",
+      assignedToId: "expert-A",
+      phone: "09121111111",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-sms-reply",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "sms-reply-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-sms-reply",
+        status: "assessment_in_progress",
+      }),
+    );
+    expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(
+      "assignedToId",
+    );
+    expect(staffMock.pickNextSalesExpert).not.toHaveBeenCalled();
+    expect(repoMock.assignLeadToExpertIfUnassigned).not.toHaveBeenCalled();
+    expect(smsMock.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("createLeadOnAssessmentStart does not regress new lead status", async () => {
+    repoMock.findConsultationRequestByAssessmentSessionId.mockResolvedValue({
+      id: "new-lead",
+      status: "new",
+      assignedToId: "expert-1",
+    });
+
+    const { createLeadOnAssessmentStart } = await import(
+      "@/modules/consultation/lead-assignment.service"
+    );
+
+    await createLeadOnAssessmentStart({
+      assessmentSessionId: "assessment-new-crm",
+      name: "Test User",
+      phone: "09121111111",
+    });
+
+    expect(repoMock.createConsultationRequest).not.toHaveBeenCalled();
+    expect(repoMock.updateLeadAssessmentBinding).toHaveBeenCalledWith(
+      "new-lead",
+      expect.objectContaining({
+        assessmentSessionId: "assessment-new-crm",
       }),
     );
     expect(repoMock.updateLeadAssessmentBinding.mock.calls[0]?.[1]).not.toHaveProperty(

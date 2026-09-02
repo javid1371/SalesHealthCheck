@@ -8,6 +8,7 @@ import type { StructuredDiagnosis } from "@/types/structured-diagnosis";
 import type { ValueAtStakeSpec } from "@/types/value-at-stake";
 import {
   ASSESSMENT_PIPELINE_STATUSES,
+  PRE_ASSESSMENT_STATUSES,
   assignLeadToExpertIfUnassigned,
   attachReportToLeadIfMissing,
   clearAssignScheduledFor,
@@ -531,12 +532,16 @@ export async function createLeadOnAssessmentStart(input: {
   const name = input.name.trim() || "کاربر";
 
   if (existing) {
-    // CRM statuses (consultation request / contacted / …) must not regress.
-    if (
-      !ASSESSMENT_PIPELINE_STATUSES.includes(
+    const canEnterAssessment =
+      ASSESSMENT_PIPELINE_STATUSES.includes(
         existing.status as (typeof ASSESSMENT_PIPELINE_STATUSES)[number],
-      )
-    ) {
+      ) ||
+      PRE_ASSESSMENT_STATUSES.includes(
+        existing.status as (typeof PRE_ASSESSMENT_STATUSES)[number],
+      );
+
+    // CRM statuses (new / contacted / …) must not regress into the test pipeline.
+    if (!canEnterAssessment) {
       await updateLeadAssessmentBinding(existing.id, {
         assessmentSessionId: input.assessmentSessionId,
         name,
