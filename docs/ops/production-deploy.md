@@ -40,6 +40,12 @@ Optional (Phase 2 email recovery):
 | `RESEND_API_KEY` | Resend API key |
 | `EMAIL_FROM` | Verified sender (e.g. `noreply@yourdomain.com`) |
 
+Optional (Kavenegar inbound marketing replies):
+
+| Variable | Description |
+|----------|-------------|
+| `KAVENEGAR_INBOUND_WEBHOOK_SECRET` | Query `?secret=` for `https://<APP_DOMAIN>/api/webhooks/kavenegar/inbound` — set on VPS and in the Kavenegar receive-line URL; without it production ignores inbound SMS (route still returns 200) |
+
 Generate a strong expert token:
 
 ```bash
