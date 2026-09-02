@@ -150,6 +150,12 @@ enum SmsStatus {
   skipped
 }
 
+enum SmsInboundHandledAs {
+  interest
+  opt_out
+  ignored
+}
+
 enum EnrollmentStatus {
   active
   completed
@@ -507,6 +513,7 @@ model ConsultationRequest {
   consultationNotes ConsultationNote[]
   leadActivities    LeadActivity[]
   callLogs          LeadCallLog[]
+  smsInbounds       SmsInbound[]
 
   @@index([assessmentSessionId])
   @@index([createdAt])
@@ -690,6 +697,23 @@ model SmsOptOut {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("sms_opt_outs")
+}
+
+model SmsInbound {
+  id                    String              @id @default(cuid())
+  providerMessageId     String              @unique @map("provider_message_id")
+  fromPhone             String              @map("from_phone")
+  toLine                String              @map("to_line")
+  body                  String
+  handledAs             SmsInboundHandledAs @map("handled_as")
+  consultationRequestId String?             @map("consultation_request_id")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  consultationRequest ConsultationRequest? @relation(fields: [consultationRequestId], references: [id], onDelete: SetNull)
+
+  @@index([fromPhone])
+  @@index([consultationRequestId])
+  @@map("sms_inbounds")
 }
 
 model SmsFunnelStepConfig {
