@@ -4,6 +4,7 @@ import type {
   Prisma,
   ScoreBand,
   ShortLinkPurpose,
+  SmsInboundHandledAs,
   SmsStatus,
 } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -26,6 +27,39 @@ export async function addPhoneOptOut(phone: string): Promise<void> {
     where: { phone },
     create: { phone },
     update: {},
+  });
+}
+
+export async function findSmsInboundByProviderMessageId(
+  providerMessageId: string,
+) {
+  return db.smsInbound.findUnique({
+    where: { providerMessageId },
+    select: {
+      id: true,
+      handledAs: true,
+      consultationRequestId: true,
+    },
+  });
+}
+
+export async function createSmsInbound(input: {
+  providerMessageId: string;
+  fromPhone: string;
+  toLine: string;
+  body: string;
+  handledAs: SmsInboundHandledAs;
+  consultationRequestId?: string | null;
+}) {
+  return db.smsInbound.create({
+    data: {
+      providerMessageId: input.providerMessageId,
+      fromPhone: input.fromPhone,
+      toLine: input.toLine,
+      body: input.body,
+      handledAs: input.handledAs,
+      consultationRequestId: input.consultationRequestId ?? null,
+    },
   });
 }
 

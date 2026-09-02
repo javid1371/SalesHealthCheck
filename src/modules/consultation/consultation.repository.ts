@@ -96,6 +96,27 @@ export async function findConsultationRequestsByUserId(userId: string) {
   });
 }
 
+/** Latest lead with this exact phone that is not closed_won / closed_lost. */
+export async function findOpenConsultationRequestByPhone(phone: string) {
+  return db.consultationRequest.findFirst({
+    where: {
+      phone,
+      status: { notIn: ["closed_won", "closed_lost"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function updateConsultationRequestMessage(
+  id: string,
+  message: string,
+) {
+  return db.consultationRequest.update({
+    where: { id },
+    data: { message },
+  });
+}
+
 export async function updateLeadAssessmentBinding(
   id: string,
   data: {
