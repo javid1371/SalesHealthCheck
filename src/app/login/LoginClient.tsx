@@ -68,6 +68,8 @@ export function LoginClient() {
               id="staff-password"
               type="password"
               autoComplete="current-password"
+              dir="ltr"
+              spellCheck={false}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required

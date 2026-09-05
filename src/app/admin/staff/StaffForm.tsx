@@ -95,6 +95,7 @@ export function StaffForm({ onCreated, onCancel }: StaffFormProps) {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
+            dir="ltr"
             className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm"
           />
         </div>

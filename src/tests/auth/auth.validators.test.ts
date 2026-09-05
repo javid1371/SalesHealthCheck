@@ -33,6 +33,11 @@ describe("normalizePhone", () => {
     expect(normalizePhone("123")).toBeNull();
     expect(normalizePhone("")).toBeNull();
   });
+
+  it("converts Persian and Arabic-Indic digits", () => {
+    expect(normalizePhone("۰۹۱۲۳۴۵۶۷۸۹")).toBe("09123456789");
+    expect(normalizePhone("٠٩١٢٣٤٥٦٧٨٩")).toBe("09123456789");
+  });
 });
 
 describe("validateSendOtpRequest", () => {

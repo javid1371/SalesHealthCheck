@@ -142,7 +142,11 @@ describe("authenticateStaffByCredentials", () => {
         phone: "09111111111",
         password: "admin-secret",
       }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+      message: "کاربری با این شماره موبایل یافت نشد.",
+    });
   });
 
   it("rejects inactive staff users without revealing role", async () => {
@@ -232,7 +236,11 @@ describe("authenticateStaff", () => {
         phone: "09111111111",
         password: "admin-secret",
       }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    ).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      status: 401,
+      message: "کاربری با این شماره موبایل یافت نشد.",
+    });
   });
 });
 

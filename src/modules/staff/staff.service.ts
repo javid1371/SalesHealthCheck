@@ -144,7 +144,11 @@ export async function authenticateStaffByCredentials(
     return expertBootstrap;
   }
 
-  throw new AppError("UNAUTHORIZED", "رمز عبور نادرست است.", 401);
+  throw new AppError(
+    "UNAUTHORIZED",
+    "کاربری با این شماره موبایل یافت نشد.",
+    401,
+  );
 }
 
 export async function authenticateStaff(
@@ -182,7 +186,11 @@ export async function authenticateStaff(
 
   const roleCount = await countStaffUsersByRole(role);
   if (roleCount > 0) {
-    throw new AppError("UNAUTHORIZED", "رمز عبور نادرست است.", 401);
+    throw new AppError(
+      "UNAUTHORIZED",
+      "کاربری با این شماره موبایل یافت نشد.",
+      401,
+    );
   }
 
   if (!envPasswordConfiguredForRole(role)) {

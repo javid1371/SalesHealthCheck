@@ -2,13 +2,26 @@ import { AppError } from "@/lib/errors";
 import type { SendOtpInput, VerifyOtpInput } from "./auth.types";
 
 const IRAN_MOBILE_REGEX = /^09\d{9}$/;
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+
+function toAsciiDigits(raw: string): string {
+  return raw.replace(/[۰-۹٠-٩]/g, (char) => {
+    const persian = PERSIAN_DIGITS.indexOf(char);
+    if (persian !== -1) {
+      return String(persian);
+    }
+    const arabic = ARABIC_INDIC_DIGITS.indexOf(char);
+    return arabic !== -1 ? String(arabic) : char;
+  });
+}
 
 /**
  * Normalize Iranian mobile numbers to `09XXXXXXXXX`.
- * Accepts 09..., 9..., +98..., 0098..., and strips separators.
+ * Accepts 09..., 9..., +98..., 0098..., Persian/Arabic digits, and strips separators.
  */
 export function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/[^\d]/g, "");
+  const digits = toAsciiDigits(raw).replace(/[^\d]/g, "");
 
   if (digits.length === 11 && digits.startsWith("09")) {
     return digits;

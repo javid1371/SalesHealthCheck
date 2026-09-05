@@ -1,5 +1,6 @@
 import type { StaffRole } from "@prisma/client";
 import { AppError } from "@/lib/errors";
+import { sanitizePassword } from "@/lib/password-auth";
 import { normalizePhone } from "@/modules/auth/auth.validators";
 import type { CreateStaffUserInput, StaffLoginInput } from "./staff.types";
 
@@ -34,7 +35,7 @@ function parsePasswordField(
   minLength = MIN_PASSWORD_LENGTH,
 ): string {
   const value = body[field];
-  if (typeof value !== "string" || value.length < minLength) {
+  if (typeof value !== "string") {
     throw new AppError(
       "VALIDATION_ERROR",
       `Password must be at least ${minLength} characters`,
@@ -43,7 +44,17 @@ function parsePasswordField(
     );
   }
 
-  return value;
+  const password = sanitizePassword(value);
+  if (password.length < minLength) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `Password must be at least ${minLength} characters`,
+      400,
+      { field },
+    );
+  }
+
+  return password;
 }
 
 function parseNameField(body: Record<string, unknown>): string {
