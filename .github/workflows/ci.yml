@@ -102,6 +102,9 @@ jobs:
     needs: build-push
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -111,8 +114,9 @@ jobs:
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_SSH_HOST: ${{ secrets.VPS_SSH_HOST }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          GHCR_USER: ${{ github.repository_owner }}
+          # Job token can pull this repo's private image. The stored GHCR_TOKEN PAT is rejected by ghcr.io.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
           if [ -z "${VPS_SSH_KEY}" ] || [ -z "${VPS_SSH_HOST}" ]; then
