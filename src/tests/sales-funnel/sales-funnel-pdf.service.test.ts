@@ -117,6 +117,7 @@ describe("generateFunnelPdf", () => {
       waitForSelector: mockWaitForSelector,
       pdf: mockPdf,
       close: mockClose,
+      on: vi.fn(),
     });
 
     mockLaunch.mockResolvedValue({
@@ -133,7 +134,7 @@ describe("generateFunnelPdf", () => {
     });
     expect(mockGoto).toHaveBeenCalledWith(
       "http://localhost:3000/funnel/funnel-1/print?token=secret-token",
-      expect.objectContaining({ waitUntil: "networkidle" }),
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
     );
     expect(mockPdf).toHaveBeenCalled();
     expect(mockClose).toHaveBeenCalled();

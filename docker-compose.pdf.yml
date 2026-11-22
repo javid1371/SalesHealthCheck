@@ -14,3 +14,4 @@ services:
     mem_limit: 2g
     environment:
       PDF_GENERATION_ENABLED: "true"
+      PDF_RENDER_BASE_URL: "http://127.0.0.1:3000"

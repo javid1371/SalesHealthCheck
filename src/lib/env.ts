@@ -54,6 +54,17 @@ export const env = {
   get pdfGenerationEnabled(): boolean {
     return process.env.PDF_GENERATION_ENABLED === "true";
   },
+  /**
+   * Origin Playwright uses to render print/chart pages.
+   * Defaults to loopback so generation does not depend on public DNS/TLS.
+   * Override with PDF_RENDER_BASE_URL when the app is not on PORT.
+   */
+  get pdfRenderBaseUrl(): string {
+    const override = process.env.PDF_RENDER_BASE_URL?.trim();
+    if (override) return override.replace(/\/$/, "");
+    const port = process.env.PORT ?? "3000";
+    return `http://127.0.0.1:${port}`;
+  },
   /** HMAC secret for signed user/admin session cookies (ADR 0014). */
   get authSessionSecret(): string {
     return requireEnv("AUTH_SESSION_SECRET");

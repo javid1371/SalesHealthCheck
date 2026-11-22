@@ -5,14 +5,15 @@ import { findReportById } from "@/modules/assessment/assessment.repository";
 import type { ResultAccessInput } from "@/modules/assessment/assessment.types";
 import {
   getBrowser,
+  gotoPrintReadyPage,
   PLAYWRIGHT_RENDER_TIMEOUT_MS,
-  PRINT_READY_SELECTOR,
+  resolvePlaywrightBaseUrl,
 } from "./playwright-browser";
 
 const CHART_CAPTURE_SELECTOR = "#report-chart-capture";
 
 function buildChartUrl(reportId: string, token: string): string {
-  const base = env.appBaseUrl.replace(/\/$/, "");
+  const base = resolvePlaywrightBaseUrl(env);
   const query = new URLSearchParams({ token });
   return `${base}/report/${reportId}/chart?${query.toString()}`;
 }
@@ -88,14 +89,7 @@ export async function generateReportChartImage(
     });
 
     try {
-      await page.goto(chartUrl, {
-        waitUntil: "networkidle",
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
-
-      await page.waitForSelector(PRINT_READY_SELECTOR, {
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
+      await gotoPrintReadyPage(page, chartUrl);
 
       const chartElement = page.locator(CHART_CAPTURE_SELECTOR);
       await chartElement.waitFor({
@@ -114,7 +108,7 @@ export async function generateReportChartImage(
       throw error;
     }
 
-    console.error("Chart image generation failed:", error);
+    console.error("Chart image generation failed:", { chartUrl, error });
 
     throw new AppError(
       "chart_generation_failed",

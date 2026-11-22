@@ -79,6 +79,7 @@ services:
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-${SENTRY_DSN:-}}
       # Campaign default: leave unset/false. Opt-in via docker-compose.pdf.yml after load test.
       PDF_GENERATION_ENABLED: ${PDF_GENERATION_ENABLED:-}
+      PDF_RENDER_BASE_URL: ${PDF_RENDER_BASE_URL:-http://127.0.0.1:3000}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?Set AUTH_SESSION_SECRET in .env}
       KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
       KAVENEGAR_OTP_TEMPLATE: ${KAVENEGAR_OTP_TEMPLATE:-}

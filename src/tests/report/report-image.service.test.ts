@@ -101,6 +101,7 @@ describe("generateReportChartImage", () => {
       waitForSelector: mockWaitForSelector,
       locator: mockLocator,
       close: mockClose,
+      on: vi.fn(),
     });
 
     mockLaunch.mockResolvedValue({
@@ -138,6 +139,7 @@ describe("generateReportChartImage", () => {
       waitForSelector: mockWaitForSelector,
       locator: mockLocator,
       close: mockClose,
+      on: vi.fn(),
     });
 
     mockLaunch.mockResolvedValue({
@@ -151,7 +153,7 @@ describe("generateReportChartImage", () => {
     expect(result).toEqual(pngBytes);
     expect(mockGoto).toHaveBeenCalledWith(
       "http://localhost:3000/report/report-1/chart?token=secret-token",
-      expect.objectContaining({ waitUntil: "networkidle" }),
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
     );
     expect(mockScreenshot).toHaveBeenCalledWith({ type: "png" });
     expect(mockClose).toHaveBeenCalled();

@@ -23,8 +23,11 @@ async function resolveExportError(
     if (body.error?.code === "pdf_generation_disabled") {
       return "خروجی تصویری در این سرور فعال نیست.";
     }
-    if (body.error?.message) {
-      return body.error.message;
+    if (body.error?.code === "pdf_generation_failed") {
+      return "ساخت فایل PDF ناموفق بود. دوباره تلاش کنید.";
+    }
+    if (body.error?.code === "chart_generation_failed") {
+      return "ساخت تصویر نمودار ناموفق بود. دوباره تلاش کنید.";
     }
   } catch {
     // Non-JSON error body — keep default message

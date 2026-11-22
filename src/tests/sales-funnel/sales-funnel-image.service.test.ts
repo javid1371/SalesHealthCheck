@@ -118,6 +118,7 @@ describe("generateFunnelChartImage", () => {
       waitForSelector: mockWaitForSelector,
       locator: mockLocator,
       close: mockClose,
+      on: vi.fn(),
     });
 
     mockLaunch.mockResolvedValue({
@@ -131,7 +132,7 @@ describe("generateFunnelChartImage", () => {
     expect(result).toEqual(pngBytes);
     expect(mockGoto).toHaveBeenCalledWith(
       "http://localhost:3000/funnel/funnel-1/chart?token=secret-token",
-      expect.objectContaining({ waitUntil: "networkidle" }),
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
     );
     expect(mockScreenshot).toHaveBeenCalledWith({ type: "png" });
     expect(mockClose).toHaveBeenCalled();

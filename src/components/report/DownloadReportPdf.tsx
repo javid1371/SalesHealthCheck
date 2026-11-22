@@ -41,8 +41,8 @@ export function DownloadReportPdf({
           };
           if (body.error?.code === "pdf_generation_disabled") {
             message = "دانلود PDF در این سرور فعال نیست.";
-          } else if (body.error?.message) {
-            message = body.error.message;
+          } else if (body.error?.code === "pdf_generation_failed") {
+            message = "ساخت فایل PDF ناموفق بود. دوباره تلاش کنید.";
           }
         } catch {
           // Non-JSON error body — keep default message

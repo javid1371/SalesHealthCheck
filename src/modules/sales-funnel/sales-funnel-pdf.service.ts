@@ -2,8 +2,8 @@ import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import {
   getBrowser,
-  PLAYWRIGHT_RENDER_TIMEOUT_MS,
-  PRINT_READY_SELECTOR,
+  gotoPrintReadyPage,
+  resolvePlaywrightBaseUrl,
 } from "@/modules/report/playwright-browser";
 import { assertSalesFunnelEnabled } from "./sales-funnel.guards";
 import { findFunnelById } from "./sales-funnel.repository";
@@ -13,7 +13,7 @@ import type { FunnelAccessInput } from "./sales-funnel.types";
 export { resetBrowserForTests } from "@/modules/report/playwright-browser";
 
 function buildPrintUrl(funnelId: string, token: string): string {
-  const base = env.appBaseUrl.replace(/\/$/, "");
+  const base = resolvePlaywrightBaseUrl(env);
   const query = new URLSearchParams({ token });
   return `${base}/funnel/${funnelId}/print?${query.toString()}`;
 }
@@ -77,14 +77,7 @@ export async function generateFunnelPdf(
     const page = await browser.newPage();
 
     try {
-      await page.goto(printUrl, {
-        waitUntil: "networkidle",
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
-
-      await page.waitForSelector(PRINT_READY_SELECTOR, {
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
+      await gotoPrintReadyPage(page, printUrl);
 
       const pdf = await page.pdf({
         format: "A4",
@@ -102,7 +95,7 @@ export async function generateFunnelPdf(
       throw error;
     }
 
-    console.error("Funnel PDF generation failed:", error);
+    console.error("Funnel PDF generation failed:", { printUrl, error });
 
     throw new AppError(
       "pdf_generation_failed",

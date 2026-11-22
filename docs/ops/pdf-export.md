@@ -7,7 +7,8 @@ Sales Health Check generates PDF reports by rendering the print page (`/report/[
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PDF_GENERATION_ENABLED` | unset (disabled) | Set to `true` to enable `GET /api/reports/[id]/pdf?token=` |
-| `APP_BASE_URL` | `http://localhost:3000` | Must be the **public URL** Playwright can reach (same origin as the running app) |
+| `APP_BASE_URL` | `http://localhost:3000` | Public origin for emails and share links |
+| `PDF_RENDER_BASE_URL` | `http://127.0.0.1:$PORT` | Origin Chromium uses to load `/print` and `/chart` pages. Override only if the app is not listening on `PORT` |
 
 **Campaign / scale default:** leave unset or `false`. PDF is CPU-heavy; do not enable during paid-acquisition peak. See [scaling.md](./scaling.md).
 
@@ -29,6 +30,8 @@ When disabled, the download button still appears on result/report pages but the 
    ```bash
    PDF_GENERATION_ENABLED=true
    APP_BASE_URL=http://localhost:3000
+   # Optional — only if Next is not on port 3000:
+   # PDF_RENDER_BASE_URL=http://127.0.0.1:3001
    ```
 
 3. Run the app (`npm run dev` or `npm start`), finish an assessment, then use **دانلود PDF** or open:
@@ -56,9 +59,9 @@ Leave `PDF_GENERATION_ENABLED` unset in `.env`. Do not use the PDF compose overr
    docker compose -f docker-compose.nginx.yml -f docker-compose.pdf.yml up -d
    ```
 
-3. Ensure `APP_BASE_URL` is the public HTTPS URL Playwright can reach from inside the app container.
+3. Leave `APP_BASE_URL` as the public HTTPS URL (emails/share links). Playwright renders via loopback (`http://127.0.0.1:3000` inside the app container) unless `PDF_RENDER_BASE_URL` is set.
 
-`APP_BASE_URL` must match the URL nginx/Caddy serves — Playwright navigates to `{APP_BASE_URL}/report/.../print` from **inside** the app container.
+The image **must** be built with Playwright (`vars.PDF_GENERATION_ENABLED=true` in GitHub Actions). Setting the runtime flag on an image without Chromium still returns `pdf_generation_failed`.
 
 ### Memory and timeouts
 
@@ -72,7 +75,7 @@ Leave `PDF_GENERATION_ENABLED` unset in `.env`. Do not use the PDF compose overr
 | Symptom | Likely cause |
 |---------|----------------|
 | Empty charts in PDF | Chart not painted before capture — check `data-print-ready` on `<html>`; increase wait or ensure Recharts renders on print page |
-| `pdf_generation_failed` | Wrong `APP_BASE_URL`, app not listening, or Chromium missing in image |
+| `pdf_generation_failed` | Chromium missing in the image (`INSTALL_PLAYWRIGHT` was false at build), app not listening on loopback, or print page JS error |
 | 403 on print URL | Missing or invalid `token` query param |
 | Slow first PDF | Cold Chromium launch — subsequent requests reuse the browser |
 

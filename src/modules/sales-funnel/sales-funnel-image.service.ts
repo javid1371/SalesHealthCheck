@@ -2,8 +2,9 @@ import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import {
   getBrowser,
+  gotoPrintReadyPage,
   PLAYWRIGHT_RENDER_TIMEOUT_MS,
-  PRINT_READY_SELECTOR,
+  resolvePlaywrightBaseUrl,
 } from "@/modules/report/playwright-browser";
 import { assertSalesFunnelEnabled } from "./sales-funnel.guards";
 import { findFunnelById } from "./sales-funnel.repository";
@@ -13,7 +14,7 @@ import type { FunnelAccessInput } from "./sales-funnel.types";
 const CHART_CAPTURE_SELECTOR = "#funnel-chart-capture";
 
 function buildChartUrl(funnelId: string, token: string): string {
-  const base = env.appBaseUrl.replace(/\/$/, "");
+  const base = resolvePlaywrightBaseUrl(env);
   const query = new URLSearchParams({ token });
   return `${base}/funnel/${funnelId}/chart?${query.toString()}`;
 }
@@ -79,14 +80,7 @@ export async function generateFunnelChartImage(
     });
 
     try {
-      await page.goto(chartUrl, {
-        waitUntil: "networkidle",
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
-
-      await page.waitForSelector(PRINT_READY_SELECTOR, {
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
+      await gotoPrintReadyPage(page, chartUrl);
 
       const chartElement = page.locator(CHART_CAPTURE_SELECTOR);
       await chartElement.waitFor({
@@ -105,7 +99,7 @@ export async function generateFunnelChartImage(
       throw error;
     }
 
-    console.error("Funnel chart image generation failed:", error);
+    console.error("Funnel chart image generation failed:", { chartUrl, error });
 
     throw new AppError(
       "chart_generation_failed",

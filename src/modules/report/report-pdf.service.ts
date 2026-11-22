@@ -5,14 +5,14 @@ import { findReportById } from "@/modules/assessment/assessment.repository";
 import type { ResultAccessInput } from "@/modules/assessment/assessment.types";
 import {
   getBrowser,
-  PLAYWRIGHT_RENDER_TIMEOUT_MS,
-  PRINT_READY_SELECTOR,
+  gotoPrintReadyPage,
+  resolvePlaywrightBaseUrl,
 } from "./playwright-browser";
 
 export { resetBrowserForTests } from "./playwright-browser";
 
 function buildPrintUrl(reportId: string, token: string): string {
-  const base = env.appBaseUrl.replace(/\/$/, "");
+  const base = resolvePlaywrightBaseUrl(env);
   const query = new URLSearchParams({ token });
   return `${base}/report/${reportId}/print?${query.toString()}`;
 }
@@ -74,14 +74,7 @@ export async function generateReportPdf(
     const page = await browser.newPage();
 
     try {
-      await page.goto(printUrl, {
-        waitUntil: "networkidle",
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
-
-      await page.waitForSelector(PRINT_READY_SELECTOR, {
-        timeout: PLAYWRIGHT_RENDER_TIMEOUT_MS,
-      });
+      await gotoPrintReadyPage(page, printUrl);
 
       const pdf = await page.pdf({
         format: "A4",
@@ -99,7 +92,7 @@ export async function generateReportPdf(
       throw error;
     }
 
-    console.error("PDF generation failed:", error);
+    console.error("PDF generation failed:", { printUrl, error });
 
     throw new AppError(
       "pdf_generation_failed",

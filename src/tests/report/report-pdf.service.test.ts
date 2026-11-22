@@ -4,6 +4,7 @@ const { mockEnv } = vi.hoisted(() => ({
   mockEnv: {
     appBaseUrl: "http://localhost:3000",
     pdfGenerationEnabled: true,
+    pdfRenderBaseUrl: undefined as string | undefined,
   },
 }));
 
@@ -36,6 +37,7 @@ describe("generateReportPdf", () => {
     vi.clearAllMocks();
     resetBrowserForTests();
     mockEnv.pdfGenerationEnabled = true;
+    mockEnv.pdfRenderBaseUrl = undefined;
   });
 
   it("throws pdf_generation_disabled when feature is off", async () => {
@@ -88,6 +90,7 @@ describe("generateReportPdf", () => {
       waitForSelector: mockWaitForSelector,
       pdf: mockPdf,
       close: mockClose,
+      on: vi.fn(),
     });
 
     mockLaunch.mockResolvedValue({
@@ -99,7 +102,7 @@ describe("generateReportPdf", () => {
     expect(result).toEqual(pdfBytes);
     expect(mockGoto).toHaveBeenCalledWith(
       "http://localhost:3000/report/report-1/print?token=secret-token",
-      expect.objectContaining({ waitUntil: "networkidle" }),
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
     );
     expect(mockPdf).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -110,6 +113,32 @@ describe("generateReportPdf", () => {
       }),
     );
     expect(mockClose).toHaveBeenCalled();
+  });
+
+  it("renders print pages from pdfRenderBaseUrl when set", async () => {
+    mockEnv.pdfRenderBaseUrl = "http://127.0.0.1:3000";
+    mockGetReport.mockResolvedValue({
+      reportId: "report-1",
+      reportSpec: { version: "1" },
+    } as Awaited<ReturnType<typeof getReport>>);
+
+    const mockGoto = vi.fn().mockResolvedValue(null);
+    mockLaunch.mockResolvedValue({
+      newPage: vi.fn().mockResolvedValue({
+        goto: mockGoto,
+        waitForSelector: vi.fn(),
+        pdf: vi.fn().mockResolvedValue(Buffer.from("%PDF")),
+        close: vi.fn(),
+        on: vi.fn(),
+      }),
+    } as Awaited<ReturnType<typeof chromium.launch>>);
+
+    await generateReportPdf("report-1", { token: "secret-token" });
+
+    expect(mockGoto).toHaveBeenCalledWith(
+      "http://127.0.0.1:3000/report/report-1/print?token=secret-token",
+      expect.objectContaining({ waitUntil: "domcontentloaded" }),
+    );
   });
 
   it("wraps Playwright failures in pdf_generation_failed", async () => {
