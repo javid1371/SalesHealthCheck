@@ -8,7 +8,7 @@ export function LandingHeroMedia() {
         className="aspect-video w-full bg-zinc-950 object-cover"
         controls
         playsInline
-        preload="metadata"
+        preload="none"
         poster={HERO_POSTER_SRC}
         aria-label="ویدیوی معرفی ارزیابی سلامت فروش"
       >
